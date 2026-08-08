@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>伪春菜桌宠</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="pet">
+    <!-- 对话气泡 -->
+    <div id="balloon" class="hidden">
+      <div id="balloon-text"></div>
+      <div class="balloon-tail"></div>
+    </div>
+
+    <!-- 角色：支持多状态表情切换（idle / happy / sad） -->
+    <div id="character">
+      <img id="character-img" src="../../assets/character/idle.png" draggable="false" />
+      <div id="character-shadow"></div>
+    </div>
+
+    <canvas id="particles"></canvas>
+
+    <!-- 情感状态面板 -->
+    <div id="state-panel" class="hidden">
+      <div id="state-panel-header">
+        <span>小未来的状态</span>
+        <button id="state-panel-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="state-mood-line">
+        <span id="state-mood">平静</span>
+        <span id="state-mood-score">心情 55</span>
+      </div>
+      <div id="state-reason" class="state-reason" aria-live="polite"></div>
+      <div id="state-memory" class="state-memory" title="点击打开记忆库"></div>
+      <div class="state-row"><span>好感</span><div class="state-bar"><i id="state-affection-bar"></i></div><b id="state-affection">30</b></div>
+      <div class="state-row"><span>精力</span><div class="state-bar"><i id="state-energy-bar"></i></div><b id="state-energy">80</b></div>
+      <div class="state-row"><span>健康</span><div class="state-bar"><i id="state-health-bar"></i></div><b id="state-health">100</b></div>
+      <div class="state-row"><span>压力</span><div class="state-bar"><i id="state-stress-bar"></i></div><b id="state-stress">10</b></div>
+      <div class="state-row"><span>孤独</span><div class="state-bar"><i id="state-loneliness-bar"></i></div><b id="state-loneliness">5</b></div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

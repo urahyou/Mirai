@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 关于主人</title>
+  <link rel="stylesheet" href="settings-panel.css" />
+  <link rel="stylesheet" href="owner-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">关于主人</h1>
+      <p class="panel-desc">让我更了解你，也把重要的小事好好记住</p>
+      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    </header>
+
+    <form id="ownerForm" class="panel-form">
+      <div class="form-scroll">
+        <section class="section">
+          <h2 class="section-title">主人资料</h2>
+          <label class="field" for="ownerName">
+            <span class="field-label">怎么称呼你</span>
+            <input class="text-input" id="ownerName" type="text" maxlength="40" autocomplete="name" placeholder="比如：小明 / 主人" />
+          </label>
+          <label class="field" for="ownerBirthday">
+            <span class="field-label">生日</span>
+            <input class="text-input" id="ownerBirthday" type="text" maxlength="40" placeholder="可以留空，比如：3月14日" />
+          </label>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">让我认识你的偏好</h2>
+          <label class="field" for="ownerLikes">
+            <span class="field-label">喜欢的东西</span>
+            <input class="text-input" id="ownerLikes" type="text" maxlength="500" placeholder="用逗号分隔，如：甜食, 聊天, 星星" />
+            <span class="field-hint">写下你喜欢的事物，我下次就知道从哪里开始聊啦</span>
+          </label>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">留一句话给我</h2>
+          <label class="field" for="ownerNote">
+            <span class="field-label">想让我记住的话</span>
+            <textarea class="text-input textarea" id="ownerNote" maxlength="500" rows="4" placeholder="比如：最近在准备考试，记得提醒我休息"></textarea>
+          </label>
+        </section>
+      </div>
+
+      <footer class="panel-footer">
+        <span class="hint" id="saveHint" aria-live="polite"></span>
+        <div class="spacer"></div>
+        <button class="btn primary" id="saveBtn" type="submit">保存</button>
+        <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+      </footer>
+    </form>
+  </div>
+
+  <script src="owner-panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · Provider 设置</title>
+  <link rel="stylesheet" href="provider-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部区域 -->
+    <header class="panel-header">
+      <h1 class="panel-title">Provider 设置</h1>
+      <p class="panel-desc">管理本地大模型连接、切换默认提供者的参数</p>
+    </header>
+
+    <!-- Provider 卡片列表 -->
+    <div id="providersList"></div>
+
+    <!-- 底部按钮栏 -->
+    <footer class="panel-footer">
+      <button class="btn" id="addProviderBtn">添加 Provider</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="cancelBtn">取消</button>
+      <button class="btn primary" id="saveBtn">保存并应用</button>
+    </footer>
+  </div>
+
+  <!-- 添加 Provider 弹窗 -->
+  <template id="addDialogTpl">
+    <div class="overlay">
+      <div class="dialogue-box center">
+        <label for="newProviderName">名称：</label>
+        <input type="text" id="newProviderName" placeholder="例如 openai" />
+        <div class="btn-group">
+          <button class="btn small" id="addDialogCancel">取消</button>
+          <button class="btn primary small" id="addDialogConfirm">添加</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- LLM 连接结果气泡 -->
+  <div class="llm-tooltip" id="llmTooltip"></div>
+
+  <script src="provider-panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "defaultDialogueMode": true,
+  "activeProvider": "deepseek",
+  "providers": {
+    "ollama": {
+      "label": "Ollama",
+      "type": "openai-compatible",
+      "baseUrl": "http://192.168.99.106:11434/v1",
+      "apiKey": "none",
+      "defaultModel": "qwen3.6",
+      "temperature": 0.8,
+      "topP": 0.9
+    },
+    "deepseek": {
+      "label": "DeepSeek / vLLM",
+      "type": "openai-compatible",
+      "baseUrl": "http://192.168.99.99:8000/v1",
+      "apiKey": "none",
+      "defaultModel": "deepseek-v4-flash",
+      "temperature": 0.8,
+      "topP": 0.9
+    },
+    "ollama-mac": {
+      "label": "ollama-mac",
+      "type": "openai-compatible",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKey": "",
+      "defaultModel": "gemma4:e4b-mlx",
+      "temperature": 0.8,
+      "topP": 0.9
+    }
+  }
+}

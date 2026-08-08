@@ -1,0 +1,157 @@
+/* === 基础布局 === */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #fafafa; color: #333; display: flex; justify-content: center; }
+
+#app {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* === Header === */
+.panel-header {
+  padding: 28px 22px 14px;
+  background: linear-gradient(135deg, #ff4f9e, #c06bff);
+  color: #fff;
+}
+.panel-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.panel-desc  { font-size: 11px; opacity: 0.85; }
+
+/* === Sections === */
+.section {
+  padding: 12px 22px;
+}
+
+/* === Global options === */
+.global-options { border-bottom: 1px solid #f0f0f0; }
+.checkbox-label {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #555; cursor: pointer; user-select: none; }
+.checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: #ff4f9e; }
+
+/* === Provider card === */
+.provider-card {
+  border-bottom: 1px solid #efefef;
+  padding: 0 0 14px 22px;
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 14px;
+  margin-bottom: 3px;
+}
+.card-name-group { display: flex; align-items: center; gap: 10px; }
+
+.provider-card .name-input {
+  border: none; border-bottom: 2px solid transparent; background: transparent;
+  font-size: 11px; color: #999; width: 72px; outline: none; text-align: center;
+  padding: 1px 0;
+}
+.provider-card .name-input:focus { border-bottom-color: #ff4f9e; }
+
+.card-name-tag {
+  display: inline-block; background: #f2eaee; color: #cc3377; font-weight: 600;
+  font-size: 15px; padding: 2px 9px; border-radius: 6px;
+}
+
+.card-key-tag {
+  display: inline-block; background: #eef1f5; color: #8899aa; font-size: 10px;
+  font-weight: 500; padding: 1px 6px; border-radius: 5px; margin-left: auto; margin-right: 6px;
+}
+
+/* 拖拽排序 */
+.provider-card { cursor: default; }
+.provider-card.dragging { opacity: 0.45; }
+.provider-card.drop-over { outline: 2px dashed #ff4f9e; outline-offset: -2px; border-radius: 10px; transition: outline .1s; }
+#providersList.drag-active .provider-card { cursor: grab; }
+
+.card-active-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: #42e08d; color: #fff; font-size: 10px; font-weight: 700; border-radius: 6px; padding: 2px 8px;
+}
+.card-btns { display: flex; gap: 4px; margin-left: auto; }
+
+.btn-icon {
+  width: 24px; height: 24px; border: 0; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; background: #f5f5f5; color: #888; display: inline-flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
+}
+.btn-icon:hover { background: #ebebeb; }
+
+.card-fields {
+  display: grid; gap: 7px; margin-top: 8px; padding-left: 0;
+}
+
+.field-row { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
+.field-label { width: 70px; text-align: right; flex-shrink: 0; line-height: 28px; color: transparent; pointer-events: none; user-select: none; height: 0; }
+
+.card-fields input, .card-fields select {
+  border: 1.5px solid #e5e5e5; border-radius: 7px; font-size: 12px; padding: 6px 9px; outline: none; flex: 1; background: #fff; color: #333; transition: border-color .14s;
+}
+.card-fields input:focus, .card-fields select:focus { border-color: #ff4f9e; }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; padding-left: 70px; }
+.switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; background: #ccc; border-radius: 18px; cursor: pointer; transition: .2s;
+}
+.slider::before {
+  content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .2s;
+}
+.switch input:checked + .slider { background: #ff4f9e; }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+
+/* === Provider list scroll area === */
+#providersList {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 79, 158, 0.5) transparent;
+}
+#providersList::-webkit-scrollbar { width: 8px; }
+#providersList::-webkit-scrollbar-thumb { background: rgba(255, 79, 158, 0.4); border-radius: 4px; }
+#providersList::-webkit-scrollbar-track { background: transparent; }
+
+/* === Footer === */
+.panel-footer {
+  display: flex; align-items: center; gap: 8px; padding: 14px 22px; border-top: 1px solid #eee; background: #fafafa;
+}
+.spacer { flex: 1; }
+.btn {
+  border: 0; cursor: pointer; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 9px; background: #f2eaee; color: #cc3377; transition: background .16s, opacity .16s;
+}
+.btn:hover { background: #e8d6df; }
+.btn.primary { background: linear-gradient(135deg, #ff4f9e, #c06bff); color: #fff; }
+.btn.primary:hover { opacity: 0.85; }
+.btn.ghost { background: #f7f7f7; color: #888; }
+.btn.small { padding: 5px 12px; font-size: 12px; }
+
+/* === Loading indicator on card === */
+.checking { border-top: 3px solid #4da6ff !important; }
+.check-ok { border-top: 3px solid #2dcf7a !important; }
+.check-fail { border-top: 3px solid #eb5050 !important; }
+
+/* === Delete overlay confirmation in card === */
+.card-del-overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(255,255,.7); display: flex; align-items: center; justify-content: center; border-radius: 4px; z-index: 5; }
+
+/* === Add dialog overlay === */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.25); display: flex; justify-content: center; align-items: center; z-index: 100; animation: fadeIn .18s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.dialogue-box { background: #fff; padding: 22px 24px 18px; border-radius: 14px; box-shadow: 0 8px 26px rgba(35,11,80,.25); display: flex; flex-direction: column; align-items: center; gap: 11px; width: 270px; }
+.dialogue-box label { font-size: 12px; color: #666; }
+.dialogue-box input { width: 100%; padding: 8px 10px; border-radius: 9px; border: 1.5px solid #e5e5e5; font-size: 13px; outline: none; transition: border .14s; }
+.dialogue-box input:focus { border-color: #ff4f9e; }
+.btn-group { display: flex; gap: 8px; margin-top: 4px; }
+
+/* === LLM checking tooltip === */
+.llm-tooltip {
+  position: fixed; bottom: -60px; left: 50%; transform: translateX(-50%); padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; z-index: 99; color: #fff; transition: bottom .3s ease, opacity .3s ease; opacity: 0; pointer-events: none; white-space: nowrap;
+}
+.llm-tooltip.show { bottom: 18px; opacity: 1; }

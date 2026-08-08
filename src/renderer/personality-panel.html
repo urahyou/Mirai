@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 性格设定</title>
+  <link rel="stylesheet" href="settings-panel.css" />
+  <link rel="stylesheet" href="personality-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">小未来的性格</h1>
+      <p class="panel-desc">把小未来养成你喜欢的模样</p>
+      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    </header>
+
+    <form id="personalityForm" class="panel-form">
+      <div class="form-scroll">
+        <section class="section">
+          <h2 class="section-title">名字与气质</h2>
+          <label class="field" for="personalityName">
+            <span class="field-label">名字</span>
+            <input class="text-input" id="personalityName" type="text" maxlength="40" placeholder="比如：小未来" />
+          </label>
+          <div class="field-grid">
+            <label class="field" for="personalityMood">
+              <span class="field-label">平时的心情</span>
+              <input class="text-input" id="personalityMood" type="text" maxlength="1000" placeholder="比如：元气满满" />
+            </label>
+            <label class="field" for="personalityAge">
+              <span class="field-label">年龄设定</span>
+              <input class="text-input" id="personalityAge" type="text" maxlength="1000" placeholder="比如：16" />
+            </label>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">喜欢与不喜欢</h2>
+          <label class="field" for="personalityLikes">
+            <span class="field-label">喜欢的</span>
+            <input class="text-input" id="personalityLikes" type="text" maxlength="500" placeholder="用逗号分隔，如：甜食, 聊天, 星星" />
+          </label>
+          <label class="field" for="personalityDislikes">
+            <span class="field-label">讨厌的</span>
+            <input class="text-input" id="personalityDislikes" type="text" maxlength="500" placeholder="用逗号分隔，如：熬夜, 下雨天" />
+          </label>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">说话方式</h2>
+          <label class="field" for="personalityCatchphrases">
+            <span class="field-label">口头禅</span>
+            <input class="text-input" id="personalityCatchphrases" type="text" maxlength="500" placeholder="用逗号分隔，如：唔嗯~, 诶嘿, 这样吗？" />
+          </label>
+          <label class="field" for="personalityTone">
+            <span class="field-label">语气简介</span>
+            <textarea class="text-input textarea" id="personalityTone" maxlength="1000" rows="3" placeholder="比如：俏皮、亲昵、偶尔撒娇"></textarea>
+          </label>
+          <label class="field" for="personalitySelfIntro">
+            <span class="field-label">自我介绍</span>
+            <textarea class="text-input textarea" id="personalitySelfIntro" maxlength="1000" rows="4" placeholder="写一段小未来会怎样介绍自己的话"></textarea>
+          </label>
+        </section>
+      </div>
+
+      <footer class="panel-footer">
+        <span class="hint" id="saveHint" aria-live="polite"></span>
+        <div class="spacer"></div>
+        <button class="btn small ghost" id="resetBtn" type="button">恢复默认</button>
+        <button class="btn primary" id="saveBtn" type="submit">保存</button>
+        <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+      </footer>
+    </form>
+  </div>
+
+  <script src="personality-panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Pi / coding-agent internals
+.omo/
+.codegraph
+.codegraph/
+
+# Runtime / user data (owner info, personality overrides, settings)
+owner.json
+personality-runtime.json
+*.runtime.json
+settings.json
+proactive-settings.json
+memory/
+*.log
+/tmp/pet_*.log
+
+# Secrets — never commit real credentials
+.env
+.env.*
+*.local
+
+# Electron
+dist/
+out/
+build/

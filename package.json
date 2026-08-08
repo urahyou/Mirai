@@ -1,0 +1,23 @@
+{
+  "name": "haruhana-quest",
+  "version": "0.1.0",
+  "description": "伪春菜复兴计划 - 一个类似伪春菜的桌面悬浮桌宠",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "check": "node --check src/services/json-storage.js && node --check src/services/conversation-orchestrator.js && node --check src/services/proactive-policy.js && node --check src/services/proactive-settings-store.js && node --check src/services/memory-service.js && node --test test/*.test.js"
+  },
+  "keywords": [
+    "ukagaka",
+    "desktop",
+    "pet",
+    "electron",
+    "ollama"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.3.0"
+  }
+}

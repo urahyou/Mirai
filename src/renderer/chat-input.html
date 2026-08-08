@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 输入</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: transparent; overflow: hidden;
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      user-select: none; -webkit-user-select: none;
+    }
+    #chatbox {
+      position: absolute; inset: 0;
+      padding: 8px;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.24);
+    }
+    #drag-zone {
+      height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px;
+      color: #999;
+      font-size: 11px;
+      cursor: grab;
+    }
+    #drag-zone::before {
+      content: '⠿';
+      color: #bbb;
+      font-size: 17px;
+      line-height: 1;
+    }
+    #drag-zone:active { cursor: grabbing; }
+    #compose-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    #chat-input {
+      flex: 1;
+      min-height: 44px;
+      max-height: 140px;
+      padding: 12px 14px;
+      border: 2px solid rgba(0,0,0,0.18);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.97);
+      font-size: 14px;
+      line-height: 1.5;
+      outline: none;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+      color: #333;
+      resize: none;
+      overflow-y: auto;
+      font-family: inherit;
+      display: block;
+    }
+    #send-button {
+      flex: 0 0 52px;
+      height: 42px;
+      border: 0;
+      border-radius: 12px;
+      background: #ff75ad;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(255, 79, 158, 0.25);
+    }
+    #send-button:hover { background: #ff4f9e; }
+    #send-button:disabled { opacity: 0.55; cursor: default; }
+    #chat-input:focus {
+      border-color: rgba(255, 79, 158, 0.55);
+      box-shadow: 0 0 0 3px rgba(255, 79, 158, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <div id="chatbox">
+    <div id="drag-zone">拖动输入框</div>
+    <div id="compose-row">
+      <textarea id="chat-input" rows="1"></textarea>
+      <button id="send-button" type="button">发送</button>
+    </div>
+  </div>
+  <script src="chat-input.js"></script>
+</body>
+</html>

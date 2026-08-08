@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 日程提醒</title>
+  <link rel="stylesheet" href="schedule-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">日程提醒</h1>
+      <p class="panel-desc">添加一次性或周期提醒，安静时间内不会打扰你</p>
+    </header>
+
+    <section class="section">
+      <h2 class="section-title">新建提醒</h2>
+      <div class="schedule-form">
+        <input type="text" id="inputTitle" class="input" maxlength="120" placeholder="提醒内容（必填）" />
+        <div class="form-grid">
+          <input type="datetime-local" id="inputRunAt" class="input" />
+          <select id="inputType" class="input">
+            <option value="reminder">一次提醒</option>
+            <option value="deadline">截止</option>
+            <option value="proactive">主动</option>
+          </select>
+          <select id="inputRepeat" class="input">
+            <option value="">不重复</option>
+            <option value="daily">每日</option>
+            <option value="weekly">每周</option>
+          </select>
+        </div>
+        <input type="text" id="inputNote" class="input" maxlength="500" placeholder="备注（可选）" />
+        <div class="row-actions">
+          <span class="hint" id="formHint"></span>
+          <div class="spacer"></div>
+          <button class="btn primary small" id="createBtn">添加</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section schedule-list-section">
+      <div class="schedule-toolbar">
+        <h2 class="section-title" style="margin:0">提醒列表</h2>
+        <button class="btn danger small" id="clearAllBtn">清空全部</button>
+      </div>
+      <div class="memory-list" id="scheduleList"></div>
+      <p class="hint" id="scheduleEmpty">还没有提醒。</p>
+    </section>
+
+    <footer class="panel-footer">
+      <span class="hint" id="saveHint"></span>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="closeBtn">关闭</button>
+    </footer>
+  </div>
+
+  <script src="schedule-panel.js"></script>
+</body>
+</html>

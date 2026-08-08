@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 设置与记忆</title>
+  <link rel="stylesheet" href="settings-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">设置与记忆</h1>
+      <p class="panel-desc">管理主动陪伴、提醒表现与长期记忆</p>
+    </header>
+
+    <section class="section">
+      <h2 class="section-title">主动陪伴</h2>
+      <label class="row-label">
+        <input type="checkbox" id="proactiveEnabled" />
+        <span>允许小未来主动搭话</span>
+      </label>
+      <div class="row-actions">
+        <button class="btn small" id="pauseBtn">暂停 1 小时</button>
+        <button class="btn small ghost" id="resumeBtn">恢复</button>
+        <span class="hint" id="pauseHint"></span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">提醒与表现</h2>
+      <label class="row-label"><input type="checkbox" id="optNotifications" /><span>系统通知</span></label>
+      <label class="row-label"><input type="checkbox" id="optSound" /><span>声音反馈</span></label>
+      <label class="row-label"><input type="checkbox" id="optAnimation" /><span>动画效果</span></label>
+      <label class="row-label"><input type="checkbox" id="optReduceMotion" /><span>减少动态</span></label>
+      <label class="row-label"><input type="checkbox" id="optNetwork" /><span>允许记忆随对话经网络传输</span></label>
+      <label class="row-label"><input type="checkbox" id="optMemorySaving" /><span>开启记忆保存</span></label>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">长期记忆</h2>
+      <p class="hint">分层管理（常驻 / 活跃 / 回收站）、自动沉淀日志、清理建议与导出，已集中到「记忆库」。</p>
+      <div class="row-actions">
+        <button class="btn small" id="openMemoryBtn">打开记忆库</button>
+        <button class="btn small ghost" id="exportBtn">导出记忆</button>
+      </div>
+      <p class="hint" id="memSummary"></p>
+    </section>
+
+    <footer class="panel-footer">
+      <span class="hint" id="saveHint"></span>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="closeBtn">关闭</button>
+    </footer>
+  </div>
+
+  <script src="settings-panel.js"></script>
+</body>
+</html>
