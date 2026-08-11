@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-let settings = { scale: 1, alwaysOnTop: true };
+let settings = { scale: 1, alwaysOnTop: true, outlineShadow: false };
 let feedbackTimer = null;
 let previewFrame = null;
 let pendingScale = null;
@@ -26,6 +26,7 @@ function render() {
   $('scaleRange').style.setProperty('--progress', `${((percentage - 70) / 80) * 100}%`);
   $('scaleValue').textContent = `${percentage}%`;
   $('alwaysOnTop').checked = settings.alwaysOnTop;
+  $('outlineShadow').checked = settings.outlineShadow;
 }
 
 async function save(patch) {
@@ -44,7 +45,7 @@ async function save(patch) {
 async function reset() {
   $('resetBtn').disabled = true;
   try {
-    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true });
+    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true, outlineShadow: false });
     render();
     showFeedback('已恢复默认', '小未来回到标准大小并重新置顶');
   } catch {
@@ -76,6 +77,7 @@ async function init() {
   });
   $('scaleRange').addEventListener('change', () => save({ scale: Number($('scaleRange').value) / 100 }));
   $('alwaysOnTop').addEventListener('change', () => save({ alwaysOnTop: $('alwaysOnTop').checked }));
+  $('outlineShadow').addEventListener('change', () => save({ outlineShadow: $('outlineShadow').checked }));
 
   try {
     const loaded = await window.desktopPet.display.get();

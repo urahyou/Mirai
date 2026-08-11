@@ -28,6 +28,10 @@ function isCharacterHit(clientX, clientY) {
   return Boolean(live2dAvatar?.isHit(clientX, clientY));
 }
 
+function applyDisplaySettings(settings) {
+  document.body.dataset.outlineShadow = settings?.outlineShadow ? 'true' : 'false';
+}
+
 function detectFace(text) {
   const value = String(text || '');
   if (['对不起', '抱歉', '难过', '伤心', '哭', '讨厌', '生气', '烦', '再见'].some((word) => value.includes(word))) return 'sad';
@@ -206,5 +210,8 @@ character.addEventListener('contextmenu', (event) => {
 });
 
 window.desktopPet.onChatDelta(handleChatDelta);
+window.desktopPet.display.onChanged(applyDisplaySettings);
+
+window.desktopPet.display.get().then(applyDisplaySettings).catch(() => {});
 
 initLive2D();

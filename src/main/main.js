@@ -67,6 +67,9 @@ function applyDisplaySettings(settings, preserveCenter = true) {
     );
   }
   setMainWindowAlwaysOnTop(settings.alwaysOnTop);
+  if (mainWindow.webContents && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('display:changed', settings);
+  }
 }
 
 function createMainWindow() {

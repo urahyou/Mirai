@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 let deltaListener = null;
 let historyListener = null;
+let displayListener = null;
 
 contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   greet: () => ipcRenderer.invoke('character:greet'),
@@ -36,6 +37,11 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     get: () => ipcRenderer.invoke('display:get'),
     set: (patch) => ipcRenderer.invoke('display:set', patch),
     preview: (patch) => ipcRenderer.invoke('display:preview', patch),
+    onChanged: (callback) => {
+      if (displayListener) ipcRenderer.removeListener('display:changed', displayListener);
+      displayListener = (_event, data) => callback(data);
+      ipcRenderer.on('display:changed', displayListener);
+    },
   }),
   openDisplayPanel: () => ipcRenderer.invoke('display:openPanel'),
   closeDisplayPanel: () => ipcRenderer.invoke('display:closePanel'),

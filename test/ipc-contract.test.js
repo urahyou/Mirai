@@ -23,13 +23,14 @@ test('Given malformed or unrelated IPC payloads When validation runs Then every 
   assertRejected('personality:set', [{ personality: { tone: 'x'.repeat(1001) } }]);
   assertRejected('display:set', [{ scale: 0.69 }]);
   assertRejected('display:set', [{ scale: 1, alwaysOnTop: 'yes' }]);
+  assertRejected('display:set', [{ outlineShadow: 'yes' }]);
   assertRejected('tool:execute', [{ command: 'whoami' }]);
 });
 
 test('Given display settings When validation receives a bounded patch Then it accepts the patch', () => {
-  assert.deepEqual(validatePayload('display:set', [{ scale: 1.25, alwaysOnTop: false }]), {
+  assert.deepEqual(validatePayload('display:set', [{ scale: 1.25, alwaysOnTop: false, outlineShadow: true }]), {
     ok: true,
-    data: [{ scale: 1.25, alwaysOnTop: false }],
+    data: [{ scale: 1.25, alwaysOnTop: false, outlineShadow: true }],
   });
 });
 

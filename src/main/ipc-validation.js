@@ -33,6 +33,7 @@ function validateDisplaySettingsPatch(args) {
   const patch = args[0];
   if ('scale' in patch && (typeof patch.scale !== 'number' || !Number.isFinite(patch.scale) || patch.scale < 0.7 || patch.scale > 1.5)) return null;
   if ('alwaysOnTop' in patch && typeof patch.alwaysOnTop !== 'boolean') return null;
+  if ('outlineShadow' in patch && typeof patch.outlineShadow !== 'boolean') return null;
   return args;
 }
 
