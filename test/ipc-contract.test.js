@@ -101,5 +101,7 @@ test('Given the Live2D avatar When hit testing is inspected Then it checks model
   const avatar = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'live2d-avatar.js'), 'utf8');
 
   assert.match(avatar, /this\.model\.hitTest/);
-  assert.match(avatar, /this\.model\.containsPoint/);
+  assert.match(avatar, /getDrawableVertexIndices/);
+  assert.match(avatar, /pointInTriangle/);
+  assert.doesNotMatch(avatar, /this\.model\.containsPoint/);
 });

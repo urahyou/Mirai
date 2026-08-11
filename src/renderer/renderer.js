@@ -29,7 +29,7 @@ function isCharacterHit(clientX, clientY) {
 }
 
 function applyDisplaySettings(settings) {
-  document.body.dataset.outlineShadow = settings?.outlineShadow ? 'true' : 'false';
+  character.dataset.outlineShadow = settings?.outlineShadow ? 'true' : 'false';
 }
 
 function detectFace(text) {
