@@ -3,87 +3,87 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>小未来 · 输入</title>
+  <title>小未来 · 对话</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      width: 100%; height: 100%;
-      background: transparent; overflow: hidden;
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      width: 100%; height: 100%; overflow: hidden; background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
       user-select: none; -webkit-user-select: none;
     }
     #chatbox {
-      position: absolute; inset: 0;
-      padding: 8px;
-      border: 1px solid rgba(0,0,0,0.12);
-      border-radius: 18px;
-      background: rgba(255,255,255,0.96);
-      box-shadow: 0 10px 28px rgba(0,0,0,0.24);
+      position: absolute; inset: 0; display: flex; flex-direction: column; padding: 8px;
+      border: 1px solid rgba(236, 160, 195, .78); border-radius: 16px;
+      background: rgba(255, 255, 255, .97); box-shadow: 0 10px 28px rgba(81, 51, 70, .24);
     }
     #drag-zone {
-      height: 22px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 0 4px;
-      color: #999;
-      font-size: 11px;
-      cursor: grab;
+      flex: 0 0 22px; display: flex; align-items: center; gap: 6px; padding: 0 4px;
+      color: #9a7287; font-size: 11px; cursor: grab;
     }
-    #drag-zone::before {
-      content: '⠿';
-      color: #bbb;
-      font-size: 17px;
-      line-height: 1;
-    }
+    #drag-zone::before { content: '⠿'; color: #e8a6c4; font-size: 17px; line-height: 1; }
     #drag-zone:active { cursor: grabbing; }
-    #compose-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 8px;
+    #window-controls { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+    #expand-button, #close-button {
+      width: 24px; height: 22px; border: 0; border-radius: 5px;
+      color: #a86482; background: transparent; font-size: 17px; line-height: 1; cursor: pointer;
     }
+    #expand-button:hover { color: #ff4f9e; background: #fff0f6; }
+    #close-button { font-size: 19px; }
+    #close-button:hover { color: #d84b75; background: #fff0f4; }
+    #history-panel { display: none; min-height: 0; flex: 1; margin: 3px 0 8px; }
+    #chatbox.expanded #history-panel { display: block; }
+    #history-list {
+      height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 2px 4px 4px;
+      scrollbar-color: #efb1ca transparent; scrollbar-width: thin;
+    }
+    #history-list::-webkit-scrollbar { width: 6px; }
+    #history-list::-webkit-scrollbar-thumb { border-radius: 4px; background: #efb1ca; }
+    .message { display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px; }
+    .message.user { flex-direction: row-reverse; }
+    .avatar {
+      flex: 0 0 27px; width: 27px; height: 27px; border-radius: 50%; padding-top: 6px;
+      background: #ffe2ee; color: #b95d85; font-size: 11px; line-height: 15px; text-align: center;
+    }
+    .message.assistant .avatar { background: #fff4f8; color: #d875a0; border: 1px solid #f4c8da; padding-top: 5px; }
+    .bubble {
+      max-width: calc(100% - 44px); padding: 8px 10px; border: 1px solid #f1d1de; border-radius: 8px;
+      color: #4d3542; background: #fff; font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+      overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
+    }
+    .message.user .bubble { border-color: #ff8fbd; background: #ff76ad; color: #fff; }
+    .message.streaming .bubble::after { content: '...'; display: inline-block; margin-left: 2px; color: #df76a2; animation: blink 1s steps(2, start) infinite; }
+    @keyframes blink { 50% { opacity: .25; } }
+    #compose-row { display: flex; flex: 0 0 auto; align-items: flex-end; gap: 8px; }
     #chat-input {
-      flex: 1;
-      min-height: 44px;
-      max-height: 140px;
-      padding: 12px 14px;
-      border: 2px solid rgba(0,0,0,0.18);
-      border-radius: 14px;
-      background: rgba(255,255,255,0.97);
-      font-size: 14px;
-      line-height: 1.5;
-      outline: none;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
-      color: #333;
-      resize: none;
-      overflow-y: auto;
-      font-family: inherit;
-      display: block;
+      display: block; flex: 1; min-height: 44px; max-height: 100px; padding: 11px 12px;
+      border: 1px solid #e9b4cb; border-radius: 10px; outline: none; resize: none;
+      background: #fff; color: #44313b; font: 14px/1.5 inherit; overflow-y: auto; overscroll-behavior: contain;
+      user-select: text; -webkit-user-select: text;
     }
+    #chat-input:focus { border-color: #ff639f; box-shadow: 0 0 0 3px rgba(255, 79, 158, .12); }
     #send-button {
-      flex: 0 0 52px;
-      height: 42px;
-      border: 0;
-      border-radius: 12px;
-      background: #ff75ad;
-      color: white;
-      font-size: 13px;
-      cursor: pointer;
-      box-shadow: 0 4px 10px rgba(255, 79, 158, 0.25);
+      flex: 0 0 52px; height: 42px; border: 0; border-radius: 9px; color: #fff;
+      background: #ff75ad; box-shadow: 0 3px 8px rgba(255, 79, 158, .22); font-size: 13px; cursor: pointer;
     }
     #send-button:hover { background: #ff4f9e; }
-    #send-button:disabled { opacity: 0.55; cursor: default; }
-    #chat-input:focus {
-      border-color: rgba(255, 79, 158, 0.55);
-      box-shadow: 0 0 0 3px rgba(255, 79, 158, 0.12);
-    }
+    #send-button:disabled { opacity: .55; cursor: default; }
+    #chatbox.expanded #chat-input { max-height: 82px; }
   </style>
 </head>
 <body>
   <div id="chatbox">
-    <div id="drag-zone">拖动输入框</div>
+    <div id="drag-zone">
+      <span>拖动对话框</span>
+      <div id="window-controls">
+        <button id="expand-button" type="button" title="展开对话" aria-label="展开对话">⤢</button>
+        <button id="close-button" type="button" title="关闭对话框" aria-label="关闭对话框">×</button>
+      </div>
+    </div>
+    <section id="history-panel" aria-label="聊天记录">
+      <div id="history-list"></div>
+    </section>
     <div id="compose-row">
-      <textarea id="chat-input" rows="1"></textarea>
+      <textarea id="chat-input" rows="1" placeholder="和小未来聊聊..."></textarea>
       <button id="send-button" type="button">发送</button>
     </div>
   </div>

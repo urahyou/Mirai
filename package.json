@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "check": "node --check src/services/json-storage.js && node --check src/services/conversation-orchestrator.js && node --check src/services/proactive-policy.js && node --check src/services/proactive-settings-store.js && node --check src/services/memory-service.js && node --test test/*.test.js"
+    "check": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/main/ipc-validation.js && node --check src/engine/generic.js && node --check src/services/personality-runtime.js && node --check src/services/display-settings.js && node --check src/services/chat-history.js && node --check src/renderer/live2d-avatar.js && node --check src/renderer/renderer.js && node --check src/renderer/menu.js && node --check src/renderer/chat-input.js && node --check src/renderer/display-panel.js && node --check src/renderer/provider-panel.js && node --test test/*.test.js"
   },
   "keywords": [
     "ukagaka",
@@ -19,5 +19,12 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^43.3.0"
+  },
+  "dependencies": {
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10"
+  },
+  "overrides": {
+    "gh-pages": "^6.3.0"
   }
 }

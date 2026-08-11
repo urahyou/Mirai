@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 显示设置</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="display-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">显示设置</h1>
+      <p class="panel-desc">调整小未来在桌面上的大小和显示方式</p>
+      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    </header>
+
+    <main class="settings-content">
+      <section class="setting-section">
+        <div class="setting-heading">
+          <div>
+            <h2 class="section-title">角色大小</h2>
+            <p class="hint">窗口和 Live2D 会同步缩放</p>
+          </div>
+          <strong class="value" id="scaleValue">100%</strong>
+        </div>
+        <input id="scaleRange" class="scale-range" type="range" min="70" max="150" step="5" value="100" />
+        <div class="range-labels"><span>70%</span><span>100%</span><span>150%</span></div>
+      </section>
+
+      <section class="setting-section">
+        <label class="toggle-row" for="alwaysOnTop">
+          <span>
+            <span class="toggle-title">始终置顶</span>
+            <span class="hint">关闭后，小未来会像普通窗口一样被其他应用覆盖</span>
+          </span>
+          <span class="switch">
+            <input id="alwaysOnTop" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          </span>
+        </label>
+      </section>
+    </main>
+
+    <footer class="panel-footer">
+      <span class="hint" id="saveHint" aria-live="polite"></span>
+      <div class="spacer"></div>
+      <button class="btn small ghost" id="resetBtn" type="button">恢复默认</button>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+
+  <script src="display-panel.js"></script>
+</body>
+</html>

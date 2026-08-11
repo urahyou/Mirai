@@ -6,7 +6,8 @@ const generic = require('../src/engine/generic');
 
 test('Given the configured active provider When probed successfully Then detection returns true without authorization', async (t) => {
   const originalFetch = global.fetch;
-  const provider = generic.getActiveProvider();
+  const [providerName] = generic.providerChain();
+  const provider = generic.loadProviders().providers[providerName];
   let request;
   global.fetch = async (url, options) => {
     request = { url, options };
@@ -14,9 +15,13 @@ test('Given the configured active provider When probed successfully Then detecti
   };
   t.after(() => { global.fetch = originalFetch; });
 
-  assert.equal(await generic.isAvailable(provider.name), true);
+  assert.equal(await generic.isAvailable(providerName), true);
   assert.equal(request.url, `${provider.baseUrl.replace(/\/$/, '')}/models`);
-  assert.deepEqual(request.options.headers, {});
+  const apiKey = provider.apiKey;
+  const expectedHeaders = apiKey && !['none', 'EMPTY', 'empty'].includes(apiKey)
+    ? { Authorization: `Bearer ${apiKey}` }
+    : {};
+  assert.deepEqual(request.options.headers, expectedHeaders);
 });
 
 test('Given streamed provider output When generic chat runs Then it emits cumulative deltas and returns complete text', async (t) => {
@@ -36,7 +41,6 @@ test('Given streamed provider output When generic chat runs Then it emits cumula
   };
   t.after(() => {
     global.fetch = originalFetch;
-    generic.clearHistory();
   });
   const deltas = [];
 
@@ -61,7 +65,6 @@ test('Given a stream whose final SSE record has no trailing newline When generic
   global.fetch = async () => new Response(body, { status: 200 });
   t.after(() => {
     global.fetch = originalFetch;
-    generic.clearHistory();
   });
 
   const reply = await generic.generateReply('测试无换行尾包', { onDelta: () => {} });

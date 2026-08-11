@@ -1,307 +1,56 @@
-* {
+* { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
   margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-html,
-body {
-  width: 100%;
-  height: 100%;
-  background: transparent;
   overflow: hidden;
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-  cursor: default;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-#pet {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
+#pet { position: relative; width: 100%; height: 100%; }
 
-/* 对话气泡 */
 #balloon {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 88%;
-  max-width: 290px;
-  min-height: 64px;
-  max-height: 190px;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 14px;
-  border: 2px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-  z-index: 10;
+  z-index: 4;
+  top: 4px;
+  left: 10px;
+  width: min(300px, calc(100% - 20px));
+  max-height: 156px;
+  padding: 10px 13px;
+  overflow: visible;
+  color: #3d3042;
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(236, 160, 195, .8);
+  border-radius: 8px;
+  box-shadow: 0 3px 13px rgba(81, 51, 70, .2);
+  font-size: 14px;
+  line-height: 1.55;
   opacity: 0;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-  transform: translateX(-50%) translateY(-8px);
+  transform: translateY(-7px);
+  transition: opacity .25s ease, transform .25s ease;
+  pointer-events: auto;
 }
 
-#balloon.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
+#balloon.show { opacity: 1; transform: translateY(0); }
+#balloon.hidden { display: none; }
+#balloon-text { max-height: 126px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; scrollbar-color: #efb1ca transparent; }
+#balloon-text::-webkit-scrollbar { width: 5px; }
+#balloon-text::-webkit-scrollbar-thumb { border-radius: 4px; background: #efb1ca; }
+#balloon-text.typing { min-height: 20px; }
+#balloon-text.typing::after { content: '···'; display: inline-block; color: #d875a0; letter-spacing: 3px; animation: typing 1s ease-in-out infinite; }
+.balloon-tail { position: absolute; left: 44px; bottom: -9px; width: 16px; height: 16px; background: #fff; border-right: 1px solid rgba(236, 160, 195, .8); border-bottom: 1px solid rgba(236, 160, 195, .8); transform: rotate(45deg); pointer-events: none; }
 
-#balloon-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: #333;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: 160px;
-  flex: 1 1 auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 79, 158, 0.5) transparent;
-  -webkit-overflow-scrolling: touch;
-}
+#character { position: absolute; inset: 26px 0 0; z-index: 2; cursor: grab; }
+#character:active { cursor: grabbing; }
+#character-live2d, #character-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#character-live2d { pointer-events: none; }
+#character-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; user-select: none; pointer-events: none; animation: breathe 3.8s ease-in-out infinite; }
+#character[data-live2d-fallback="true"] #character-img { visibility: visible; }
+#character-shadow { position: absolute; z-index: -1; bottom: 6px; left: 50%; width: 138px; height: 18px; border-radius: 50%; background: rgba(66, 41, 63, .2); filter: blur(8px); transform: translateX(-50%); }
+body.speaking #character { animation: talk .32s ease-in-out infinite alternate; }
 
-.balloon-tail {
-  position: absolute;
-  bottom: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 12px solid rgba(255, 255, 255, 0.96);
-}
-
-/* 角色 */
-#character {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  z-index: 5;
-  cursor: grab;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-#character:active {
-  cursor: grabbing;
-}
-
-#character-img {
-  width: 180px;
-  height: auto;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
-  -webkit-animation: idle 3s ease-in-out infinite;
-  animation: idle 3s ease-in-out infinite;
-}
-
-@keyframes idle {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-6px) rotate(0.6deg); }
-}
-
-#character-shadow {
-  width: 120px;
-  height: 16px;
-  margin-top: 6px;
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.22), transparent 70%);
-  border-radius: 50%;
-}
-
-/* 特效层 */
-#particles {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 20;
-}
-
-/* ---------- 情感状态面板 ---------- */
-
-#state-panel {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 190px;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  z-index: 40;
-  color: #444;
-  font-size: 12px;
-}
-
-#state-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: #888;
-  cursor: grab;
-}
-
-#state-panel-header:active {
-  cursor: grabbing;
-}
-
-#state-panel-close {
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #aaa;
-  font-size: 18px;
-  line-height: 18px;
-  cursor: pointer;
-}
-
-#state-panel-close:hover {
-  background: rgba(255, 122, 184, 0.18);
-  color: #ff4f9e;
-}
-
-.state-mood-line {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: #ff4f9e;
-  font-weight: 600;
-}
-
-.state-row {
-  display: grid;
-  grid-template-columns: 32px 1fr 24px;
-  align-items: center;
-  gap: 6px;
-  margin: 6px 0;
-}
-
-.state-row b {
-  color: #888;
-  font-size: 11px;
-  text-align: right;
-}
-
-.state-bar {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.08);
-}
-
-.state-bar i {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #ff9fc6, #ff4f9e);
-  transition: width 0.25s ease;
-}
-
-.hidden {
-  display: none !important;
-}
-
-/* 情绪原因：状态也以文字呈现，状态不依赖动画 */
-.state-reason {
-  margin: 2px 0 8px;
-  font-size: 11px;
-  color: #999;
-  line-height: 1.4;
-}
-
-.state-memory {
-  display: none;
-  margin: 2px 0 8px;
-  font-size: 11px;
-  color: #7aa7d8;
-  cursor: pointer;
-  text-decoration: underline dotted;
-  line-height: 1.4;
-}
-.state-memory:hover {
-  color: #4c85bd;
-}
-
-/* 情绪动画：仅作为增强，开启时才有；关闭动画/减少动态时退化为静态文字状态 */
-body.reduce-motion *,
-body.no-animation * {
-  animation: none !important;
-  transition: none !important;
-}
-
-body.reduce-motion #character-img,
-body.no-animation #character-img {
-  animation: none !important;
-}
-
-body.reduce-motion .speaking #character-img,
-body.no-animation .speaking #character-img {
-  animation: none !important;
-}
-
-body:not(.reduce-motion):not(.no-animation) #character-img {
-  -webkit-animation: idle 3s ease-in-out infinite;
-  animation: idle 3s ease-in-out infinite;
-}
-
-body[data-mood-anim="bounce"]:not(.reduce-motion):not(.no-animation) #character-img {
-  -webkit-animation: pet-bounce 0.8s ease-in-out infinite;
-  animation: pet-bounce 0.8s ease-in-out infinite;
-}
-
-body[data-mood-anim="pop"]:not(.reduce-motion):not(.no-animation) #character-img {
-  -webkit-animation: pet-pop 0.9s ease-in-out infinite;
-  animation: pet-pop 0.9s ease-in-out infinite;
-}
-
-body[data-mood-anim="sway"]:not(.reduce-motion):not(.no-animation) #character-img {
-  -webkit-animation: pet-sway 2s ease-in-out infinite;
-  animation: pet-sway 2s ease-in-out infinite;
-}
-
-@keyframes pet-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-@keyframes pet-pop {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
-@keyframes pet-sway {
-  0%, 100% { transform: translateX(0) rotate(0deg); }
-  50% { transform: translateX(-5px) rotate(-1.5deg); }
-}
-
-/* 情绪主色调：不同情绪给心情示条/标题上轻微的差异色 */
-body.mood-excited .state-mood-line { color: #ff7a18; }
-body.mood-happy .state-mood-line { color: #ff4f9e; }
-body.mood-sad .state-mood-line,
-body.mood-overwhelmed .state-mood-line { color: #8a7bd8; }
-body.mood-bored .state-mood-line { color: #9aa0a6; }
-body.mood-tired .state-mood-line { color: #b8a9a0; }
-
-/* 说话时嘴巴微动的简单提示样式 */
-.speaking #character-img {
-  -webkit-animation: speaking 0.4s ease-in-out infinite;
-  animation: speaking 0.4s ease-in-out infinite;
-}
-
-@keyframes speaking {
-  0%, 100% { transform: translateY(0) rotate(0deg) scaleY(1); }
-  50% { transform: translateY(-2px) rotate(0deg) scaleY(0.97); }
-}
+@keyframes breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.007); } }
+@keyframes talk { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+@keyframes typing { 0%, 100% { opacity: .35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-1px); } }

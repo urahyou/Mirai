@@ -3,46 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>小未来 · Provider 设置</title>
+  <title>小未来 · 模型连接</title>
   <link rel="stylesheet" href="provider-panel.css" />
 </head>
 <body>
-  <div id="app">
-    <!-- 顶部区域 -->
-    <header class="panel-header">
-      <h1 class="panel-title">Provider 设置</h1>
-      <p class="panel-desc">管理本地大模型连接、切换默认提供者的参数</p>
+  <main id="app">
+    <header class="topbar">
+      <h1>模型设置</h1>
+      <span class="protocol">OpenAI Compatible</span>
     </header>
 
-    <!-- Provider 卡片列表 -->
-    <div id="providersList"></div>
-
-    <!-- 底部按钮栏 -->
-    <footer class="panel-footer">
-      <button class="btn" id="addProviderBtn">添加 Provider</button>
-      <div class="spacer"></div>
-      <button class="btn ghost" id="cancelBtn">取消</button>
-      <button class="btn primary" id="saveBtn">保存并应用</button>
-    </footer>
-  </div>
-
-  <!-- 添加 Provider 弹窗 -->
-  <template id="addDialogTpl">
-    <div class="overlay">
-      <div class="dialogue-box center">
-        <label for="newProviderName">名称：</label>
-        <input type="text" id="newProviderName" placeholder="例如 openai" />
-        <div class="btn-group">
-          <button class="btn small" id="addDialogCancel">取消</button>
-          <button class="btn primary small" id="addDialogConfirm">添加</button>
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Provider 列表">
+        <div class="sidebar-head">
+          <span>模型列表</span>
+          <button id="add" class="icon-button" type="button" title="新建 Provider">＋</button>
         </div>
-      </div>
+        <nav id="provider-list" class="provider-list"></nav>
+      </aside>
+
+      <section id="editor" class="editor" aria-live="polite"></section>
     </div>
-  </template>
 
-  <!-- LLM 连接结果气泡 -->
-  <div class="llm-tooltip" id="llmTooltip"></div>
-
+    <footer class="footer">
+      <span id="status" aria-live="polite"></span>
+      <div class="spacer"></div>
+      <button id="close" type="button" class="secondary">关闭</button>
+      <button id="save" type="button" class="primary">保存更改</button>
+    </footer>
+  </main>
   <script src="provider-panel.js"></script>
 </body>
 </html>

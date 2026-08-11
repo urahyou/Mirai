@@ -1,6 +1,6 @@
 # 伪春菜复兴计划
 
-一个类似 [伪春菜 / Ukagaka / 伺か](https://en.wikipedia.org/wiki/Ukagaka) 的 **Electron 桌面悬浮桌宠**「小未来」——透明、置顶、不占任务栏，对话、开场白、点击回应、主动搭话全部由**本地或局域网大模型**现场生成。
+一个类似 [伪春菜 / Ukagaka / 伺か](https://en.wikipedia.org/wiki/Ukagaka) 的 **Electron 桌面悬浮桌宠**「小未来」——透明、置顶、不占任务栏，聊天和点击回应由**本地或局域网大模型**现场生成。
 
 ## 功能
 
@@ -8,12 +8,10 @@
 - 🖱️ **拖拽移动**：抓住角色即可拖动，位置随意摆放
 - 💬 **对话气泡**：点击打招呼、消息自动淡出、按内容切换表情（idle / happy / sad）
 - 🗨️ **双击对话**：弹出可拖拽的输入框，回车发送、Esc 关闭，**流式逐字显示**回复
-- **右键菜单**：状态面板、日程提醒、Provider 设置、设置与记忆、关于主人、小未来的性格、重置位置、清空记忆、隐藏、退出
-- 🧠 **长期记忆**：聊天中"记住/忘记/回查"指令驱动内存写入，跨重启保留，自动注入对话上下文
-- 📅 **日程与提醒**：自然语言建日程、到期推送、安静时段与频率限制
+- **右键菜单**：聊天、Provider 设置、小未来的性格、退出
+- 🖼️ **显示设置**：调整角色大小，并切换是否始终置顶
 - 🎭 **人格可编辑**：出厂人格 `personality.json` + 运行时覆盖，人格面板保存后立即生效
-- 💗 **情感状态**：心情/好感/精力/健康/压力/孤独随互动变化并时间衰减，注入对话语气、映射表情
-- 🤖 **大模型驱动**：所有对话、开场白、点击回应、主动搭话均由 LLM 生成（无任何本地预设台词）
+- 🤖 **大模型驱动**：聊天和点击回应均由 LLM 生成（无本地预设台词）
 
 ## 快速开始
 
@@ -66,18 +64,7 @@ npm run dev
 | 单击角色 | 大模型生成一句俏皮回应 |
 | 双击角色 | 弹出对话输入框（回车发送，Esc 关闭，支持 Shift+Enter 换行） |
 | 按住拖拽 | 移动角色位置 |
-| 右键角色 | 打开菜单：状态 / 日程 / Provider 设置 / 设置与记忆 / 关于主人 / 小未来的性格 / 重置位置 / 清空记忆 / 隐藏 / 退出 |
-| 首次启动 | 小未来会礼貌询问你的称呼，回复"我叫 XX"即可记住，之后都用此称呼叫你 |
-
-**对话中的特殊指令**：
-
-| 你说的话 | 效果 |
-|------|------|
-| 我叫 XX / 我的名字是 XX / 请叫我 XX | 记住主人称呼，之后直呼其名 |
-| 记住 XX / XX 记住了吗 | 写入 / 回查长期记忆 |
-| 不要记住 XX / 忘记 XX | 屏蔽或删除对应记忆 |
-| 把 XX 设个提醒 / 明天 X 点提醒我 | 创建日程提醒 |
-| 其余任何话 | 走大模型自由聊天 |
+| 右键角色 | 打开菜单：聊天 / 显示设置 / 小未来的性格 / 模型设置 / 退出 |
 
 ## 配置说明（不要硬编码进代码）
 
@@ -87,9 +74,7 @@ npm run dev
   - 改模型/地址/新增 Provider 都改这里（或面板保存），勿改 main.js。
 - `src/core/personality.json`：角色**出厂人格**（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
   - 用户在「小未来的性格」面板编辑的内容存 userData `personality-runtime.json`，深合并到出厂之上。
-  - 主人在「关于主人」面板 / 对话自报的称呼存 userData `owner.json`。
-
-> 用户数据（记忆、设置、日程、情感、人格覆盖、称呼）都存放在 Electron `userData` 目录：`~/Library/Application Support/haruhana-quest/`。
+> 用户的人格覆盖和显示设置存放在 Electron `userData` 目录：`~/Library/Application Support/haruhana-quest/`。
 
 ## 项目结构
 
@@ -100,23 +85,22 @@ npm run dev
 ├── assets/character/         角色表情 idle.png / happy.png / sad.png（1254×1254）
 ├── src/
 │   ├── main/
-│   │   ├── main.js           主进程：窗口、IPC、对话调度、provider/情绪/记忆/日程协调
+│   │   ├── main.js           主进程：窗口、IPC、对话调度和 Provider 管理
 │   │   ├── preload.js        安全桥接（contextBridge → desktopPet.* 白名单）
 │   │   └── ipc-validation.js 所有 IPC 入参校验（统一错误结构）
 │   ├── renderer/             角色 UI、气泡、拖拽、右键菜单、各设置面板
 │   ├── engine/
-│   │   ├── generic.js        OpenAI 兼容 LLM 调用器（对话/主动搭话/流式）
+│   │   ├── generic.js        OpenAI 兼容 LLM 调用器（聊天/点击回应/流式）
 │   │   ├── rules.js          仅负责读取合并后的人格配置（loadConfig/resetConfig）
-│   │   └── ollama.js         旧版 Ollama 专用实现（仅测试引用，主流程走 generic.js）
-│   ├── services/             记忆、日程、设置、主人、人格覆盖、主动搭话、编排等
-│   └── core/                 personality.json / llm-providers.json / 情感状态等
+│   ├── services/             人格运行时覆盖
+│   └── core/                 personality.json / llm-providers.json
 └── test/                     自动化测试（npm run check 执行）
 ```
 
 ## 开发与验证
 
 ```bash
-npm run check   # 语法检查 + 运行全部自动化测试（当前 48 个用例）
+npm run check   # 语法检查 + 运行全部自动化测试
 npm start       # 启动
 npm run dev     # 开发模式（DevTools + 渲染日志）
 ```
