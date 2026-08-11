@@ -1,122 +1,111 @@
-# 伪春菜复兴计划
+# 小未来
 
-一个类似 [伪春菜 / Ukagaka / 伺か](https://en.wikipedia.org/wiki/Ukagaka) 的 **Electron 桌面悬浮桌宠**「小未来」——透明、置顶、不占任务栏，聊天和点击回应由**本地或局域网大模型**现场生成。
+「小未来」是一个轻量的 Electron 桌面 Live2D 桌宠。它保留透明悬浮角色、点击互动、人格设置和本地大模型聊天，去除了记忆库、日程、主动打扰、工具和托盘等扩展功能。
 
-## 功能
+## 当前功能
 
-- 🖥️ **透明悬浮窗口**：无边框、置顶（screen-saver 层级）、不占任务栏，默认驻留右下角
-- 🖱️ **拖拽移动**：抓住角色即可拖动，位置随意摆放
-- 💬 **对话气泡**：点击打招呼、消息自动淡出、按内容切换表情（idle / happy / sad）
-- 🗨️ **双击对话**：弹出可拖拽的输入框，回车发送、Esc 关闭，**流式逐字显示**回复
-- **右键菜单**：聊天、Provider 设置、小未来的性格、退出
-- 🖼️ **显示设置**：调整角色大小，并切换是否始终置顶
-- 🎭 **人格可编辑**：出厂人格 `personality.json` + 运行时覆盖，人格面板保存后立即生效
-- 🤖 **大模型驱动**：聊天和点击回应均由 LLM 生成（无本地预设台词）
+- 纯 Live2D Canvas 角色渲染，使用 Cubism 模型命中检测处理点击、拖拽和右键。
+- 透明无边框桌宠窗口，可调整角色大小和是否始终置顶。
+- 单击角色生成一条独立互动回复；双击角色打开聊天输入框。
+- 轻量输入框支持回车发送、`Shift+Enter` 换行和流式回复。
+- 展开聊天记录后显示用户与小未来的全部历史消息，支持滚动和关闭。
+- 聊天历史保存在 Electron `userData/chat-history.json`，互动回复也会记录，但不会进入正式多轮上下文。
+- Provider 面板支持 OpenAI 兼容的 Ollama、vLLM、LM Studio 等服务，并按配置顺序自动回退。
+- 人格面板支持编辑运行时人格覆盖。
+
+展开聊天记录时窗口会变成普通窗口，点击其他应用后可以被覆盖；收起后轻量输入框恢复置顶。
 
 ## 快速开始
 
-### 1. 环境要求
+### 环境
 
-- [Node.js](https://nodejs.org/) ≥ 22（Electron 43 需要 Node ≥ 22）
-- 一个可用的 OpenAI 兼容 LLM 服务（Ollama / vLLM / LM Studio 均可）
+- Node.js 20 或更高版本
+- npm
+- 一个可用的 OpenAI 兼容 `/v1` LLM 服务
+- Electron 43.3.0（由项目依赖安装）
 
-> **Node 版本说明**：项目使用 Electron 43，其安装工具 `@electron/get` 要求 Node ≥ 22。HOME brew 的 `node@20` 会下载不到 Electron 二进制，建议：
-> ```bash
-> brew install node@22 && brew link --overwrite --force node@22
-> ```
-
-### 2. 安装依赖
+### 安装与启动
 
 ```bash
 npm install
-```
-
-> **macOS 提示**：若旧版 Electron（如 31.x）公证被吊销，运行会 `SIGKILL` 或在「隐私与安全性」报"包含恶意软件"（实为误报）。当前 Electron 43.x 公证有效，如遇此报错请重装依赖获取完整体验的二进制，这不是代码问题。
-
-### 3. 配置大模型（可选，默认可用 Ollama）
-
-出厂的 `src/core/llm-providers.json` 已配置多个 Provider（见下文说明）。如需改用其它模型：
-
-```bash
-# 拉一个轻量中文模型
-ollama pull qwen3:4b
-# 或 vLLM 部署 DeepSeek，地址示例 http://192.168.99.99:8000/v1
-```
-
-在右键菜单 →「Provider 设置」里可以编辑地址、模型和参数，保存后写回到配置文件。
-
-### 4. 启动
-
-```bash
 npm start
 ```
 
-开发调试（打开 DevTools、打印渲染进程日志）：
+开发调试：
 
 ```bash
 npm run dev
 ```
 
-## 使用说明
+`npm run dev` 会打开 DevTools，并把渲染进程 console 输出到终端。
+
+## 使用方式
 
 | 操作 | 效果 |
-|------|------|
-| 单击角色 | 大模型生成一句俏皮回应 |
-| 双击角色 | 弹出对话输入框（回车发送，Esc 关闭，支持 Shift+Enter 换行） |
-| 按住拖拽 | 移动角色位置 |
-| 右键角色 | 打开菜单：聊天 / 显示设置 / 小未来的性格 / 模型设置 / 退出 |
+| --- | --- |
+| 单击角色轮廓 | 生成一条点击互动回复 |
+| 双击角色轮廓 | 打开轻量聊天输入框 |
+| 拖拽角色轮廓 | 移动桌宠窗口 |
+| 右键角色轮廓 | 打开菜单 |
+| 输入框顶部展开按钮 | 展开或收起聊天记录 |
+| 输入框右上角 `×` | 关闭输入框 |
 
-## 配置说明（不要硬编码进代码）
+只有 Live2D 模型的实际命中区域可互动，透明背景不会触发操作。
 
-- `src/core/llm-providers.json`：**LLM Provider 唯一配置来源**。`activeProvider` 决定当前用哪个，Provider 顺序即自动回退顺序。
-  - Provider 支持本地/局域网 vLLM、Ollama、LM Studio（OpenAI 兼容 `/v1` 接口）。
-  - `apiKey` 为 `none`/`EMPTY` 时不加 Authorization 头。
-  - 改模型/地址/新增 Provider 都改这里（或面板保存），勿改 main.js。
-- `src/core/personality.json`：角色**出厂人格**（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
-  - 用户在「小未来的性格」面板编辑的内容存 userData `personality-runtime.json`，深合并到出厂之上。
-> 用户的人格覆盖和显示设置存放在 Electron `userData` 目录：`~/Library/Application Support/haruhana-quest/`。
+## 配置
+
+### Provider
+
+`src/core/llm-providers.json` 是 Provider 的唯一配置来源。右键菜单中的 Provider 面板也会写回该文件。
+
+- `activeProvider`：优先使用的 Provider。
+- `providers`：OpenAI 兼容服务配置。
+- Provider 对象的键顺序决定自动回退顺序，当前激活项会排在第一位。
+- `apiKey` 为 `none`、`EMPTY` 或空值时不会发送 Authorization 请求头。
+
+不要把模型地址或密钥硬编码到 `src/main/main.js`。
+
+### 人格与本地数据
+
+- 出厂人格：`src/core/personality.json`
+- 用户人格覆盖：Electron `userData/personality-runtime.json`
+- 显示设置：Electron `userData/display-settings.json`
+- 聊天记录：Electron `userData/chat-history.json`
+
+macOS 默认 userData 目录通常是：
+
+```text
+~/Library/Application Support/haruhana-quest/
+```
 
 ## 项目结构
 
-```
-.
-├── AGENTS.md                 开发代理注意事项（改代码前必读）
-├── package.json              入口、脚本（start / dev / check）
-├── assets/character/         角色表情 idle.png / happy.png / sad.png（1254×1254）
-├── src/
-│   ├── main/
-│   │   ├── main.js           主进程：窗口、IPC、对话调度和 Provider 管理
-│   │   ├── preload.js        安全桥接（contextBridge → desktopPet.* 白名单）
-│   │   └── ipc-validation.js 所有 IPC 入参校验（统一错误结构）
-│   ├── renderer/             角色 UI、气泡、拖拽、右键菜单、各设置面板
-│   ├── engine/
-│   │   ├── generic.js        OpenAI 兼容 LLM 调用器（聊天/点击回应/流式）
-│   │   ├── rules.js          仅负责读取合并后的人格配置（loadConfig/resetConfig）
-│   ├── services/             人格运行时覆盖
-│   └── core/                 personality.json / llm-providers.json
-└── test/                     自动化测试（npm run check 执行）
+```text
+assets/live2d/             Cubism Core、模型、动作和模型纹理
+src/main/main.js           主进程、窗口管理、IPC、聊天调度
+src/main/preload.js        contextBridge 安全桥接
+src/main/ipc-validation.js IPC 入参校验
+src/renderer/renderer.js   Live2D 角色、命中检测、气泡和互动
+src/renderer/live2d-avatar.js Live2D 模型封装
+src/renderer/chat-input.* 轻量输入框和展开聊天记录
+src/engine/generic.js      OpenAI 兼容 LLM 调用和进程内多轮上下文
+src/services/              人格、显示设置和聊天历史服务
+src/core/                  出厂人格和 Provider 配置
+test/                      Node.js 自动化测试
 ```
 
-## 开发与验证
+## 验证
 
 ```bash
-npm run check   # 语法检查 + 运行全部自动化测试
-npm start       # 启动
-npm run dev     # 开发模式（DevTools + 渲染日志）
+npm run check
 ```
 
-无 lint / typecheck，验证方式 = `npm run check` 通过 + 启动后观察 `/tmp/pet_*.log` 无应用层报错。
+该命令执行 JavaScript 语法检查和全部 `node:test` 测试。项目没有单独的 lint 或 typecheck 脚本。
 
-## 待办 / 未来方向
+## Live2D 许可
 
-- [ ] 更多表情与动画（excited / tired / love / working、任务执行动画）
-- [ ] Agent 工具系统与审批流（只读体检 → 授权写操作 → 代码 Agent）
-- [ ] 安全扫描与隔离区
-- [ ] 打包分发（.dmg / .exe）、开机启动、自动更新
-- [ ] 更多人格 / 皮肤包体系（类似 shiori 的可换人格）
-
-> 完整产品蓝图见 `小未来桌面管家-SPEC.md`。
+当前仓库包含 Live2D Cubism Core 和 Hiyori Free 示例模型。模型原始许可、作者和使用条件见 [assets/live2d/README.md](assets/live2d/README.md) 及模型目录中的 `ReadMe.txt`。
 
 ## 许可
 
-MIT
+项目代码使用 MIT 许可。Live2D 模型和运行时遵循其各自的官方许可。
