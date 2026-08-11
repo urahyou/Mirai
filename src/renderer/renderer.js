@@ -4,11 +4,6 @@ const balloon = $('#balloon');
 const balloonText = $('#balloon-text');
 const character = $('#character');
 const LIVE2D_MODEL = '../../assets/live2d/models/hiyori_free_zh/runtime/hiyori_free_t08.model3.json';
-const FACES = {
-  idle: '../../assets/character/idle.png',
-  happy: '../../assets/character/happy.png',
-  sad: '../../assets/character/sad.png',
-};
 
 const GREET_COOLDOWN_MS = 1200;
 const TYPING_DELAY_MS = 240;
@@ -27,41 +22,10 @@ let lastGreetAt = 0;
 let bubbleToken = 0;
 let activeChatTurnId = null;
 let formalChatActive = false;
-let characterHitCache = null;
 let pointerHit = false;
 
-async function buildCharacterHitCache() {
-  const image = $('#character-img');
-  if (!image.complete || !image.naturalWidth || !image.naturalHeight) {
-    await new Promise((resolve) => image.addEventListener('load', resolve, { once: true }));
-  }
-  if (!image.naturalWidth || !image.naturalHeight) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  context.drawImage(image, 0, 0);
-  characterHitCache = {
-    width: canvas.width,
-    height: canvas.height,
-    alpha: context.getImageData(0, 0, canvas.width, canvas.height).data,
-  };
-  return characterHitCache;
-}
-
-async function isCharacterHit(clientX, clientY) {
-  const cache = characterHitCache || await buildCharacterHitCache();
-  if (!cache) return false;
-  const rect = character.getBoundingClientRect();
-  const scale = Math.min(rect.width / cache.width, rect.height / cache.height);
-  const drawnWidth = cache.width * scale;
-  const drawnHeight = cache.height * scale;
-  const left = rect.left + (rect.width - drawnWidth) / 2;
-  const top = rect.top + (rect.height - drawnHeight) / 2;
-  const px = Math.floor((clientX - left) / scale);
-  const py = Math.floor((clientY - top) / scale);
-  if (px < 0 || py < 0 || px >= cache.width || py >= cache.height) return false;
-  return cache.alpha[(py * cache.width + px) * 4 + 3] > 16;
+function isCharacterHit(clientX, clientY) {
+  return Boolean(live2dAvatar?.isHit(clientX, clientY));
 }
 
 function detectFace(text) {
@@ -72,8 +36,7 @@ function detectFace(text) {
 }
 
 function setFace(state) {
-  const face = FACES[state] ? state : 'idle';
-  $('#character-img').src = FACES[face];
+  const face = ['idle', 'happy', 'sad'].includes(state) ? state : 'idle';
   document.body.dataset.face = face;
   live2dAvatar?.setState(face);
 }
@@ -90,10 +53,9 @@ async function initLive2D() {
     character.dataset.live2dReady = 'true';
     setFace(document.body.dataset.face || 'idle');
   } catch (error) {
-    console.error('[Live2D] Failed to load model; keeping PNG fallback.', error);
+    console.error('[Live2D] Failed to load model.', error);
     live2dAvatar?.destroy();
     live2dAvatar = null;
-    character.dataset.live2dFallback = 'true';
   }
 }
 
@@ -187,10 +149,10 @@ function handleChatDelta(data) {
   activeChatTurnId = null;
 }
 
-character.addEventListener('mousedown', async (event) => {
+character.addEventListener('mousedown', (event) => {
   pointerHit = false;
   if (event.button !== 0) return;
-  const hit = await isCharacterHit(event.clientX, event.clientY);
+  const hit = isCharacterHit(event.clientX, event.clientY);
   if (!hit) return;
   pointerHit = true;
   dragging = true;
@@ -238,12 +200,11 @@ character.addEventListener('dblclick', () => {
   if (pointerHit && !dragged) window.desktopPet.openChatInput();
 });
 
-character.addEventListener('contextmenu', async (event) => {
+character.addEventListener('contextmenu', (event) => {
   event.preventDefault();
-  if (await isCharacterHit(event.clientX, event.clientY)) window.desktopPet.openMenu(event.screenX, event.screenY);
+  if (isCharacterHit(event.clientX, event.clientY)) window.desktopPet.openMenu(event.screenX, event.screenY);
 });
 
 window.desktopPet.onChatDelta(handleChatDelta);
 
-buildCharacterHitCache().catch(() => {});
 initLive2D();

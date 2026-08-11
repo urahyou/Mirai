@@ -75,13 +75,16 @@ test('Given a long reply When the balloon is inspected Then its text area can re
   assert.match(style, /#balloon-text\s*\{[\s\S]*?overflow-y:\s*auto/);
 });
 
-test('Given Live2D is loading When the character is inspected Then the PNG fallback stays hidden until loading fails', () => {
+test('Given the character renderer When it is inspected Then rendering and hit testing are Live2D-only', () => {
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+  const index = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'index.html'), 'utf8');
   const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
 
-  assert.match(renderer, /character\.dataset\.live2dFallback\s*=\s*'true'/);
-  assert.match(style, /#character-img\s*\{[\s\S]*?visibility:\s*hidden/);
-  assert.match(style, /#character\[data-live2d-fallback="true"\]\s+#character-img\s*\{\s*visibility:\s*visible/);
+  assert.match(renderer, /live2dAvatar\?\.isHit/);
+  assert.match(renderer, /live2dAvatar\?\.setState/);
+  assert.doesNotMatch(renderer, /assets\/character|character-img|getImageData/);
+  assert.doesNotMatch(index, /character-img|assets\/character/);
+  assert.doesNotMatch(style, /character-img|live2d-fallback/);
 });
 
 test('Given concurrent character and chat replies When the renderer handles them Then stale interactions cannot replace formal chat', () => {
@@ -93,10 +96,9 @@ test('Given concurrent character and chat replies When the renderer handles them
   assert.match(renderer, /data\.started/);
 });
 
-test('Given a transparent character area When pointer hit testing is inspected Then clicks use image alpha rather than the full rectangle', () => {
-  const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+test('Given the Live2D avatar When hit testing is inspected Then it checks model geometry', () => {
+  const avatar = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'live2d-avatar.js'), 'utf8');
 
-  assert.match(renderer, /getImageData/);
-  assert.match(renderer, /alpha\[\(py \* cache\.width \+ px\) \* 4 \+ 3\] > 16/);
-  assert.match(renderer, /!pointerHit/);
+  assert.match(avatar, /this\.model\.hitTest/);
+  assert.match(avatar, /this\.model\.containsPoint/);
 });
