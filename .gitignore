@@ -17,6 +17,7 @@ Thumbs.db
 owner.json
 personality-runtime.json
 *.runtime.json
+llm-providers.runtime.json
 settings.json
 proactive-settings.json
 memory/
@@ -26,6 +27,7 @@ memory/
 # Secrets — never commit real credentials
 .env
 .env.*
+!.env.example
 *.local
 
 # Electron

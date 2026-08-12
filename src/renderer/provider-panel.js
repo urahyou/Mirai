@@ -110,23 +110,13 @@ function renderEditor() {
   const displayName = makeField('显示名称', 'label', provider.label);
   const model = makeField('模型', 'defaultModel', provider.defaultModel);
   const endpoint = makeField('接口地址', 'baseUrl', provider.baseUrl, { wide: true, input: { placeholder: 'http://127.0.0.1:8000/v1' } });
-  const apiKey = makeField('API Key', 'apiKey', provider.apiKey || 'none', { wide: true, input: { type: 'password', autocomplete: 'off' } });
-  const keyRow = element('div', 'field-row');
-  keyRow.append(apiKey.input);
-  const reveal = makeButton('显示', 'reveal', '显示或隐藏 API Key');
-  keyRow.append(reveal);
-  apiKey.label.append(keyRow);
+  const apiKeyEnv = makeField('API Key 环境变量', 'apiKeyEnv', provider.apiKeyEnv, { wide: true });
   const sectionLabel = element('div', 'section-label', '生成参数');
   const temperature = makeField('Temperature', 'temperature', provider.temperature ?? 0.8, { input: { type: 'number', min: '0', max: '2', step: '0.05' } });
   const topP = makeField('Top P', 'topP', provider.topP ?? 0.9, { input: { type: 'number', min: '0', max: '1', step: '0.05' } });
-  form.append(displayName.label, model.label, endpoint.label, apiKey.label, sectionLabel, temperature.label, topP.label);
+  form.append(displayName.label, model.label, endpoint.label, apiKeyEnv.label, sectionLabel, temperature.label, topP.label);
   editor.append(head, form);
 
-  reveal.addEventListener('click', () => {
-    const hidden = apiKey.input.type === 'password';
-    apiKey.input.type = hidden ? 'text' : 'password';
-    reveal.textContent = hidden ? '隐藏' : '显示';
-  });
   activate.addEventListener('click', () => {
     try {
       commitEditor();
@@ -168,7 +158,7 @@ document.querySelector('#add').addEventListener('click', () => {
       label: '新模型',
       type: 'openai-compatible',
       baseUrl: '',
-      apiKey: 'none',
+      apiKeyEnv: 'MIRAI_PROVIDER_PROVIDER_1_API_KEY',
       defaultModel: '',
       temperature: 0.8,
       topP: 0.9,

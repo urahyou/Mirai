@@ -42,8 +42,9 @@ html, body {
 #balloon-text.typing::after { content: '···'; display: inline-block; color: #d875a0; letter-spacing: 3px; animation: typing 1s ease-in-out infinite; }
 .balloon-tail { position: absolute; left: 44px; bottom: -9px; width: 16px; height: 16px; background: #fff; border-right: 1px solid rgba(236, 160, 195, .8); border-bottom: 1px solid rgba(236, 160, 195, .8); transform: rotate(45deg); pointer-events: none; }
 
-#character { position: absolute; inset: 26px 0 0; z-index: 2; cursor: grab; }
-#character:active { cursor: grabbing; }
+#character { position: absolute; inset: 26px 0 0; z-index: 2; cursor: default; }
+#character[data-pointer-hit="true"] { cursor: grab; }
+#character[data-pointer-hit="true"]:active { cursor: grabbing; }
 #character-live2d, #character-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #character-live2d { pointer-events: none; }
 #character[data-outline-shadow="true"] #character-canvas {

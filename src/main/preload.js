@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     ipcRenderer.on('chat:history', historyListener);
   },
   moveBy: (dx, dy) => ipcRenderer.send('window:moveBy', dx, dy),
+  setMousePassthrough: (passthrough) => ipcRenderer.send('window:setMousePassthrough', passthrough),
   openMenu: (x, y) => ipcRenderer.invoke('menu:open', x, y),
   menuReady: () => ipcRenderer.invoke('menu:ready'),
   closeMenu: () => ipcRenderer.invoke('menu:close'),

@@ -45,6 +45,7 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /chatSubmit/);
   assert.match(preload, /getChatHistory/);
   assert.match(preload, /setChatExpanded/);
+  assert.match(preload, /setMousePassthrough/);
 });
 
 test('Given chat expansion IPC When validation receives a boolean Then it accepts only that boolean', () => {
@@ -97,11 +98,24 @@ test('Given concurrent character and chat replies When the renderer handles them
   assert.match(renderer, /data\.started/);
 });
 
-test('Given the Live2D avatar When hit testing is inspected Then it checks model geometry', () => {
+test('Given the Live2D avatar When hit testing is inspected Then it checks rendered alpha only', () => {
   const avatar = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'live2d-avatar.js'), 'utf8');
 
-  assert.match(avatar, /this\.model\.hitTest/);
-  assert.match(avatar, /getDrawableVertexIndices/);
-  assert.match(avatar, /pointInTriangle/);
+  assert.match(avatar, /isRenderedPixelHit/);
+  assert.match(avatar, /ALPHA_HIT_THRESHOLD/);
+  assert.match(avatar, /preserveDrawingBuffer:\s*true/);
+  assert.match(avatar, /gl\.readPixels\(pixelX, pixelY, 1, 1, gl\.RGBA, gl\.UNSIGNED_BYTE, pixel\)/);
+  assert.doesNotMatch(avatar, /generateTexture/);
+  assert.doesNotMatch(avatar, /this\.model\.hitTest/);
   assert.doesNotMatch(avatar, /this\.model\.containsPoint/);
+});
+
+test('Given transparent space around the character When pointer hit testing runs Then the pet window becomes mouse-transparent', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+
+  assert.match(main, /window:setMousePassthrough/);
+  assert.match(main, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
+  assert.match(renderer, /setMousePassthrough\(!characterHit && !bubbleHit\)/);
+  assert.match(renderer, /if \(dragging\)[\s\S]*?setMousePassthrough\(false\)/);
 });

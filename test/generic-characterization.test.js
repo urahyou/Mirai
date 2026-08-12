@@ -1,27 +1,84 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { ReadableStream } = require('node:stream/web');
 const test = require('node:test');
 
 const generic = require('../src/engine/generic');
 
+test('Given a runtime Provider path When configuration is saved Then the repository template is untouched', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-provider-'));
+  const runtimeFile = path.join(dir, 'llm-providers.runtime.json');
+  const templateFile = path.join(__dirname, '..', 'src', 'core', 'llm-providers.json');
+  const templateBefore = fs.readFileSync(templateFile, 'utf8');
+  t.after(() => {
+    generic.setRuntimePath(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  generic.setRuntimePath(runtimeFile);
+  generic.saveProviderConfig({
+    activeProvider: 'local',
+    providers: {
+      local: {
+        label: 'Local',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        apiKeyEnv: 'MIRAI_PROVIDER_TEST_API_KEY',
+        defaultModel: 'test-model',
+        temperature: 0.8,
+        topP: 0.9,
+      },
+    },
+  });
+
+  assert.equal(JSON.parse(fs.readFileSync(runtimeFile, 'utf8')).providers.local.apiKeyEnv, 'MIRAI_PROVIDER_TEST_API_KEY');
+  assert.equal(fs.readFileSync(templateFile, 'utf8'), templateBefore);
+});
+
 test('Given the configured active provider When probed successfully Then detection returns true without authorization', async (t) => {
   const originalFetch = global.fetch;
   const [providerName] = generic.providerChain();
   const provider = generic.loadProviders().providers[providerName];
+  const previousKey = process.env[provider.apiKeyEnv];
+  process.env[provider.apiKeyEnv] = '';
   let request;
   global.fetch = async (url, options) => {
     request = { url, options };
     return new Response('', { status: 200 });
   };
-  t.after(() => { global.fetch = originalFetch; });
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env[provider.apiKeyEnv];
+    else process.env[provider.apiKeyEnv] = previousKey;
+  });
 
   assert.equal(await generic.isAvailable(providerName), true);
   assert.equal(request.url, `${provider.baseUrl.replace(/\/$/, '')}/models`);
-  const apiKey = provider.apiKey;
-  const expectedHeaders = apiKey && !['none', 'EMPTY', 'empty'].includes(apiKey)
-    ? { Authorization: `Bearer ${apiKey}` }
-    : {};
-  assert.deepEqual(request.options.headers, expectedHeaders);
+  assert.deepEqual(request.options.headers, {});
+});
+
+test('Given a Provider API key environment variable When probed Then only the request carries the secret', async (t) => {
+  const originalFetch = global.fetch;
+  const [providerName] = generic.providerChain();
+  const provider = generic.loadProviders().providers[providerName];
+  const previousKey = process.env[provider.apiKeyEnv];
+  const secret = ['test', 'secret', 'not', 'persisted'].join('-');
+  process.env[provider.apiKeyEnv] = secret;
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response('', { status: 200 });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env[provider.apiKeyEnv];
+    else process.env[provider.apiKeyEnv] = previousKey;
+  });
+
+  assert.equal(await generic.isAvailable(providerName), true);
+  assert.deepEqual(request.options.headers, { Authorization: `Bearer ${secret}` });
+  assert.equal(JSON.stringify(generic.getProviderConfig()).includes(secret), false);
 });
 
 test('Given streamed provider output When generic chat runs Then it emits cumulative deltas and returns complete text', async (t) => {

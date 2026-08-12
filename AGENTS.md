@@ -26,9 +26,9 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 ## 配置（不要硬编码进代码）
 
-- `src/core/llm-providers.json`：**LLM provider 唯一配置来源**。`activeProvider` 决定用哪个。改模型/地址都改这里，勿改 main.js。
+- `src/core/llm-providers.json`：**不含密钥的 Provider 出厂模板**。实际配置写入 Electron `userData/llm-providers.runtime.json`；API Key 只从项目根目录 `.env` 的 `apiKeyEnv` 变量读取，勿把密钥写入仓库。
   - 仓库默认配置以 `src/core/llm-providers.json` 为准，当前激活项可能是本机 Ollama；不要在文档或代码中写死地址、模型或密钥。
-  - `isAvailable()` 探测 `/models` 端点；`apiKey` 为 `none`/`EMPTY` 时不加 Authorization 头。
+  - `isAvailable()` 探测 `/models` 端点；对应 `.env` 变量为空时不加 Authorization 头。
 - `src/core/personality.json`：角色出厂人格（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
   - 用户编辑的人格覆盖存 userData `personality-runtime.json`（深合并到出厂之上）。当前没有独立主人资料或 owner 服务。
 

@@ -383,6 +383,13 @@ ipcMain.on('window:moveBy', (event, dx, dy) => {
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
 });
 
+ipcMain.on('window:setMousePassthrough', (event, passthrough) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win !== mainWindow || typeof passthrough !== 'boolean') return;
+  if (passthrough) win.setIgnoreMouseEvents(true, { forward: true });
+  else win.setIgnoreMouseEvents(false);
+});
+
 ipcMain.handle('menu:open', (_event, x, y) => {
   openMenuWindow();
   menuPendingPosition = { x: Number(x) || 0, y: Number(y) || 0 };
@@ -401,6 +408,7 @@ ipcMain.handle('menu:close', () => { closeMenuWindow(); return true; });
 ipcMain.handle('menu:quit', () => { app.quit(); return true; });
 
 app.whenReady().then(() => {
+  generic.setRuntimePath(path.join(app.getPath('userData'), 'llm-providers.runtime.json'));
   personalityRuntime.setRuntimePath(path.join(app.getPath('userData'), 'personality-runtime.json'));
   displaySettings.setRuntimePath(path.join(app.getPath('userData'), 'display-settings.json'));
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));

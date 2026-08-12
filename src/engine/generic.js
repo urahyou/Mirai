@@ -6,10 +6,36 @@ const { loadConfig } = require('./rules');
 // 从 src/core/llm-providers.json 读取 provider 配置，
 // 通过标准的 /v1/chat/completions 接口与本地或局域网大模型通信。
 
-const PROVIDERS_PATH = path.join(__dirname, '..', 'core', 'llm-providers.json');
+const DEFAULT_PROVIDERS_PATH = path.join(__dirname, '..', 'core', 'llm-providers.json');
+const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 let providerCache = null;
 let activeProviderName = null;
+let runtimePath = null;
+
+function loadDotEnv() {
+  try {
+    const values = {};
+    for (const rawLine of fs.readFileSync(DOTENV_PATH, 'utf8').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (!match) continue;
+      let value = match[2].trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      values[match[1]] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
+}
+
+function defaultApiKeyEnv(name) {
+  return `MIRAI_PROVIDER_${String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
+}
 
 // 多轮会话记忆：保留最近的对话轮次（user + assistant 配对）
 const HISTORY_MAX_TURNS = 12; // 最多保留 12 对 (user/assistant)
@@ -20,7 +46,8 @@ const CHAT_REQUEST_TIMEOUT_MS = 60000;
 
 function loadProviders() {
   if (providerCache) return providerCache;
-  providerCache = JSON.parse(fs.readFileSync(PROVIDERS_PATH, 'utf8'));
+  const source = runtimePath && fs.existsSync(runtimePath) ? runtimePath : DEFAULT_PROVIDERS_PATH;
+  providerCache = normalizeProviderConfig(JSON.parse(fs.readFileSync(source, 'utf8')));
   const keys = Object.keys(providerCache.providers);
   activeProviderName = keys.length > 0 ? (providerCache.activeProvider || keys[0]) : '';
   return providerCache;
@@ -45,11 +72,13 @@ function normalizeProviderConfig(raw) {
     if (!/^https?:\/\//.test(baseUrl) || !defaultModel) throw new TypeError(`${key} 缺少有效的地址或模型名`);
     const temperature = Number(provider.temperature);
     const topP = Number(provider.topP);
+    const apiKeyEnv = String(provider.apiKeyEnv || defaultApiKeyEnv(key)).trim();
+    if (!/^MIRAI_PROVIDER_[A-Z0-9_]+_API_KEY$/.test(apiKeyEnv)) throw new TypeError(`${key} 的 API Key 环境变量名不正确`);
     providers[key] = {
       label: String(provider.label || key).trim().slice(0, 80) || key,
       type: 'openai-compatible',
       baseUrl,
-      apiKey: String(provider.apiKey || 'none').trim() || 'none',
+      apiKeyEnv,
       defaultModel,
       temperature: Number.isFinite(temperature) ? Math.max(0, Math.min(2, temperature)) : 0.8,
       topP: Number.isFinite(topP) ? Math.max(0, Math.min(1, topP)) : 0.9,
@@ -62,10 +91,18 @@ function normalizeProviderConfig(raw) {
 
 function saveProviderConfig(raw) {
   const config = normalizeProviderConfig(raw);
-  fs.writeFileSync(PROVIDERS_PATH, JSON.stringify(config, null, 2));
+  const target = runtimePath || DEFAULT_PROVIDERS_PATH;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify(config, null, 2));
   providerCache = null;
   activeProviderName = null;
   return getProviderConfig();
+}
+
+function setRuntimePath(filePath) {
+  runtimePath = filePath || null;
+  providerCache = null;
+  activeProviderName = null;
 }
 
 /**
@@ -95,7 +132,7 @@ async function isAvailable(name) {
     console.log(`[LLM] checking ${name}: ${provider.baseUrl}/models`);
     const res = await fetch(provider.baseUrl.replace(/\/$/, '') + '/models', {
       signal: AbortSignal.timeout(2000),
-      headers: providerKey(provider) ? { Authorization: `Bearer ${provider.apiKey}` } : {},
+      headers: authorizationHeaders(provider),
     });
     console.log(`[LLM] ${name} availability: HTTP ${res.status}`);
     return res.ok;
@@ -110,7 +147,7 @@ async function checkProvider(provider) {
     const config = normalizeProviderConfig({ activeProvider: 'test', providers: { test: provider } });
     const candidate = config.providers.test;
     const response = await fetch(`${candidate.baseUrl}/models`, {
-      headers: providerKey(candidate) ? { Authorization: `Bearer ${candidate.apiKey}` } : {},
+      headers: authorizationHeaders(candidate),
       signal: AbortSignal.timeout(6000),
     });
     return response.ok;
@@ -120,8 +157,16 @@ async function checkProvider(provider) {
 }
 
 function providerKey(provider) {
-  const k = provider.apiKey;
+  const env = loadDotEnv();
+  const k = process.env[provider.apiKeyEnv] ?? env[provider.apiKeyEnv] ?? '';
   return k && k !== 'none' && k !== 'EMPTY' && k !== 'empty';
+}
+
+function authorizationHeaders(provider) {
+  if (!providerKey(provider)) return {};
+  const env = loadDotEnv();
+  const apiKey = process.env[provider.apiKeyEnv] ?? env[provider.apiKeyEnv];
+  return { Authorization: `Bearer ${apiKey}` };
 }
 
 /**
@@ -151,9 +196,7 @@ async function generateReply(userInput, options = {}) {
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
-  if (providerKey(providerConf)) {
-    headers.Authorization = `Bearer ${providerConf.apiKey}`;
-  }
+  Object.assign(headers, authorizationHeaders(providerConf));
 
   const stream = typeof options.onDelta === 'function';
   const body = {
@@ -215,9 +258,7 @@ async function generatePetLine({ provider, purpose = 'click' } = {}) {
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
-  if (providerKey(providerConf)) {
-    headers.Authorization = `Bearer ${providerConf.apiKey}`;
-  }
+  Object.assign(headers, authorizationHeaders(providerConf));
   const body = {
     model: providerConf.defaultModel,
     messages: [
@@ -291,6 +332,9 @@ module.exports = {
   loadProviders,
   getProviderConfig,
   saveProviderConfig,
+  setRuntimePath,
+  loadDotEnv,
+  defaultApiKeyEnv,
   providerChain,
   isAvailable,
   checkProvider,

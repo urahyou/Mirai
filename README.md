@@ -56,12 +56,12 @@ npm run dev
 
 ### Provider
 
-`src/core/llm-providers.json` 是 Provider 的唯一配置来源。右键菜单中的 Provider 面板也会写回该文件。
+`src/core/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 只从项目根目录的 `.env` 读取。
 
 - `activeProvider`：优先使用的 Provider。
 - `providers`：OpenAI 兼容服务配置。
 - Provider 对象的键顺序决定自动回退顺序，当前激活项会排在第一位。
-- `apiKey` 为 `none`、`EMPTY` 或空值时不会发送 Authorization 请求头。
+- 每个 Provider 的 `apiKeyEnv` 指向 `.env` 中的变量名；变量为空时不会发送 Authorization 请求头。
 
 不要把模型地址或密钥硬编码到 `src/main/main.js`。
 
@@ -71,6 +71,9 @@ npm run dev
 - 用户人格覆盖：Electron `userData/personality-runtime.json`
 - 显示设置：Electron `userData/display-settings.json`
 - 聊天记录：Electron `userData/chat-history.json`
+- Provider 运行时配置：Electron `userData/llm-providers.runtime.json`
+
+复制 `.env.example` 为 `.env` 后填写密钥。`.env` 已被 Git 忽略，绝不应提交。
 
 macOS 默认 userData 目录通常是：
 

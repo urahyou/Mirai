@@ -3,6 +3,7 @@
 
   const MAX_RESOLUTION = 2;
   const MODEL_SCALE = 1.55;
+  const ALPHA_HIT_THRESHOLD = 24;
 
   class Live2DAvatar {
     constructor({ canvas, modelSrc }) {
@@ -31,6 +32,7 @@
         backgroundAlpha: 0,
         antialias: true,
         autoDensity: true,
+        preserveDrawingBuffer: true,
         resolution: Math.min(window.devicePixelRatio || 1, MAX_RESOLUTION),
       });
       this.canvas.style.width = '100%';
@@ -85,51 +87,28 @@
 
     isHit(clientX, clientY) {
       if (!this.ready || !this.model) return false;
-      const point = this.toStagePoint(clientX, clientY);
-      if (!point) return false;
-
-      // pixi-live2d-display's hitTest is bounds-based. Use the model's own
-      // HitArea mesh instead, so only its triangles are clickable.
-      const internalModel = this.model.internalModel;
-      const coreModel = internalModel?.coreModel;
-      const hitIndex = internalModel?.getDrawableIndex?.('HitArea')
-        ?? coreModel?.getDrawableIndex?.('HitArea');
-      if (hitIndex === undefined || hitIndex < 0 || !coreModel?.getDrawableVertexIndices) {
-        return this.model.hitTest(point.x, point.y).length > 0;
-      }
-
-      const modelPoint = new window.PIXI.Point(point.x, point.y);
-      this.model.toModelPosition(modelPoint, modelPoint);
-      internalModel.localTransform?.applyInverse(modelPoint, modelPoint);
-      const vertices = internalModel.getDrawableVertices(hitIndex);
-      const indices = coreModel.getDrawableVertexIndices(hitIndex);
-      for (let i = 0; i + 2 < indices.length; i += 3) {
-        const a = indices[i] * 2;
-        const b = indices[i + 1] * 2;
-        const c = indices[i + 2] * 2;
-        if (this.pointInTriangle(modelPoint, vertices, a, b, c)) return true;
-      }
-      return false;
+      return this.isRenderedPixelHit(clientX, clientY) === true;
     }
 
-    pointInTriangle(point, vertices, a, b, c) {
-      const ax = vertices[a];
-      const ay = vertices[a + 1];
-      const bx = vertices[b];
-      const by = vertices[b + 1];
-      const cx = vertices[c];
-      const cy = vertices[c + 1];
-      const abx = bx - ax;
-      const aby = by - ay;
-      const acx = cx - ax;
-      const acy = cy - ay;
-      const apx = point.x - ax;
-      const apy = point.y - ay;
-      const cross = abx * acy - aby * acx;
-      if (Math.abs(cross) < 0.0001) return false;
-      const u = (apx * acy - apy * acx) / cross;
-      const v = (abx * apy - aby * apx) / cross;
-      return u >= 0 && v >= 0 && u + v <= 1;
+    isRenderedPixelHit(clientX, clientY) {
+      const renderer = this.app?.renderer;
+      const gl = renderer?.gl;
+      const rect = this.canvas.getBoundingClientRect();
+      if (!gl || !rect.width || !rect.height) return null;
+      const xIn = clientX - rect.left;
+      const yIn = clientY - rect.top;
+      if (xIn < 0 || yIn < 0 || xIn >= rect.width || yIn >= rect.height) return false;
+
+      const pixelX = Math.min(gl.drawingBufferWidth - 1, Math.floor(xIn * gl.drawingBufferWidth / rect.width));
+      const pixelY = Math.min(gl.drawingBufferHeight - 1, Math.floor(gl.drawingBufferHeight - 1 - yIn * gl.drawingBufferHeight / rect.height));
+      const pixel = new Uint8Array(4);
+      try {
+        gl.readPixels(pixelX, pixelY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        return pixel[3] >= ALPHA_HIT_THRESHOLD;
+      } catch (error) {
+        console.warn('[Live2D] alpha hit extraction failed:', error);
+        return null;
+      }
     }
 
     focus(clientX, clientY) {

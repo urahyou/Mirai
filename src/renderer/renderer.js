@@ -23,9 +23,44 @@ let bubbleToken = 0;
 let activeChatTurnId = null;
 let formalChatActive = false;
 let pointerHit = false;
+let mousePassthrough = false;
+let lastPointer = null;
+let pointerUpdateFrame = null;
 
 function isCharacterHit(clientX, clientY) {
   return Boolean(live2dAvatar?.isHit(clientX, clientY));
+}
+
+function isPointInside(element, clientX, clientY) {
+  if (!element || element.classList.contains('hidden')) return false;
+  const rect = element.getBoundingClientRect();
+  return clientX >= rect.left && clientX < rect.right && clientY >= rect.top && clientY < rect.bottom;
+}
+
+function setMousePassthrough(passthrough) {
+  if (mousePassthrough === passthrough) return;
+  mousePassthrough = passthrough;
+  window.desktopPet.setMousePassthrough(passthrough);
+}
+
+function updatePointerRegion() {
+  pointerUpdateFrame = null;
+  if (dragging) {
+    character.dataset.pointerHit = 'true';
+    setMousePassthrough(false);
+    return;
+  }
+  if (!lastPointer) return;
+  const { x, y } = lastPointer;
+  const characterHit = isCharacterHit(x, y);
+  const bubbleHit = isPointInside(balloon, x, y);
+  character.dataset.pointerHit = characterHit ? 'true' : 'false';
+  setMousePassthrough(!characterHit && !bubbleHit);
+}
+
+function schedulePointerRegionUpdate() {
+  if (pointerUpdateFrame !== null) return;
+  pointerUpdateFrame = requestAnimationFrame(updatePointerRegion);
 }
 
 function applyDisplaySettings(settings) {
@@ -56,6 +91,7 @@ async function initLive2D() {
     await live2dAvatar.load();
     character.dataset.live2dReady = 'true';
     setFace(document.body.dataset.face || 'idle');
+    schedulePointerRegionUpdate();
   } catch (error) {
     console.error('[Live2D] Failed to load model.', error);
     live2dAvatar?.destroy();
@@ -82,6 +118,7 @@ function showBalloon(text, face = detectFace(text), visibleMs = null) {
   balloon.classList.remove('hidden');
   balloon.classList.add('show');
   document.body.classList.add('speaking');
+  schedulePointerRegionUpdate();
   const duration = visibleMs || Math.max(BUBBLE_MIN_VISIBLE_MS, Math.min(7600, 2600 + value.length * 42));
   balloonTimer = setTimeout(hideBalloon, duration);
 }
@@ -96,6 +133,7 @@ function showTypingBalloon() {
   balloon.classList.remove('hidden');
   balloon.classList.add('show');
   document.body.classList.add('speaking');
+  schedulePointerRegionUpdate();
 }
 
 function updateStreamBalloon(full) {
@@ -108,6 +146,7 @@ function updateStreamBalloon(full) {
   balloon.classList.remove('hidden');
   balloon.classList.add('show');
   document.body.classList.add('speaking');
+  schedulePointerRegionUpdate();
 }
 
 function finishStreamBalloon(full) {
@@ -124,7 +163,11 @@ function hideBalloon() {
   clearBubbleTimers();
   balloon.classList.remove('show');
   document.body.classList.remove('speaking');
-  balloonHideTimer = setTimeout(() => balloon.classList.add('hidden'), 300);
+  balloonHideTimer = setTimeout(() => {
+    balloon.classList.add('hidden');
+    schedulePointerRegionUpdate();
+  }, 300);
+  schedulePointerRegionUpdate();
 }
 
 function beginFormalChat(turnId) {
@@ -165,6 +208,8 @@ character.addEventListener('mousedown', (event) => {
 });
 
 window.addEventListener('mousemove', (event) => {
+  lastPointer = { x: event.clientX, y: event.clientY };
+  schedulePointerRegionUpdate();
   live2dAvatar?.focus(event.clientX, event.clientY);
   if (!dragging || !lastMouse) return;
   const dx = event.clientX - lastMouse.x;
@@ -178,6 +223,7 @@ window.addEventListener('mousemove', (event) => {
 window.addEventListener('mouseup', () => {
   dragging = false;
   lastMouse = null;
+  schedulePointerRegionUpdate();
 });
 
 character.addEventListener('click', (event) => {
@@ -214,4 +260,5 @@ window.desktopPet.display.onChanged(applyDisplaySettings);
 
 window.desktopPet.display.get().then(applyDisplaySettings).catch(() => {});
 
+setMousePassthrough(true);
 initLive2D();

@@ -5,7 +5,7 @@
       "label": "DeepSeek / vLLM",
       "type": "openai-compatible",
       "baseUrl": "http://192.168.99.130:18000/v1",
-      "apiKey": "sk-rel-536813410b57521ab5e138f17bf80358a7f466bc9522600a",
+      "apiKeyEnv": "MIRAI_PROVIDER_DEEPSEEK_API_KEY",
       "defaultModel": "deepseek-v4-flash",
       "temperature": 0.8,
       "topP": 0.9
@@ -14,7 +14,7 @@
       "label": "ollama-mac",
       "type": "openai-compatible",
       "baseUrl": "http://127.0.0.1:11434/v1",
-      "apiKey": "none",
+      "apiKeyEnv": "MIRAI_PROVIDER_OLLAMA_MAC_API_KEY",
       "defaultModel": "gemma4:e4b-mlx",
       "temperature": 0.8,
       "topP": 0.9
