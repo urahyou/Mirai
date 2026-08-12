@@ -52,8 +52,14 @@ function placeAtBottomRight() {
 
 function setMainWindowAlwaysOnTop(enabled) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (enabled) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  const shouldStayVisible = Boolean(enabled);
+  if (shouldStayVisible) mainWindow.setAlwaysOnTop(true, 'screen-saver');
   else mainWindow.setAlwaysOnTop(false);
+  if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+    mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
+      visibleOnFullScreen: shouldStayVisible,
+    });
+  }
 }
 
 function applyDisplaySettings(settings, preserveCenter = true) {

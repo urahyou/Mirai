@@ -128,6 +128,13 @@ test('Given the Live2D avatar When hit testing is inspected Then it checks rende
   assert.doesNotMatch(avatar, /this\.model\.containsPoint/);
 });
 
+test('Given always-on-top display settings When the main window is updated Then it remains visible over macOS fullscreen workspaces', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+
+  assert.match(main, /setVisibleOnAllWorkspaces\(shouldStayVisible,\s*\{\s*visibleOnFullScreen:\s*shouldStayVisible/);
+  assert.match(main, /setAlwaysOnTop\(true, 'screen-saver'\)/);
+});
+
 test('Given transparent space around the character When pointer hit testing runs Then the pet window becomes mouse-transparent', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
