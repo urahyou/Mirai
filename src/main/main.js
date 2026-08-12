@@ -6,6 +6,7 @@ const rules = require('../engine/rules');
 const personalityRuntime = require('../services/personality-runtime');
 const displaySettings = require('../services/display-settings');
 const chatHistory = require('../services/chat-history');
+const windowLayout = require('../services/window-layout');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 
 const WINDOW = { width: 320, height: 360 };
@@ -23,6 +24,7 @@ let chatQueue = Promise.resolve();
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
+const MENU_WINDOW_SIZE = { width: 196, height: 244 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
 
@@ -109,20 +111,35 @@ function closeMenuWindow() {
   menuPendingPosition = null;
 }
 
-function openMenuWindow() {
+function positionMenuWindow(point, width = MENU_WINDOW_SIZE.width, height = MENU_WINDOW_SIZE.height) {
+  if (!menuWindow || menuWindow.isDestroyed() || !point) return false;
+  const { workArea } = screen.getDisplayNearestPoint(point);
+  const x = Math.max(workArea.x, Math.min(point.x, workArea.x + workArea.width - width - 8));
+  const y = Math.max(workArea.y, Math.min(point.y, workArea.y + workArea.height - height - 8));
+  menuWindow.setPosition(Math.round(x), Math.round(y));
+  return true;
+}
+
+function openMenuWindow(point) {
   closeMenuWindow();
+  menuPendingPosition = point;
   menuWindow = new BrowserWindow({
-    width: 196,
-    height: 244,
+    width: MENU_WINDOW_SIZE.width,
+    height: MENU_WINDOW_SIZE.height,
     transparent: true,
     frame: false,
     resizable: false,
+    show: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: true,
     webPreferences: windowOptions(),
   });
   menuWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionMenuWindow(point);
+  menuWindow.once('ready-to-show', () => {
+    if (menuWindow && !menuWindow.isDestroyed()) menuWindow.show();
+  });
   menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
   menuWindow.on('closed', () => { menuWindow = null; });
 }
@@ -191,9 +208,21 @@ function openDisplayPanel() {
 
 function closeChatInputWindow() {
   if (chatInputExpanded) setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-  if (chatInputWindow && !chatInputWindow.isDestroyed()) chatInputWindow.destroy();
+  if (chatInputWindow && !chatInputWindow.isDestroyed()) {
+    saveChatInputPosition(chatInputWindow);
+    chatInputWindow.destroy();
+  }
   chatInputWindow = null;
   chatInputExpanded = false;
+}
+
+function saveChatInputPosition(window) {
+  if (!window || window.isDestroyed() || !mainWindow || mainWindow.isDestroyed()) return;
+  const chatBounds = window.getBounds();
+  const mainBounds = mainWindow.getBounds();
+  windowLayout.setLayout({
+    chatOffset: { x: chatBounds.x - mainBounds.x, y: chatBounds.y - mainBounds.y },
+  });
 }
 
 function openChatInputWindow() {
@@ -226,18 +255,19 @@ function openChatInputWindow() {
     : { x: screen.getCursorScreenPoint().x, y: screen.getCursorScreenPoint().y, ...WINDOW };
   const { workArea } = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
   const [width, height] = chatInputWindow.getSize();
+  const savedOffset = windowLayout.getLayout().chatOffset;
   const bellyCenterX = mainBounds.x + mainBounds.width / 2;
   const bellyCenterY = mainBounds.y + mainBounds.height * CHAT_INPUT_BELLY_CENTER_RATIO;
-  const x = Math.max(
-    workArea.x + WORK_AREA_MARGIN,
-    Math.min(Math.round(bellyCenterX - width / 2), workArea.x + workArea.width - width - WORK_AREA_MARGIN),
-  );
-  const y = Math.max(
-    workArea.y + WORK_AREA_MARGIN,
-    Math.min(Math.round(bellyCenterY - height / 2), workArea.y + workArea.height - height - WORK_AREA_MARGIN),
-  );
+  const preferredX = savedOffset ? mainBounds.x + savedOffset.x : bellyCenterX - width / 2;
+  const preferredY = savedOffset ? mainBounds.y + savedOffset.y : bellyCenterY - height / 2;
+  const x = Math.max(workArea.x + WORK_AREA_MARGIN, Math.min(Math.round(preferredX), workArea.x + workArea.width - width - WORK_AREA_MARGIN));
+  const y = Math.max(workArea.y + WORK_AREA_MARGIN, Math.min(Math.round(preferredY), workArea.y + workArea.height - height - WORK_AREA_MARGIN));
   chatInputWindow.setPosition(x, y);
-  chatInputWindow.on('closed', () => { chatInputWindow = null; });
+  chatInputWindow.on('close', () => {
+    saveChatInputPosition(chatInputWindow);
+    chatInputWindow = null;
+    chatInputExpanded = false;
+  });
 }
 
 function resizeChatInputWindow(win, width, height) {
@@ -404,18 +434,13 @@ ipcMain.on('window:setMousePassthrough', (event, passthrough) => {
 });
 
 ipcMain.handle('menu:open', (_event, x, y) => {
-  openMenuWindow();
-  menuPendingPosition = { x: Number(x) || 0, y: Number(y) || 0 };
+  openMenuWindow({ x: Number(x) || 0, y: Number(y) || 0 });
   return true;
 });
 ipcMain.handle('menu:ready', () => {
   if (!menuWindow || menuWindow.isDestroyed() || !menuPendingPosition) return false;
-  const { workArea } = screen.getDisplayNearestPoint(menuPendingPosition);
   const [width, height] = menuWindow.getContentSize();
-  const x = Math.max(workArea.x, Math.min(menuPendingPosition.x, workArea.x + workArea.width - width - 8));
-  const y = Math.max(workArea.y, Math.min(menuPendingPosition.y, workArea.y + workArea.height - height - 8));
-  menuWindow.setPosition(Math.round(x), Math.round(y));
-  return true;
+  return positionMenuWindow(menuPendingPosition, width, height);
 });
 ipcMain.handle('menu:close', () => { closeMenuWindow(); return true; });
 ipcMain.handle('menu:quit', () => { app.quit(); return true; });
@@ -425,6 +450,7 @@ app.whenReady().then(() => {
   personalityRuntime.setRuntimePath(path.join(app.getPath('userData'), 'personality-runtime.json'));
   displaySettings.setRuntimePath(path.join(app.getPath('userData'), 'display-settings.json'));
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));
+  windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
   createMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

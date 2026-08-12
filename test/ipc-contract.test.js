@@ -135,6 +135,27 @@ test('Given always-on-top display settings When the main window is updated Then 
   assert.match(main, /setAlwaysOnTop\(true, 'screen-saver'\)/);
 });
 
+test('Given a context menu opens When its content loads Then it is positioned before becoming visible', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const menuSection = main.slice(main.indexOf('function openMenuWindow'), main.indexOf('function closePersonalityPanel'));
+
+  assert.match(menuSection, /show:\s*false/);
+  assert.match(menuSection, /positionMenuWindow\(point\)/);
+  assert.match(menuSection, /once\('ready-to-show',[\s\S]*?menuWindow\.show\(\)/);
+});
+
+test('Given a repositioned chat or balloon When it closes or hides Then its relative position is persisted', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+
+  assert.match(main, /windowLayout\.setLayout\([\s\S]*?chatOffset/);
+  assert.match(main, /windowLayout\.getLayout\(\)\.chatOffset/);
+  assert.match(renderer, /BUBBLE_POSITION_STORAGE_KEY/);
+  assert.match(renderer, /window\.localStorage\.setItem/);
+  assert.match(renderer, /balloon\.addEventListener\('mousedown'/);
+  assert.match(renderer, /if \(balloonDragging\) saveBalloonPosition\(\)/);
+});
+
 test('Given transparent space around the character When pointer hit testing runs Then the pet window becomes mouse-transparent', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
