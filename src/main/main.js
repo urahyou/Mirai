@@ -23,8 +23,6 @@ let chatQueue = Promise.resolve();
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
-const CHAT_INPUT_WAIST_TOP_RATIO = 0.72;
-const WORK_AREA_MARGIN = 8;
 
 function guarded(channel, handler) {
   return (_event, ...args) => {
@@ -68,7 +66,7 @@ function applyDisplaySettings(settings, preserveCenter = true) {
       Math.round(bounds.y + (bounds.height - nextHeight) / 2),
     );
   }
-  setMainWindowAlwaysOnTop(settings.alwaysOnTop && !chatInputWindow);
+  setMainWindowAlwaysOnTop(settings.alwaysOnTop);
   if (mainWindow.webContents && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('display:changed', settings);
   }
@@ -111,10 +109,12 @@ function openMenuWindow() {
     transparent: true,
     frame: false,
     resizable: false,
+    alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: true,
     webPreferences: windowOptions(),
   });
+  menuWindow.setAlwaysOnTop(true, 'screen-saver');
   menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
   menuWindow.on('closed', () => { menuWindow = null; });
 }
@@ -130,9 +130,11 @@ function openPersonalityPanel() {
     width: 520,
     height: 680,
     resizable: false,
+    alwaysOnTop: true,
     skipTaskbar: true,
     webPreferences: windowOptions(),
   });
+  personalityPanelWindow.setAlwaysOnTop(true, 'screen-saver');
   personalityPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'personality-panel.html'));
   personalityPanelWindow.on('closed', () => { personalityPanelWindow = null; });
 }
@@ -150,9 +152,11 @@ function openProviderPanel() {
     resizable: true,
     minWidth: 640,
     minHeight: 480,
+    alwaysOnTop: true,
     skipTaskbar: true,
     webPreferences: windowOptions(),
   });
+  providerPanelWindow.setAlwaysOnTop(true, 'screen-saver');
   providerPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'provider-panel.html'));
   providerPanelWindow.on('closed', () => { providerPanelWindow = null; });
 }
@@ -168,15 +172,17 @@ function openDisplayPanel() {
     width: 460,
     height: 360,
     resizable: false,
+    alwaysOnTop: true,
     skipTaskbar: true,
     webPreferences: windowOptions(),
   });
+  displayPanelWindow.setAlwaysOnTop(true, 'screen-saver');
   displayPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'display-panel.html'));
   displayPanelWindow.on('closed', () => { displayPanelWindow = null; });
 }
 
 function closeChatInputWindow() {
-  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+  if (chatInputExpanded) setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   if (chatInputWindow && !chatInputWindow.isDestroyed()) chatInputWindow.destroy();
   chatInputWindow = null;
   chatInputExpanded = false;
@@ -185,19 +191,21 @@ function closeChatInputWindow() {
 function openChatInputWindow() {
   closeChatInputWindow();
   chatInputExpanded = false;
-  setMainWindowAlwaysOnTop(false);
   chatInputWindow = new BrowserWindow({
-    parent: mainWindow,
     width: CHAT_INPUT_COMPACT_SIZE.width,
     height: CHAT_INPUT_COMPACT_SIZE.height,
     transparent: true,
     frame: false,
     resizable: false,
     movable: true,
+    alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: true,
     webPreferences: windowOptions(),
   });
+  // 与桌宠使用同一层级，但输入框在后创建，因此位于角色窗口之上。
+  chatInputWindow.setAlwaysOnTop(true, 'screen-saver');
+  chatInputWindow.moveTop();
   chatInputWindow.loadFile(path.join(__dirname, '..', 'renderer', 'chat-input.html'));
   chatInputWindow.webContents.once('did-finish-load', () => {
     if (!chatInputWindow || chatInputWindow.isDestroyed()) return;
@@ -210,24 +218,13 @@ function openChatInputWindow() {
     : { x: screen.getCursorScreenPoint().x, y: screen.getCursorScreenPoint().y, ...WINDOW };
   const { workArea } = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
   const [width, height] = chatInputWindow.getSize();
-  const preferredX = mainBounds.x + Math.round((mainBounds.width - width) / 2);
-  const x = Math.max(
-    workArea.x + WORK_AREA_MARGIN,
-    Math.min(preferredX, workArea.x + workArea.width - width - WORK_AREA_MARGIN),
-  );
-  const waistTop = mainBounds.y + mainBounds.height * CHAT_INPUT_WAIST_TOP_RATIO;
-  const y = Math.max(
-    workArea.y + WORK_AREA_MARGIN,
-    Math.min(Math.round(waistTop), workArea.y + workArea.height - height - WORK_AREA_MARGIN),
-  );
+  const x = Math.max(workArea.x + 8, Math.min(mainBounds.x + Math.round((mainBounds.width - width) / 2), workArea.x + workArea.width - width - 8));
+  const below = mainBounds.y + mainBounds.height + 10;
+  const y = below + height <= workArea.y + workArea.height - 8
+    ? below
+    : Math.max(workArea.y + 8, mainBounds.y - height - 10);
   chatInputWindow.setPosition(x, y);
-  const openedWindow = chatInputWindow;
-  chatInputWindow.on('closed', () => {
-    if (chatInputWindow !== openedWindow) return;
-    chatInputWindow = null;
-    chatInputExpanded = false;
-    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-  });
+  chatInputWindow.on('closed', () => { chatInputWindow = null; });
 }
 
 function resizeChatInputWindow(win, width, height) {
@@ -342,6 +339,15 @@ ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; }
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
+  if (expanded) setMainWindowAlwaysOnTop(false);
+  else setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+  if (chatInputWindow && !chatInputWindow.isDestroyed()) {
+    if (expanded) chatInputWindow.setAlwaysOnTop(false);
+    else {
+      chatInputWindow.setAlwaysOnTop(true, 'screen-saver');
+      chatInputWindow.moveTop();
+    }
+  }
   const target = expanded ? CHAT_INPUT_EXPANDED_SIZE : CHAT_INPUT_COMPACT_SIZE;
   return resizeChatInputWindow(chatInputWindow, target.width, target.height);
 }));
