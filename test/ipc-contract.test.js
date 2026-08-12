@@ -119,3 +119,28 @@ test('Given transparent space around the character When pointer hit testing runs
   assert.match(renderer, /setMousePassthrough\(!characterHit && !bubbleHit\)/);
   assert.match(renderer, /if \(dragging\)[\s\S]*?setMousePassthrough\(false\)/);
 });
+
+test('Given auxiliary windows When they are created or chat mode changes Then only the pet window may stay always on top', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const auxiliarySection = main.slice(main.indexOf('function openMenuWindow'), main.indexOf('function resizeChatInputWindow'));
+  const chatExpansionSection = main.slice(main.indexOf("ipcMain.handle('chat:setExpanded'"), main.indexOf("ipcMain.handle('chat:resizeInput'"));
+
+  assert.doesNotMatch(auxiliarySection, /alwaysOnTop\s*:|\.setAlwaysOnTop/);
+  assert.doesNotMatch(chatExpansionSection, /alwaysOnTop|setAlwaysOnTop|setMainWindowAlwaysOnTop/);
+  assert.match(main, /function setMainWindowAlwaysOnTop/);
+});
+
+test('Given the compact chat opens When it is positioned Then it overlays the character waist and stays on screen', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const openChatSection = main.slice(main.indexOf('function openChatInputWindow'), main.indexOf('function resizeChatInputWindow'));
+
+  assert.match(main, /CHAT_INPUT_WAIST_TOP_RATIO\s*=\s*0\.72/);
+  assert.match(openChatSection, /parent:\s*mainWindow/);
+  assert.match(openChatSection, /mainBounds\.x \+ Math\.round\(\(mainBounds\.width - width\) \/ 2\)/);
+  assert.match(openChatSection, /mainBounds\.y \+ mainBounds\.height \* CHAT_INPUT_WAIST_TOP_RATIO/);
+  assert.match(openChatSection, /workArea\.x \+ WORK_AREA_MARGIN/);
+  assert.match(openChatSection, /setMainWindowAlwaysOnTop\(false\)/);
+  assert.match(main, /function closeChatInputWindow\(\)[\s\S]*?setMainWindowAlwaysOnTop\(displaySettings\.getSettings\(\)\.alwaysOnTop\)/);
+  assert.match(main, /setMainWindowAlwaysOnTop\(settings\.alwaysOnTop && !chatInputWindow\)/);
+  assert.match(openChatSection, /chatInputWindow\.on\('closed',[\s\S]*?setMainWindowAlwaysOnTop\(displaySettings\.getSettings\(\)\.alwaysOnTop\)/);
+});
