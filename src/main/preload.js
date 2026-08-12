@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   }),
   openChatInput: () => ipcRenderer.invoke('chat:openInput'),
   closeChatInput: () => ipcRenderer.invoke('chat:closeInput'),
+  setChatComposing: (composing) => ipcRenderer.invoke('chat:setComposing', composing),
   resizeChatInput: (height) => ipcRenderer.invoke('chat:resizeInput', height),
   getChatHistory: () => ipcRenderer.invoke('chat:getHistory'),
   setChatExpanded: (expanded) => ipcRenderer.invoke('chat:setExpanded', expanded),

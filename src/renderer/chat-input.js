@@ -12,6 +12,7 @@ let expanded = false;
 let autoHideTimer = null;
 let dragging = false;
 let last = null;
+let composingRestoreTimer = null;
 let streamingMessage = null;
 let streamingTurnId = null;
 const messageIds = new Set();
@@ -156,9 +157,20 @@ input.addEventListener('input', () => {
   resizeInputWindow();
   markActivity();
 });
-input.addEventListener('compositionstart', () => { composing = true; clearAutoHide(); });
+input.addEventListener('compositionstart', () => {
+  composing = true;
+  clearAutoHide();
+  clearTimeout(composingRestoreTimer);
+  window.desktopPet.setChatComposing(true).catch(() => {});
+});
 input.addEventListener('compositionend', () => {
   setTimeout(() => { composing = false; }, 0);
+  // 候选窗在 compositionend 后仍可能短暂存在，延迟恢复置顶避免最后一帧被盖住。
+  clearTimeout(composingRestoreTimer);
+  composingRestoreTimer = setTimeout(() => {
+    composingRestoreTimer = null;
+    window.desktopPet.setChatComposing(false).catch(() => {});
+  }, 180);
   markActivity();
 });
 input.addEventListener('keydown', (event) => {

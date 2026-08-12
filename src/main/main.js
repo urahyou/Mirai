@@ -20,6 +20,7 @@ let providerPanelWindow = null;
 let displayPanelWindow = null;
 let chatInputWindow = null;
 let chatInputExpanded = false;
+let chatInputComposing = false;
 let chatQueue = Promise.resolve();
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
@@ -207,6 +208,7 @@ function openDisplayPanel() {
 }
 
 function closeChatInputWindow() {
+  chatInputComposing = false;
   if (chatInputExpanded) setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
     saveChatInputPosition(chatInputWindow);
@@ -228,6 +230,7 @@ function saveChatInputPosition(window) {
 function openChatInputWindow() {
   closeChatInputWindow();
   chatInputExpanded = false;
+  chatInputComposing = false;
   chatInputWindow = new BrowserWindow({
     width: CHAT_INPUT_COMPACT_SIZE.width,
     height: CHAT_INPUT_COMPACT_SIZE.height,
@@ -267,7 +270,25 @@ function openChatInputWindow() {
     saveChatInputPosition(chatInputWindow);
     chatInputWindow = null;
     chatInputExpanded = false;
+    chatInputComposing = false;
   });
+}
+
+function setChatInputComposing(composing) {
+  chatInputComposing = Boolean(composing);
+  if (!chatInputWindow || chatInputWindow.isDestroyed()) return true;
+
+  // macOS 输入法候选窗是独立窗口。聊天窗处于 screen-saver 层级时会把候选窗盖住，
+  // 组合输入期间临时降级聊天窗和桌宠，提交后再恢复原有的层级。
+  if (chatInputComposing || chatInputExpanded) {
+    chatInputWindow.setAlwaysOnTop(false);
+    if (chatInputComposing) setMainWindowAlwaysOnTop(false);
+  } else {
+    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+    chatInputWindow.setAlwaysOnTop(true, 'screen-saver');
+    chatInputWindow.moveTop();
+  }
+  return true;
 }
 
 function resizeChatInputWindow(win, width, height) {
@@ -379,13 +400,14 @@ ipcMain.handle('provider:closePanel', () => { closeProviderPanel(); return true;
 
 ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
 ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
+ipcMain.handle('chat:setComposing', guarded('chat:setComposing', (composing) => setChatInputComposing(composing)));
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
   if (expanded) setMainWindowAlwaysOnTop(false);
   else setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
-    if (expanded) chatInputWindow.setAlwaysOnTop(false);
+    if (expanded || chatInputComposing) chatInputWindow.setAlwaysOnTop(false);
     else {
       chatInputWindow.setAlwaysOnTop(true, 'screen-saver');
       chatInputWindow.moveTop();
