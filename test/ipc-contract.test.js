@@ -77,6 +77,24 @@ test('Given a long reply When the balloon is inspected Then its text area can re
   assert.match(style, /#balloon-text\s*\{[\s\S]*?overflow-y:\s*auto/);
 });
 
+test('Given the pet speaks When the balloon is positioned Then it is centered above the character head', () => {
+  const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+
+  assert.match(style, /#balloon\s*\{[\s\S]*?top:\s*4px;[\s\S]*?left:\s*50%/);
+  assert.match(style, /#balloon\.show\s*\{[\s\S]*?translate\(-50%,\s*0\)/);
+  assert.match(style, /\.balloon-tail\s*\{[\s\S]*?left:\s*50%[\s\S]*?translateX\(-50%\) rotate\(45deg\)/);
+});
+
+test('Given the compact chat opens When positioned Then its center overlays the character belly', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const openChatSection = main.slice(main.indexOf('function openChatInputWindow'), main.indexOf('function resizeChatInputWindow'));
+
+  assert.match(main, /CHAT_INPUT_BELLY_CENTER_RATIO\s*=\s*0\.68/);
+  assert.match(openChatSection, /bellyCenterX - width \/ 2/);
+  assert.match(openChatSection, /bellyCenterY - height \/ 2/);
+  assert.match(openChatSection, /workArea\.x \+ WORK_AREA_MARGIN/);
+});
+
 test('Given the character renderer When it is inspected Then rendering and hit testing are Live2D-only', () => {
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
   const index = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'index.html'), 'utf8');

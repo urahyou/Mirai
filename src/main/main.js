@@ -23,6 +23,8 @@ let chatQueue = Promise.resolve();
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
+const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
+const WORK_AREA_MARGIN = 8;
 
 function guarded(channel, handler) {
   return (_event, ...args) => {
@@ -218,11 +220,16 @@ function openChatInputWindow() {
     : { x: screen.getCursorScreenPoint().x, y: screen.getCursorScreenPoint().y, ...WINDOW };
   const { workArea } = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
   const [width, height] = chatInputWindow.getSize();
-  const x = Math.max(workArea.x + 8, Math.min(mainBounds.x + Math.round((mainBounds.width - width) / 2), workArea.x + workArea.width - width - 8));
-  const below = mainBounds.y + mainBounds.height + 10;
-  const y = below + height <= workArea.y + workArea.height - 8
-    ? below
-    : Math.max(workArea.y + 8, mainBounds.y - height - 10);
+  const bellyCenterX = mainBounds.x + mainBounds.width / 2;
+  const bellyCenterY = mainBounds.y + mainBounds.height * CHAT_INPUT_BELLY_CENTER_RATIO;
+  const x = Math.max(
+    workArea.x + WORK_AREA_MARGIN,
+    Math.min(Math.round(bellyCenterX - width / 2), workArea.x + workArea.width - width - WORK_AREA_MARGIN),
+  );
+  const y = Math.max(
+    workArea.y + WORK_AREA_MARGIN,
+    Math.min(Math.round(bellyCenterY - height / 2), workArea.y + workArea.height - height - WORK_AREA_MARGIN),
+  );
   chatInputWindow.setPosition(x, y);
   chatInputWindow.on('closed', () => { chatInputWindow = null; });
 }
