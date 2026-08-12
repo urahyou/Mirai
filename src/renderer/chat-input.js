@@ -163,6 +163,12 @@ input.addEventListener('compositionstart', () => {
   clearTimeout(composingRestoreTimer);
   window.desktopPet.setChatComposing(true).catch(() => {});
 });
+input.addEventListener('focus', () => {
+  window.desktopPet.setChatFocused(true).catch(() => {});
+});
+input.addEventListener('blur', () => {
+  window.desktopPet.setChatFocused(false).catch(() => {});
+});
 input.addEventListener('compositionend', () => {
   setTimeout(() => { composing = false; }, 0);
   // 候选窗在 compositionend 后仍可能短暂存在，延迟恢复置顶避免最后一帧被盖住。

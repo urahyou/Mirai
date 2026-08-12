@@ -6,6 +6,8 @@ const { ReadableStream } = require('node:stream/web');
 const test = require('node:test');
 
 const generic = require('../src/engine/generic');
+const rules = require('../src/engine/rules');
+const personalityRuntime = require('../src/services/personality-runtime');
 
 test('Given a runtime Provider path When configuration is saved Then the repository template is untouched', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-provider-'));
@@ -127,4 +129,45 @@ test('Given a stream whose final SSE record has no trailing newline When generic
   const reply = await generic.generateReply('测试无换行尾包', { onDelta: () => {} });
 
   assert.equal(reply, '尾包');
+});
+
+test('Given a saved runtime personality When the next chat starts Then the new persona replaces old conversation influence', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-personality-'));
+  const runtimeFile = path.join(dir, 'personality-runtime.json');
+  const originalFetch = global.fetch;
+  const requests = [];
+  personalityRuntime.setRuntimePath(runtimeFile);
+  personalityRuntime.setPersonality({
+    name: '测试未来',
+    personality: {
+      mood: '安静',
+      age: '17',
+      likes: ['月亮'],
+      dislikes: ['吵闹'],
+      catchphrases: ['收到'],
+      tone: '冷静、简洁',
+      selfIntro: '我是测试未来。',
+    },
+  });
+  rules.resetConfig();
+  generic.resetConversationHistory();
+  global.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ choices: [{ message: { content: '收到' } }] }), { status: 200 });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+    generic.resetConversationHistory();
+    personalityRuntime.setRuntimePath(null);
+    rules.resetConfig();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  await generic.generateReply('请介绍自己');
+
+  const body = JSON.parse(requests[0].options.body);
+  assert.match(body.messages[0].content, /测试未来/);
+  assert.match(body.messages[0].content, /冷静、简洁/);
+  assert.match(body.messages[0].content, /收到/);
+  assert.deepEqual(body.messages.slice(1), [{ role: 'user', content: '请介绍自己' }]);
 });

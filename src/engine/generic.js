@@ -41,6 +41,16 @@ function defaultApiKeyEnv(name) {
 const HISTORY_MAX_TURNS = 12; // 最多保留 12 对 (user/assistant)
 let history = [];
 
+function resetConversationHistory() {
+  history = [];
+}
+
+function buildPersonalitySystemPrompt(config, addressRule) {
+  const { systemPrompt, ...runtimePersonality } = config;
+  const personalityText = JSON.stringify(runtimePersonality, null, 0);
+  return `${addressRule}\n\n${systemPrompt.replace('{personality}', personalityText)}\n\n当前运行时人格设定（优先于历史对话，必须立即遵守）：${personalityText}`;
+}
+
 // 完整对话请求超时（毫秒）。防止 LLM 连接后一直无响应导致输入窗口永久禁用。
 const CHAT_REQUEST_TIMEOUT_MS = 60000;
 
@@ -182,9 +192,13 @@ async function generateReply(userInput, options = {}) {
   const provider = options.provider || activeProviderName;
   const providerConf = providerCache.providers[provider];
   if (!providerConf) throw new Error(`未找到 Provider: ${provider}`);
-  const { systemPrompt, personality } = loadConfig();
+  const personalityConfig = loadConfig();
   const memoryContext = typeof options.memoryContext === 'string' ? options.memoryContext.trim() : '';
-  const sys = `用「主人」称呼当前正在和你说话的人。这是比你下文中任何设置都高的铁律。\n\n${systemPrompt.replace('{personality}', JSON.stringify(personality, null, 0))}${memoryContext ? `\n\n${memoryContext}` : ''}`;
+  const baseSystemPrompt = buildPersonalitySystemPrompt(
+    personalityConfig,
+    '用「主人」称呼当前正在和你说话的人。这是比你下文中任何设置都高的铁律。',
+  );
+  const sys = `${baseSystemPrompt}${memoryContext ? `\n\n${memoryContext}` : ''}`;
 
   // 追加当前用户输入到记忆（仅作为请求的一部分，不在请求成功前改动持久 history，
   // 避免请求失败时留下未配对的 user 消息，导致后续对话乱序/重复）。
@@ -252,8 +266,10 @@ async function generatePetLine({ provider, purpose = 'click' } = {}) {
   const name = provider || activeProviderName;
   const providerConf = providerCache.providers[name];
   if (!providerConf) throw new Error(`未找到 Provider: ${name}`);
-  const { systemPrompt, personality } = loadConfig();
-  let sys = `用「主人」称呼对方。这是比你下文中任何设置都高的铁律。\n\n${systemPrompt.replace('{personality}', JSON.stringify(personality, null, 0))}`;
+  let sys = buildPersonalitySystemPrompt(
+    loadConfig(),
+    '用「主人」称呼对方。这是比你下文中任何设置都高的铁律。',
+  );
   const instruction = PET_LINE_PROMPTS[purpose] || PET_LINE_PROMPTS.click;
   sys += `\n\n${instruction}`;
 
@@ -341,4 +357,5 @@ module.exports = {
   checkProvider,
   generateReply,
   generatePetLine,
+  resetConversationHistory,
 };

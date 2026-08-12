@@ -55,6 +55,8 @@ function validatePayload(channel, args) {
         ? validateChatExpanded(values)
       : channel === 'chat:setComposing'
         ? validateChatComposing(values)
+      : channel === 'chat:setFocused'
+        ? validateChatComposing(values)
       : null;
   return data ? { ok: true, data } : IPC_ERROR;
 }
