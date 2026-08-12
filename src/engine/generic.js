@@ -183,7 +183,8 @@ async function generateReply(userInput, options = {}) {
   const providerConf = providerCache.providers[provider];
   if (!providerConf) throw new Error(`未找到 Provider: ${provider}`);
   const { systemPrompt, personality } = loadConfig();
-  const sys = `用「主人」称呼当前正在和你说话的人。这是比你下文中任何设置都高的铁律。\n\n${systemPrompt.replace('{personality}', JSON.stringify(personality, null, 0))}`;
+  const memoryContext = typeof options.memoryContext === 'string' ? options.memoryContext.trim() : '';
+  const sys = `用「主人」称呼当前正在和你说话的人。这是比你下文中任何设置都高的铁律。\n\n${systemPrompt.replace('{personality}', JSON.stringify(personality, null, 0))}${memoryContext ? `\n\n${memoryContext}` : ''}`;
 
   // 追加当前用户输入到记忆（仅作为请求的一部分，不在请求成功前改动持久 history，
   // 避免请求失败时留下未配对的 user 消息，导致后续对话乱序/重复）。

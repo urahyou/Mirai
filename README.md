@@ -55,6 +55,23 @@ npm run dev
 
 ## 配置
 
+### TiMem 长期记忆（可选）
+
+Mirai 支持通过 TiMem 云服务为正式聊天增加长期记忆检索。默认关闭；启用后，聊天请求会先检索最多 5 条相关记忆注入 Prompt，回复完成后异步提交本轮对话供 TiMem 提炼。TiMem 请求失败不会阻塞本地模型对话。
+
+将 `.env.example` 复制为 `.env`，仅在本机填写以下配置：
+
+```dotenv
+TIMEM_ENABLED=true
+TIMEM_BASE_URL=https://api.timem.cloud
+TIMEM_API_KEY=你的TiMem密钥
+TIMEM_USER_ID=mirai-owner
+TIMEM_CHARACTER_ID=mirai
+TIMEM_SESSION_ID=desktop-session
+```
+
+也可以使用 `TIMEM_USERNAME` 和 `TIMEM_PASSWORD`，由 Mirai 调用 TiMem 登录接口获取短期令牌。`.env` 已被 Git 忽略，密钥不会进入仓库。TiMem 记忆数据属于第三方云服务；需要完全离线时保持 `TIMEM_ENABLED=false`。
+
 ### Provider
 
 `src/core/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 只从项目根目录的 `.env` 读取。

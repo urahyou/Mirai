@@ -7,6 +7,7 @@ const personalityRuntime = require('../services/personality-runtime');
 const displaySettings = require('../services/display-settings');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
+const timemMemory = require('../services/timem-memory');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 
 const WINDOW = { width: 320, height: 360 };
@@ -338,10 +339,12 @@ async function generatePetLine(purpose) {
 }
 
 async function generateChat(input, emit) {
+  const memories = await timemMemory.search(input);
+  const memoryContext = timemMemory.formatContext(memories);
   for (const provider of generic.providerChain()) {
     try {
       if (!(await generic.isAvailable(provider))) continue;
-      return await generic.generateReply(input, { provider, onDelta: emit });
+      return await generic.generateReply(input, { provider, onDelta: emit, memoryContext });
     } catch {
       // Try the next configured provider.
     }
@@ -402,6 +405,7 @@ ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
 ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
 ipcMain.handle('chat:setComposing', guarded('chat:setComposing', (composing) => setChatInputComposing(composing)));
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
+ipcMain.handle('memory:getStatus', () => timemMemory.getStatus());
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
   if (expanded) setMainWindowAlwaysOnTop(false);
@@ -436,6 +440,7 @@ ipcMain.handle('chat:submit', async (_event, rawInput) => {
   };
   const reply = await enqueueChat(() => generateChat(input, emit));
   const assistantMessage = chatHistory.appendMessage('assistant', reply);
+  void timemMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
   sendToChatInput('chat:history', { message: assistantMessage, turnId });
   broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
   return reply;

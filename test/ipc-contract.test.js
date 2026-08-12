@@ -38,13 +38,14 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'preload.js'), 'utf8');
 
   assert.doesNotMatch(preload, /\b(tool|execute|exec|spawn|child_process|require\(['"](?:fs|node:fs|child_process))/i);
-  assert.doesNotMatch(preload, /memory|proactive|schedule|owner/i);
+  assert.doesNotMatch(preload, /proactive|schedule|owner/i);
   assert.match(preload, /personality:\s*Object\.freeze/);
   assert.match(preload, /display:\s*Object\.freeze/);
   assert.match(preload, /providers:\s*Object\.freeze/);
   assert.match(preload, /chatSubmit/);
   assert.match(preload, /getChatHistory/);
   assert.match(preload, /setChatExpanded/);
+  assert.match(preload, /memory:\s*Object\.freeze/);
   assert.match(preload, /setMousePassthrough/);
 });
 
