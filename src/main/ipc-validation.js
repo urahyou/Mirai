@@ -41,10 +41,6 @@ function validateChatExpanded(args) {
   return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
 }
 
-function validateChatComposing(args) {
-  return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
-}
-
 function validatePayload(channel, args) {
   const values = Array.isArray(args) ? args : [];
   const data = channel === 'personality:set'
@@ -53,10 +49,6 @@ function validatePayload(channel, args) {
       ? validateDisplaySettingsPatch(values)
       : channel === 'chat:setExpanded'
         ? validateChatExpanded(values)
-      : channel === 'chat:setComposing'
-        ? validateChatComposing(values)
-      : channel === 'chat:setFocused'
-        ? validateChatComposing(values)
       : null;
   return data ? { ok: true, data } : IPC_ERROR;
 }

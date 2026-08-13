@@ -45,7 +45,6 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /chatSubmit/);
   assert.match(preload, /getChatHistory/);
   assert.match(preload, /setChatExpanded/);
-  assert.match(preload, /setChatFocused/);
   assert.match(preload, /memory:\s*Object\.freeze/);
   assert.match(preload, /setMousePassthrough/);
 });
@@ -53,8 +52,6 @@ test('Given the preload bridge When its public surface is inspected Then it expo
 test('Given chat expansion IPC When validation receives a boolean Then it accepts only that boolean', () => {
   assert.deepEqual(validatePayload('chat:setExpanded', [true]), { ok: true, data: [true] });
   assertRejected('chat:setExpanded', ['true']);
-  assert.deepEqual(validatePayload('chat:setFocused', [true]), { ok: true, data: [true] });
-  assertRejected('chat:setFocused', ['true']);
 });
 
 test('Given a pending chat request When the input window is inspected Then the composer remains editable', () => {
