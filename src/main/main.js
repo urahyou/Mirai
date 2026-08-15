@@ -88,6 +88,9 @@ function setMainWindowAlwaysOnTop(enabled) {
   if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
     mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
       visibleOnFullScreen: shouldStayVisible,
+      // 已隐藏 Dock（accessory 辅助应用），跳过默认的进程类型转换，
+      // 避免每次调用短暂隐藏窗口/Dock，并确保能加入全屏 Space。
+      skipTransformProcessType: true,
     });
   }
 }
@@ -153,7 +156,7 @@ function createBalloonWindow() {
   });
   balloonWindow.setAlwaysOnTop(true, 'screen-saver');
   if (typeof balloonWindow.setVisibleOnAllWorkspaces === 'function') {
-    balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   }
   balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
   if (config.dev) {
@@ -671,7 +674,7 @@ ipcMain.on('window:setDragState', (event, dragging) => {
   if (dragging) {
     win.setAlwaysOnTop(true, 'floating');
     if (typeof win.setVisibleOnAllWorkspaces === 'function') {
-      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, skipTransformProcessType: true });
     }
   } else {
     setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
@@ -816,6 +819,11 @@ ipcMain.on('voice:pcm', (_event, buffer) => voiceBridge.sendPcm(buffer));
 ipcMain.handle('menu:quit', () => { app.quit(); return true; });
 
 app.whenReady().then(() => {
+  // macOS：隐藏 Dock（ActivationPolicyAccessory / UIElementApplication）后，
+  // 桌宠窗口才能加入其他应用的全屏 Space 并置顶（普通前台应用进不了全屏 Space）。
+  if (process.platform === 'darwin' && app.setActivationPolicy) {
+    app.setActivationPolicy('accessory');
+  }
   generic.setRuntimePath(path.join(app.getPath('userData'), 'llm-providers.runtime.json'));
   personalityRuntime.setRuntimePath(path.join(app.getPath('userData'), 'personality-runtime.json'));
   displaySettings.setRuntimePath(path.join(app.getPath('userData'), 'display-settings.json'));
