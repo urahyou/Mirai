@@ -266,7 +266,10 @@ function openChatInputWindow() {
   const y = Math.max(workArea.y + WORK_AREA_MARGIN, Math.min(Math.round(preferredY), workArea.y + workArea.height - height - WORK_AREA_MARGIN));
   chatInputWindow.setPosition(x, y);
   chatInputWindow.on('close', () => {
-    saveChatInputPosition(chatInputWindow);
+    // 兜底：无论以何种方式关闭对话框，都恢复角色窗口的置顶状态，
+    // 避免绕开 closeChatInputWindow() 时角色永久失去 always-on-top。
+    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+    if (chatInputWindow && !chatInputWindow.isDestroyed()) saveChatInputPosition(chatInputWindow);
     chatInputWindow = null;
     chatInputExpanded = false;
   });
