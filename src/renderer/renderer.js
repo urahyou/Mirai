@@ -35,6 +35,7 @@ let balloonDragging = false;
 let balloonDragLast = null;
 let balloonPosition = loadBalloonPosition();
 let dragOffset = null;
+let bubbleDurationSec = 0; // 0=按文字长度自动；>0=固定秒数（设置面板可调）
 
 function isCharacterHit(clientX, clientY) {
   return Boolean(live2dAvatar?.isHit(clientX, clientY));
@@ -114,6 +115,13 @@ function schedulePointerRegionUpdate() {
 
 function applyDisplaySettings(settings) {
   character.dataset.outlineShadow = settings?.outlineShadow ? 'true' : 'false';
+  bubbleDurationSec = Number(settings?.bubbleDuration) || 0;
+}
+
+function bubbleHideDelay(value) {
+  if (bubbleDurationSec > 0) return bubbleDurationSec * 1000;
+  const length = String(value || '').length;
+  return Math.max(BUBBLE_MIN_VISIBLE_MS, Math.min(7600, 2600 + length * 42));
 }
 
 function detectFace(text) {
@@ -169,7 +177,7 @@ function showBalloon(text, face = detectFace(text), visibleMs = null) {
   requestAnimationFrame(applyBalloonPosition);
   document.body.classList.add('speaking');
   schedulePointerRegionUpdate();
-  const duration = visibleMs || Math.max(BUBBLE_MIN_VISIBLE_MS, Math.min(7600, 2600 + value.length * 42));
+  const duration = visibleMs || bubbleHideDelay(value);
   balloonTimer = setTimeout(hideBalloon, duration);
 }
 
@@ -208,7 +216,7 @@ function finishStreamBalloon(full) {
   balloonText.scrollTop = balloonText.scrollHeight;
   setFace(detectFace(value));
   clearTimeout(balloonTimer);
-  balloonTimer = setTimeout(hideBalloon, Math.max(BUBBLE_MIN_VISIBLE_MS, Math.min(7600, 2600 + value.length * 42)));
+  balloonTimer = setTimeout(hideBalloon, bubbleHideDelay(value));
 }
 
 function hideBalloon() {

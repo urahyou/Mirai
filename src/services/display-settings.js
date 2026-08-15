@@ -5,10 +5,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   scale: 1,
   alwaysOnTop: true,
   outlineShadow: false,
+  bubbleDuration: 0, // 秒；0=按文字长度自动（2.6~7.6s）
 });
 
 const SCALE_MIN = 0.7;
 const SCALE_MAX = 1.5;
+const BUBBLE_DURATION_MIN = 0;
+const BUBBLE_DURATION_MAX = 30;
 
 let runtimePath = null;
 
@@ -23,10 +26,14 @@ function readJson(file) {
 function normalizeSettings(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const scale = Number(source.scale);
+  const duration = Number(source.bubbleDuration);
   return {
     scale: Number.isFinite(scale) ? Math.max(SCALE_MIN, Math.min(SCALE_MAX, scale)) : DEFAULT_SETTINGS.scale,
     alwaysOnTop: typeof source.alwaysOnTop === 'boolean' ? source.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
     outlineShadow: typeof source.outlineShadow === 'boolean' ? source.outlineShadow : DEFAULT_SETTINGS.outlineShadow,
+    bubbleDuration: Number.isFinite(duration)
+      ? Math.max(BUBBLE_DURATION_MIN, Math.min(BUBBLE_DURATION_MAX, Math.round(duration)))
+      : DEFAULT_SETTINGS.bubbleDuration,
   };
 }
 

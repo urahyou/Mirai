@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-let settings = { scale: 1, alwaysOnTop: true, outlineShadow: false };
+let settings = { scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0 };
 let feedbackTimer = null;
 let previewFrame = null;
 let pendingScale = null;
@@ -27,6 +27,9 @@ function render() {
   $('scaleValue').textContent = `${percentage}%`;
   $('alwaysOnTop').checked = settings.alwaysOnTop;
   $('outlineShadow').checked = settings.outlineShadow;
+  $('bubbleRange').value = String(settings.bubbleDuration);
+  $('bubbleRange').style.setProperty('--progress', `${(settings.bubbleDuration / 30) * 100}%`);
+  $('bubbleValue').textContent = settings.bubbleDuration > 0 ? `${settings.bubbleDuration}s` : '自动';
 }
 
 async function save(patch) {
@@ -45,7 +48,7 @@ async function save(patch) {
 async function reset() {
   $('resetBtn').disabled = true;
   try {
-    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true, outlineShadow: false });
+    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0 });
     render();
     showFeedback('已恢复默认', '小未来回到标准大小并重新置顶');
   } catch {
@@ -78,6 +81,12 @@ async function init() {
   $('scaleRange').addEventListener('change', () => save({ scale: Number($('scaleRange').value) / 100 }));
   $('alwaysOnTop').addEventListener('change', () => save({ alwaysOnTop: $('alwaysOnTop').checked }));
   $('outlineShadow').addEventListener('change', () => save({ outlineShadow: $('outlineShadow').checked }));
+  $('bubbleRange').addEventListener('input', () => {
+    const v = Number($('bubbleRange').value);
+    $('bubbleValue').textContent = v > 0 ? `${v}s` : '自动';
+    $('bubbleRange').style.setProperty('--progress', `${(v / 30) * 100}%`);
+  });
+  $('bubbleRange').addEventListener('change', () => save({ bubbleDuration: Number($('bubbleRange').value) }));
 
   try {
     const loaded = await window.desktopPet.display.get();
