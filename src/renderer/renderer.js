@@ -1,18 +1,16 @@
 const $ = (selector) => document.querySelector(selector);
 
-const balloon = $('#balloon');
-const balloonText = $('#balloon-text');
+const balloon = $('#balloon'); // 占位命中目标（气泡实际渲染在独立窗口 balloonWindow）
 const character = $('#character');
 const LIVE2D_MODEL = '../../assets/live2d/models/hiyori_free_zh/runtime/hiyori_free_t08.model3.json';
 
 const GREET_COOLDOWN_MS = 1200;
 const TYPING_DELAY_MS = 240;
 const BUBBLE_MIN_VISIBLE_MS = 4200;
-const BUBBLE_POSITION_STORAGE_KEY = 'mirai.balloon-position.v1';
 
+let typingTimer = null;
 let balloonTimer = null;
 let balloonHideTimer = null;
-let typingTimer = null;
 let live2dAvatar = null;
 let dragging = false;
 let dragged = false;
@@ -31,46 +29,11 @@ const PASSTHROUGH_GRACE_MS = 200;
 let lastHitAt = 0;
 let lastPointer = null;
 let pointerUpdateFrame = null;
-let balloonDragging = false;
-let balloonDragLast = null;
-let balloonPosition = loadBalloonPosition();
 let dragOffset = null;
 let bubbleDurationSec = 0; // 0=按文字长度自动；>0=固定秒数（设置面板可调）
 
 function isCharacterHit(clientX, clientY) {
   return Boolean(live2dAvatar?.isHit(clientX, clientY));
-}
-
-function loadBalloonPosition() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(BUBBLE_POSITION_STORAGE_KEY));
-    const x = Number(saved?.x);
-    const y = Number(saved?.y);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveBalloonPosition() {
-  if (!balloonPosition) return;
-  window.localStorage.setItem(BUBBLE_POSITION_STORAGE_KEY, JSON.stringify(balloonPosition));
-}
-
-function applyBalloonPosition() {
-  if (!balloonPosition || balloon.classList.contains('hidden')) return;
-  const rect = balloon.getBoundingClientRect();
-  const halfWidth = rect.width / 2;
-  const maxTop = Math.max(0, window.innerHeight - rect.height - 9);
-  const centerX = Math.max(halfWidth, Math.min(window.innerWidth - halfWidth, balloonPosition.x * window.innerWidth));
-  const top = Math.max(0, Math.min(maxTop, balloonPosition.y * window.innerHeight));
-  balloon.style.left = `${centerX}px`;
-  balloon.style.top = `${top}px`;
-}
-
-function resetBalloonPosition() {
-  balloon.style.left = '';
-  balloon.style.top = '';
 }
 
 function isPointInside(element, clientX, clientY) {
@@ -168,17 +131,11 @@ function clearBubbleTimers() {
 function showBalloon(text, face = detectFace(text), visibleMs = null) {
   const value = String(text || '');
   clearBubbleTimers();
-  balloonText.classList.remove('typing');
-  balloonText.textContent = value;
-  balloonText.scrollTop = balloonText.scrollHeight;
   setFace(face);
-  balloon.classList.remove('hidden');
-  balloon.classList.add('show');
-  requestAnimationFrame(applyBalloonPosition);
   document.body.classList.add('speaking');
-  schedulePointerRegionUpdate();
+  window.desktopPet.balloon.show({ typing: false, text: value, face });
   const duration = visibleMs || bubbleHideDelay(value);
-  balloonTimer = setTimeout(hideBalloon, duration);
+  balloonTimer = setTimeout(() => window.desktopPet.balloon.hide(), duration);
 }
 
 function showTypingBalloon() {
@@ -186,49 +143,31 @@ function showTypingBalloon() {
   clearTimeout(balloonHideTimer);
   balloonTimer = null;
   balloonHideTimer = null;
-  balloonText.textContent = '';
-  balloonText.classList.add('typing');
-  balloon.classList.remove('hidden');
-  balloon.classList.add('show');
-  requestAnimationFrame(applyBalloonPosition);
   document.body.classList.add('speaking');
-  schedulePointerRegionUpdate();
+  window.desktopPet.balloon.show({ typing: true, text: '' });
 }
 
 function updateStreamBalloon(full) {
   clearTimeout(balloonTimer);
   clearTimeout(balloonHideTimer);
   clearTimeout(typingTimer);
-  balloonText.classList.remove('typing');
-  balloonText.textContent = String(full || '');
-  balloonText.scrollTop = balloonText.scrollHeight;
-  balloon.classList.remove('hidden');
-  balloon.classList.add('show');
-  requestAnimationFrame(applyBalloonPosition);
   document.body.classList.add('speaking');
-  schedulePointerRegionUpdate();
+  window.desktopPet.balloon.update(String(full || ''));
 }
 
 function finishStreamBalloon(full) {
-  const value = String(full || balloonText.textContent || '');
-  balloonText.classList.remove('typing');
-  balloonText.textContent = value;
-  balloonText.scrollTop = balloonText.scrollHeight;
+  const value = String(full || '');
   setFace(detectFace(value));
+  document.body.classList.add('speaking');
+  window.desktopPet.balloon.finish({ text: value, face: detectFace(value) });
   clearTimeout(balloonTimer);
-  balloonTimer = setTimeout(hideBalloon, bubbleHideDelay(value));
+  balloonTimer = setTimeout(() => window.desktopPet.balloon.hide(), bubbleHideDelay(value));
 }
 
 function hideBalloon() {
   clearBubbleTimers();
-  balloon.classList.remove('show');
   document.body.classList.remove('speaking');
-  balloonHideTimer = setTimeout(() => {
-    balloon.classList.add('hidden');
-    resetBalloonPosition();
-    schedulePointerRegionUpdate();
-  }, 300);
-  schedulePointerRegionUpdate();
+  window.desktopPet.balloon.hide();
 }
 
 function beginFormalChat(turnId) {
@@ -277,20 +216,6 @@ window.addEventListener('mousemove', (event) => {
   updatePointerRegion();
   // 拖拽过程中暂停视线跟随：否则头部/眼球/身体会拼命追光标，造成抖动
   if (!dragging) live2dAvatar?.focus(event.clientX, event.clientY);
-  if (balloonDragging && balloonDragLast) {
-    const dx = event.clientX - balloonDragLast.x;
-    const dy = event.clientY - balloonDragLast.y;
-    if (dx || dy) {
-      const rect = balloon.getBoundingClientRect();
-      balloonPosition = {
-        x: (rect.left + rect.width / 2 + dx) / window.innerWidth,
-        y: (rect.top + dy) / window.innerHeight,
-      };
-      applyBalloonPosition();
-      balloonDragLast = { x: event.clientX, y: event.clientY };
-    }
-    return;
-  }
   if (!dragging || !lastMouse || !dragOffset) return;
   // 无实际位移的 mousemove（如按下时的微小抖动）不算拖拽，避免误触点击判定
   const dx = event.clientX - lastMouse.x;
@@ -309,25 +234,12 @@ window.addEventListener('mousemove', (event) => {
 });
 
 window.addEventListener('mouseup', () => {
-  if (balloonDragging) saveBalloonPosition();
-  balloonDragging = false;
-  balloonDragLast = null;
   dragging = false;
   lastMouse = null;
   dragOffset = null;
   if (dragged) window.desktopPet.setDragState(false);
   schedulePointerRegionUpdate();
 });
-
-balloon.addEventListener('mousedown', (event) => {
-  if (event.button !== 0 || event.target.closest('#balloon-text')) return;
-  balloonDragging = true;
-  balloonDragLast = { x: event.clientX, y: event.clientY };
-  event.preventDefault();
-  event.stopPropagation();
-});
-
-window.addEventListener('resize', () => requestAnimationFrame(applyBalloonPosition));
 
 character.addEventListener('click', (event) => {
   if (!pointerHit || dragged || formalChatActive || greetBusy || Date.now() - lastGreetAt < GREET_COOLDOWN_MS) return;

@@ -88,14 +88,14 @@ test('Given the chat window When its markup is inspected Then compact and expand
 });
 
 test('Given a long reply When the balloon is inspected Then its text area can receive scroll input', () => {
-  const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+  const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.css'), 'utf8');
 
   assert.match(style, /#balloon\s*\{[\s\S]*?pointer-events:\s*auto/);
   assert.match(style, /#balloon-text\s*\{[\s\S]*?overflow-y:\s*auto/);
 });
 
 test('Given the pet speaks When the balloon is positioned Then it is centered above the character head', () => {
-  const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+  const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.css'), 'utf8');
 
   assert.match(style, /#balloon\s*\{[\s\S]*?top:\s*4px;[\s\S]*?left:\s*50%/);
   assert.match(style, /#balloon\.show\s*\{[\s\S]*?translate\(-50%,\s*0\)/);
@@ -163,14 +163,14 @@ test('Given a context menu opens When its content loads Then it is positioned be
 
 test('Given a repositioned chat or balloon When it closes or hides Then its relative position is persisted', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
-  const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+  const balloon = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.js'), 'utf8');
 
   assert.match(main, /windowLayout\.setLayout\([\s\S]*?chatOffset/);
   assert.match(main, /windowLayout\.getLayout\(\)\.chatOffset/);
-  assert.match(renderer, /BUBBLE_POSITION_STORAGE_KEY/);
-  assert.match(renderer, /window\.localStorage\.setItem/);
-  assert.match(renderer, /balloon\.addEventListener\('mousedown'/);
-  assert.match(renderer, /if \(balloonDragging\) saveBalloonPosition\(\)/);
+  assert.match(balloon, /BUBBLE_POSITION_STORAGE_KEY/);
+  assert.match(balloon, /window\.localStorage\.setItem/);
+  assert.match(balloon, /balloon\.addEventListener\('mousedown'/);
+  assert.match(balloon, /if \(balloonDragging\) saveBalloonPosition\(\)/);
 });
 
 test('Given transparent space around the character When pointer hit testing runs Then the pet window becomes mouse-transparent', () => {

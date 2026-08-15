@@ -26,12 +26,22 @@ let chatInputWindow = null;
 let chatInputExpanded = false;
 let chatInputOpen = false;
 let chatQueue = Promise.resolve();
+let balloonWindow = null;
+let balloonVisible = false;
+let balloonFreed = false; // 用户是否已把气泡拖离头顶（true=停在自己拖到的位置）
+let balloonFreedPos = null;
+let balloonHideTimer = null;
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
 const MENU_WINDOW_SIZE = { width: 196, height: 244 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
+
+// 独立气泡窗口（可从头顶拖到桌面任意位置）
+const BALLOON_WINDOW_SIZE = { width: 320, height: 200 };
+const BALLOON_HEAD_ANCHOR_RATIO = 0.24; // 头顶锚点：主窗顶部向下的比例
+const BALLOON_WORK_AREA_MARGIN = 8;
 
 function guarded(channel, handler) {
   return (_event, ...args) => {
@@ -120,6 +130,81 @@ function createMainWindow() {
     mainWindow.webContents.on('console-message', (_event, _level, message) => console.log('[renderer]', message));
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+}
+
+// ---------------- 独立气泡窗口 ----------------
+
+function createBalloonWindow() {
+  if (balloonWindow && !balloonWindow.isDestroyed()) return;
+  balloonWindow = new BrowserWindow({
+    width: BALLOON_WINDOW_SIZE.width,
+    height: BALLOON_WINDOW_SIZE.height,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: true,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    webPreferences: windowOptions(),
+  });
+  balloonWindow.setAlwaysOnTop(true, 'screen-saver');
+  if (typeof balloonWindow.setVisibleOnAllWorkspaces === 'function') {
+    balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
+  balloonWindow.on('closed', () => { balloonWindow = null; });
+}
+
+// 气泡锚点：默认贴着角色头顶（主窗水平居中、顶部向下取一个比例）
+function balloonAnchorPoint() {
+  const mainBounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
+  const cursor = screen.getCursorScreenPoint();
+  return mainBounds
+    ? { x: mainBounds.x + mainBounds.width / 2, y: mainBounds.y + mainBounds.height * BALLOON_HEAD_ANCHOR_RATIO }
+    : { x: cursor.x, y: cursor.y };
+}
+
+function clampToWorkArea(p, width, height) {
+  const { workArea } = screen.getDisplayNearestPoint(p);
+  return {
+    x: Math.max(workArea.x + BALLOON_WORK_AREA_MARGIN, Math.min(p.x, workArea.x + workArea.width - width - BALLOON_WORK_AREA_MARGIN)),
+    y: Math.max(workArea.y + BALLOON_WORK_AREA_MARGIN, Math.min(p.y, workArea.y + workArea.height - height - BALLOON_WORK_AREA_MARGIN)),
+  };
+}
+
+function positionBalloon() {
+  if (!balloonWindow || balloonWindow.isDestroyed() || !balloonVisible) return;
+  const [width, height] = balloonWindow.getSize();
+  const anchor = balloonAnchorPoint();
+  const center = (balloonFreed && balloonFreedPos)
+    ? { x: balloonFreedPos.x + width / 2, y: balloonFreedPos.y + height / 2 }
+    : anchor;
+  const pos = clampToWorkArea({ x: center.x - width / 2, y: center.y - height / 2 }, width, height);
+  balloonWindow.setPosition(pos.x, pos.y);
+}
+
+function balloonRender(payload) {
+  createBalloonWindow();
+  if (!balloonWindow || balloonWindow.isDestroyed()) return;
+  clearTimeout(balloonHideTimer);
+  balloonVisible = true;
+  positionBalloon();
+  balloonWindow.webContents.send('balloon:render', payload);
+  balloonWindow.show();
+  balloonWindow.moveTop();
+}
+
+function balloonHide() {
+  if (!balloonWindow || balloonWindow.isDestroyed()) return;
+  balloonVisible = false;
+  clearTimeout(balloonHideTimer);
+  balloonWindow.webContents.send('balloon:render', { action: 'hide' });
+  balloonHideTimer = setTimeout(() => {
+    if (balloonWindow && !balloonWindow.isDestroyed()) balloonWindow.hide();
+  }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
 }
 
 function closeMenuWindow() {
@@ -475,6 +560,49 @@ ipcMain.handle('chat:resizeInput', (event, requestedHeight) => {
 });
 ipcMain.handle('chat:submit', async (_event, rawInput) => handleUserUtterance(rawInput));
 
+// 独立气泡窗口指令（宠物窗发显示/隐藏；气泡窗发拖拽/还原）
+ipcMain.handle('balloon:show', (_event, payload) => {
+  balloonRender(Object.assign({ action: 'show' }, payload && typeof payload === 'object' ? payload : {}));
+  return true;
+});
+ipcMain.handle('balloon:update', (_event, full) => {
+  if (balloonWindow && !balloonWindow.isDestroyed()) balloonWindow.webContents.send('balloon:render', { action: 'update', full: String(full || '') });
+  return true;
+});
+ipcMain.handle('balloon:finish', (_event, payload) => {
+  if (balloonWindow && !balloonWindow.isDestroyed()) {
+    const p = payload && typeof payload === 'object' ? payload : {};
+    balloonWindow.webContents.send('balloon:render', { action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
+  }
+  return true;
+});
+ipcMain.handle('balloon:hide', () => { balloonHide(); return true; });
+
+ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
+  if (!balloonWindow || balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const [width, height] = balloonWindow.getSize();
+  const pos = clampToWorkArea({ x, y }, width, height);
+  balloonFreed = true;
+  balloonFreedPos = { x: pos.x, y: pos.y };
+  balloonWindow.setPosition(pos.x, pos.y);
+  return true;
+});
+ipcMain.handle('balloonWindow:release', () => { balloonFreed = true; return true; });
+ipcMain.handle('balloonWindow:restore', (_event, x, y) => {
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    balloonFreed = true;
+    balloonFreedPos = { x: Math.round(x), y: Math.round(y) };
+    if (balloonVisible) positionBalloon();
+  }
+  return true;
+});
+ipcMain.handle('balloonWindow:reanchor', () => {
+  balloonFreed = false;
+  balloonFreedPos = null;
+  if (balloonVisible) positionBalloon();
+  return true;
+});
+
 ipcMain.on('window:moveBy', (event, dx, dy) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
@@ -650,6 +778,11 @@ app.whenReady().then(() => {
   // 启动语音侧车
   voiceBridge.start();
   createMainWindow();
+  if (mainWindow) {
+    // 气泡默认贴着角色头：宠物窗移动/缩放时，未拖离的气泡跟随
+    mainWindow.on('moved', () => { if (!balloonFreed) positionBalloon(); });
+    mainWindow.on('resize', () => { if (!balloonFreed) positionBalloon(); });
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });

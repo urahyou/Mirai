@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>气泡</title>
+  <link rel="stylesheet" href="balloon.css" />
+</head>
+<body>
+  <!-- 独立气泡窗口：只用显示气泡，可拖到桌面任意位置，不再被宠物窗口框住 -->
+  <div id="balloon" class="hidden">
+    <div id="balloon-text"></div>
+    <div class="balloon-tail"></div>
+  </div>
+  <script src="balloon.js"></script>
+</body>
+</html>

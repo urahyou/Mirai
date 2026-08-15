@@ -81,6 +81,21 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     deltaListener = (_event, data) => callback(data);
     ipcRenderer.on('chat:delta', deltaListener);
   },
+  // 气泡（独立窗口）：宠物窗发指令 → 主进程转发到气泡窗口渲染
+  balloon: Object.freeze({
+    show: (payload) => ipcRenderer.invoke('balloon:show', payload),
+    update: (full) => ipcRenderer.invoke('balloon:update', full),
+    finish: (payload) => ipcRenderer.invoke('balloon:finish', payload),
+    hide: () => ipcRenderer.invoke('balloon:hide'),
+  }),
+  // 气泡窗口自身：接收渲染命令 + 拖拽控制
+  balloonWindow: Object.freeze({
+    onRender: (callback) => ipcRenderer.on('balloon:render', (_event, data) => callback(data)),
+    dragMove: (x, y) => ipcRenderer.invoke('balloonWindow:dragMove', x, y),
+    release: () => ipcRenderer.invoke('balloonWindow:release'),
+    restore: (x, y) => ipcRenderer.invoke('balloonWindow:restore', x, y),
+    reanchor: () => ipcRenderer.invoke('balloonWindow:reanchor'),
+  }),
   onChatHistory: (callback) => {
     if (historyListener) ipcRenderer.removeListener('chat:history', historyListener);
     historyListener = (_event, data) => callback(data);

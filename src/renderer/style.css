@@ -11,36 +11,8 @@ html, body {
 
 #pet { position: relative; width: 100%; height: 100%; }
 
-#balloon {
-  position: absolute;
-  z-index: 4;
-  top: 4px;
-  left: 50%;
-  width: min(300px, calc(100% - 20px));
-  max-height: 156px;
-  padding: 10px 13px;
-  overflow: visible;
-  color: #3d3042;
-  background: rgba(255, 255, 255, .96);
-  border: 1px solid rgba(236, 160, 195, .8);
-  border-radius: 8px;
-  box-shadow: 0 3px 13px rgba(81, 51, 70, .2);
-  font-size: 14px;
-  line-height: 1.55;
-  opacity: 0;
-  transform: translate(-50%, -7px);
-  transition: opacity .25s ease, transform .25s ease;
-  pointer-events: auto;
-}
-
-#balloon.show { opacity: 1; transform: translate(-50%, 0); }
+/* 气泡实际渲染在独立窗口 balloon.css；这里仅保留隐藏占位（穿透命中契约用） */
 #balloon.hidden { display: none; }
-#balloon-text { max-height: 126px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; scrollbar-color: #efb1ca transparent; }
-#balloon-text::-webkit-scrollbar { width: 5px; }
-#balloon-text::-webkit-scrollbar-thumb { border-radius: 4px; background: #efb1ca; }
-#balloon-text.typing { min-height: 20px; }
-#balloon-text.typing::after { content: '···'; display: inline-block; color: #d875a0; letter-spacing: 3px; animation: typing 1s ease-in-out infinite; }
-.balloon-tail { position: absolute; left: 50%; bottom: -9px; width: 16px; height: 16px; background: #fff; border-right: 1px solid rgba(236, 160, 195, .8); border-bottom: 1px solid rgba(236, 160, 195, .8); transform: translateX(-50%) rotate(45deg); pointer-events: none; }
 
 #character { position: absolute; inset: 26px 0 0; z-index: 2; cursor: default; }
 #character[data-pointer-hit="true"] { cursor: grab; }
