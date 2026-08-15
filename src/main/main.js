@@ -5,6 +5,7 @@ const generic = require('../engine/generic');
 const rules = require('../engine/rules');
 const personalityRuntime = require('../services/personality-runtime');
 const displaySettings = require('../services/display-settings');
+const sidecarEnv = require('../services/sidecar-env');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const timemMemory = require('../services/timem-memory');
@@ -20,6 +21,7 @@ let menuPendingPosition = null;
 let personalityPanelWindow = null;
 let providerPanelWindow = null;
 let displayPanelWindow = null;
+let voiceSettingsPanelWindow = null;
 let chatInputWindow = null;
 let chatInputExpanded = false;
 let chatInputOpen = false;
@@ -221,6 +223,26 @@ function openDisplayPanel() {
   displayPanelWindow.on('closed', () => { displayPanelWindow = null; });
 }
 
+function closeVoiceSettingsPanel() {
+  if (voiceSettingsPanelWindow && !voiceSettingsPanelWindow.isDestroyed()) voiceSettingsPanelWindow.destroy();
+  voiceSettingsPanelWindow = null;
+}
+
+function openVoiceSettingsPanel() {
+  closeVoiceSettingsPanel();
+  voiceSettingsPanelWindow = new BrowserWindow({
+    width: 480,
+    height: 360,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: windowOptions(),
+  });
+  voiceSettingsPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  voiceSettingsPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'voice-settings.html'));
+  voiceSettingsPanelWindow.on('closed', () => { voiceSettingsPanelWindow = null; });
+}
+
 function closeChatInputWindow() {
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
     saveChatInputPosition(chatInputWindow);
@@ -395,6 +417,21 @@ ipcMain.handle('display:preview', guarded('display:preview', (patch) => {
 ipcMain.handle('display:openPanel', () => { openDisplayPanel(); return true; });
 ipcMain.handle('display:closePanel', () => { closeDisplayPanel(); return true; });
 
+// 语音设置面板：读写 .env 的 SIDECAR_TTS_*（单一事实源 = .env，与侧车读到的一致）
+ipcMain.handle('voiceSettings:get', () => sidecarEnv.read());
+ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
+  const p = { ...patch };
+  // 朗读语言改变时，合成语言自动跟随（GPT-SoVITS 按该语言发音）；为空（跟随回复）默认中文。
+  if (typeof p.SIDECAR_TTS_SPEAK_LANG === 'string') {
+    p.SIDECAR_TTS_TEXT_LANGUAGE = p.SIDECAR_TTS_SPEAK_LANG || 'zh';
+  }
+  const next = sidecarEnv.write(p);
+  if (voiceBridge.getStatus().running) voiceBridge.restart(); // 让新配置立即生效
+  return next;
+}));
+ipcMain.handle('voiceSettings:openPanel', () => { openVoiceSettingsPanel(); return true; });
+ipcMain.handle('voiceSettings:closePanel', () => { closeVoiceSettingsPanel(); return true; });
+
 ipcMain.handle('provider:getConfig', () => generic.getProviderConfig());
 ipcMain.handle('provider:saveConfig', (_event, config) => {
   try {
@@ -506,9 +543,19 @@ async function handleUserUtterance(rawInput) {
 }
 
 // 让小未来开口（把文字交给侧车合成并播放）
+// 若 .env 设了 SIDECAR_TTS_SPEAK_LANG（如 ja=日语），则先把“中文回复”翻成该语言再发音；
+// 屏幕上显示的气泡文字（chatHistory/chat-input）保持中文不变 —— 实现“中文文字 + 外语朗读”。
 function speak(text) {
   const t = String(text || '').trim();
   if (!t) return;
+  const speakLang = String(voiceBridge.getSidecarEnv().SIDECAR_TTS_SPEAK_LANG || '').trim();
+  if (speakLang) {
+    // 先翻译再发音，失败则回退原话，避免没声
+    generic.translate(t, speakLang)
+      .then((jp) => voiceBridge.speak((jp && jp.trim()) ? jp : t))
+      .catch(() => voiceBridge.speak(t));
+    return;
+  }
   voiceBridge.speak(t);
 }
 

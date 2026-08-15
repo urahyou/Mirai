@@ -22,7 +22,18 @@ Mirai 语音侧车 —— 语音输入半程：
   SIDECAR_PORT      默认 8765
   SIDECAR_MODEL_DIR / SIDECAR_ASR_MODEL / SIDECAR_TOKENS   ASR 模型路径
   SIDECAR_ASR_LANGUAGE   默认 zh（简体中文）
-  SIDECAR_TTS_VOICE     edge_tts 音色，默认 zh-CN-XiaoxiaoNeural（中文女声小雪）
+  TTS 引擎（SIDECAR_TTS_ENGINE）：
+    edge        默认。edge_tts 云端合成（需联网），音色由 SIDECAR_TTS_VOICE 指定。
+    gpt-sovits  本地音色克隆。请求本机 GPT-SoVITS API（默认 http://127.0.0.1:9880/），
+                用参考音频克隆角色音色，完全离线（输出 wav）。
+  SIDECAR_TTS_VOICE        edge 用：edge_tts 音色，默认 zh-CN-XiaoxiaoNeural（中文女声小雪）
+  SIDECAR_TTS_URL          gpt-sovits 用：GPT-SoVITS API 地址，默认 http://127.0.0.1:9880/
+  SIDECAR_TTS_REF_WAV      gpt-sovits 用：参考音频绝对路径（服务所在机上的路径）
+  SIDECAR_TTS_PROMPT_TEXT  gpt-sovits 用：参考音频对应的台词（日文参考通常必填）
+  SIDECAR_TTS_PROMPT_LANG  gpt-sovits 用：参考台词语言，默认 zh（可选 ja/en/…）
+  SIDECAR_TTS_TEXT_LANGUAGE gpt-sovits 用：合成语言，默认 zh（可选 ja/en/auto…）
+  SIDECAR_TTS_TEMPERATURE  gpt-sovits 用：默认 0.9
+  SIDECAR_TTS_SPEED_FACTOR gpt-sovits 用：语速 0.75–1.25，默认 1.0（省略不传）
 """
 
 import asyncio
@@ -63,6 +74,17 @@ ASR_LANGUAGE = os.environ.get("SIDECAR_ASR_LANGUAGE", "zh")
 ASR_NUM_THREADS = int(os.environ.get("SIDECAR_ASR_THREADS", "4"))
 # TTS 音色（edge_tts），默认中文女声小雪
 TTS_VOICE = os.environ.get("SIDECAR_TTS_VOICE", "zh-CN-XiaoxiaoNeural")
+
+# TTS 引擎开关：edge（默认，edge_tts 云合成）| gpt-sovits（本地音色克隆，GPT-SoVITS API）
+TTS_ENGINE = os.environ.get("SIDECAR_TTS_ENGINE", "edge").strip().lower()
+# GPT-SoVITS 参数（仅 TTS_ENGINE=gpt-sovits 时使用）
+TTS_URL = os.environ.get("SIDECAR_TTS_URL", "http://127.0.0.1:9880/").strip()
+TTS_REF_WAV = os.environ.get("SIDECAR_TTS_REF_WAV", "").strip()
+TTS_PROMPT_TEXT = os.environ.get("SIDECAR_TTS_PROMPT_TEXT", "").strip()
+TTS_PROMPT_LANG = os.environ.get("SIDECAR_TTS_PROMPT_LANG", "zh").strip()
+TTS_TEXT_LANGUAGE = os.environ.get("SIDECAR_TTS_TEXT_LANGUAGE", "zh").strip()
+TTS_TEMPERATURE = float(os.environ.get("SIDECAR_TTS_TEMPERATURE", "0.9"))
+TTS_SPEED_FACTOR = os.environ.get("SIDECAR_TTS_SPEED_FACTOR", "").strip()
 
 _log = lambda *a: print("[sidecar]", *a, flush=True)  # noqa: E731
 
@@ -154,40 +176,80 @@ async def handle_connection(websocket):
                 snapshot = bytes(active)
                 spawn(decode_partial(snapshot, gen))
 
+    def _synth_edge(text) -> bytes:
+        """edge_tts 云端合成 → MP3。"""
+        import edge_tts
+
+        buf = bytearray()
+
+        async def _run():
+            com = edge_tts.Communicate(text, TTS_VOICE)
+            async for chunk in com.stream():
+                if chunk["type"] == "audio":
+                    buf.extend(chunk["data"])
+
+        asyncio.run(_run())
+        return bytes(buf)
+
+    def _synth_gpt_sovits(text) -> bytes:
+        """GPT-SoVITS 本地音色克隆 → WAV。请求 JSON 到根路径，非流式取回单个 wav。"""
+        import urllib.request
+
+        if not TTS_REF_WAV:
+            _log("gpt-sovits: SIDECAR_TTS_REF_WAV 未设置，无法合成")
+            return b""
+        payload = {
+            "ref_audio_path": TTS_REF_WAV,   # api_v2 字段（旧 api.py 用 refer_wav_path）
+            "text": text,
+            "text_lang": TTS_TEXT_LANGUAGE,
+            "prompt_lang": TTS_PROMPT_LANG,
+            "media_type": "wav",
+            "streaming_mode": False,
+            "temperature": TTS_TEMPERATURE,
+            "top_k": 15,
+            "top_p": 1,
+            "text_split_method": "cut5",
+            "batch_size": 1,
+        }
+        if TTS_PROMPT_TEXT:
+            payload["prompt_text"] = TTS_PROMPT_TEXT
+        if TTS_SPEED_FACTOR:
+            try:
+                payload["speed_factor"] = max(0.75, min(1.25, float(TTS_SPEED_FACTOR)))
+            except ValueError:
+                pass
+        req = urllib.request.Request(
+            TTS_URL.rstrip("/") + "/tts",  # api_v2 端点是 /tts（非根路径）
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+
     async def handle_speak(text, req_id):
-        """收到 {type:'speak'} → 用 edge_tts 合成中文语音，回传 base64 的 MP3。"""
+        """收到 {type:'speak'} → 按 TTS_ENGINE 合成语音，回传 base64 audio。"""
         text = (text or "").strip()
         if not text:
             return
 
-        def _synth() -> bytes:
-            import edge_tts
-
-            buf = bytearray()
-
-            async def _run():
-                com = edge_tts.Communicate(text, TTS_VOICE)
-                async for chunk in com.stream():
-                    if chunk["type"] == "audio":
-                        buf.extend(chunk["data"])
-
-            asyncio.run(_run())
-            return bytes(buf)
+        synth = _synth_gpt_sovits if TTS_ENGINE == "gpt-sovits" else _synth_edge
+        fmt = "wav" if TTS_ENGINE == "gpt-sovits" else "mp3"
 
         try:
-            mp3 = await loop.run_in_executor(None, _synth)
+            audio = await loop.run_in_executor(None, synth, text)
         except Exception as exc:  # noqa: BLE001
             _log("tts failed:", repr(exc))
             return
-        if not mp3:
+        if not audio:
             _log("tts produced empty audio")
             return
         await send_json(
             {
                 "type": "audio",
                 "id": req_id,
-                "format": "mp3",
-                "data": base64.b64encode(mp3).decode("ascii"),
+                "format": fmt,
+                "data": base64.b64encode(audio).decode("ascii"),
             }
         )
 

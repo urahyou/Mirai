@@ -345,6 +345,43 @@ async function consumeStream(res, onDelta) {
   return full.trim();
 }
 
+// 把一段文字翻成目标语言（用于“中文回复、外语朗读”）：复用当前活跃 provider，非流式、不入历史。
+// targetLang: 'ja' → 日语, 'en' → 英语 … 失败返回 null（上层可选择性兜底）。
+async function translate(text, targetLang = 'ja') {
+  loadProviders();
+  const provider = activeProviderName;
+  const providerConf = providerCache.providers[provider];
+  if (!providerConf) return null;
+  const langName = ({ ja: '日语', en: '英语', ko: '韩语', zh: '中文' })[targetLang] || targetLang;
+  const base = providerConf.baseUrl.replace(/\/$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  Object.assign(headers, authorizationHeaders(providerConf));
+  const sys = `你是专业的${langName}口语翻译。把用户发来的中文，自然、口语化地翻译成${langName}对话句子，保持温柔女性的语气。只输出译文本身，不要加引号、注释、解释或任何前后缀。`;
+  try {
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: providerConf.defaultModel,
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: String(text) },
+        ],
+        temperature: 0.4,
+        top_p: 0.9,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const out = (data.choices?.[0]?.message?.content || '').trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   loadProviders,
   getProviderConfig,
@@ -357,5 +394,6 @@ module.exports = {
   checkProvider,
   generateReply,
   generatePetLine,
+  translate,
   resetConversationHistory,
 };

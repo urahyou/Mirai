@@ -37,6 +37,18 @@ function validateDisplaySettingsPatch(args) {
   return args;
 }
 
+function validateVoiceSettingsPatch(args) {
+  if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
+  const patch = {};
+  for (const [key, value] of Object.entries(args[0])) {
+    if (!/^SIDECAR_[A-Z0-9_]+$/.test(key)) continue;
+    const v = value == null ? '' : String(value).trim();
+    if (v.length > 500) return null;
+    patch[key] = v;
+  }
+  return Object.keys(patch).length ? [patch] : null;
+}
+
 function validateChatExpanded(args) {
   return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
 }
@@ -45,11 +57,13 @@ function validatePayload(channel, args) {
   const values = Array.isArray(args) ? args : [];
   const data = channel === 'personality:set'
     ? validatePersonalityPatch(values)
-    : channel === 'display:set' || channel === 'display:preview'
-      ? validateDisplaySettingsPatch(values)
-      : channel === 'chat:setExpanded'
-        ? validateChatExpanded(values)
-      : null;
+    : channel === 'voiceSettings:set'
+      ? validateVoiceSettingsPatch(values)
+      : channel === 'display:set' || channel === 'display:preview'
+        ? validateDisplaySettingsPatch(values)
+        : channel === 'chat:setExpanded'
+          ? validateChatExpanded(values)
+          : null;
   return data ? { ok: true, data } : IPC_ERROR;
 }
 

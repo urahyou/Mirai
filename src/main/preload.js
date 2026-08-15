@@ -107,6 +107,12 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   }),
   openDisplayPanel: () => ipcRenderer.invoke('display:openPanel'),
   closeDisplayPanel: () => ipcRenderer.invoke('display:closePanel'),
+  voiceSettings: Object.freeze({
+    get: () => ipcRenderer.invoke('voiceSettings:get'),
+    set: (patch) => ipcRenderer.invoke('voiceSettings:set', patch),
+  }),
+  openVoiceSettingsPanel: () => ipcRenderer.invoke('voiceSettings:openPanel'),
+  closeVoiceSettingsPanel: () => ipcRenderer.invoke('voiceSettings:closePanel'),
   providers: Object.freeze({
     get: () => ipcRenderer.invoke('provider:getConfig'),
     save: (config) => ipcRenderer.invoke('provider:saveConfig', config),

@@ -34,6 +34,22 @@ test('Given display settings When validation receives a bounded patch Then it ac
   });
 });
 
+test('Given a voice settings patch When validation runs Then it accepts SIDECAR keys and rejects others', () => {
+  assert.deepEqual(validatePayload('voiceSettings:set', [{ SIDECAR_TTS_SPEAK_LANG: 'ja', SIDECAR_TTS_ENGINE: 'edge' }]), {
+    ok: true,
+    data: [{ SIDECAR_TTS_SPEAK_LANG: 'ja', SIDECAR_TTS_ENGINE: 'edge' }],
+  });
+  // 空串合法（选择“跟随回复”→ 中文发音）
+  assert.deepEqual(validatePayload('voiceSettings:set', [{ SIDECAR_TTS_SPEAK_LANG: '' }]), {
+    ok: true,
+    data: [{ SIDECAR_TTS_SPEAK_LANG: '' }],
+  });
+  // 非法键 / 非对象 / 长度超限一律拒绝
+  assertRejected('voiceSettings:set', [{ TEMP: 'x' }]);
+  assertRejected('voiceSettings:set', [{ SIDECAR_TTS_ENGINE: 'x'.repeat(501) }]);
+  assertRejected('voiceSettings:set', ['not-an-object']);
+});
+
 test('Given the preload bridge When its public surface is inspected Then it exposes no tool-execution or Node capability', () => {
   const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'preload.js'), 'utf8');
 
