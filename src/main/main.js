@@ -10,7 +10,7 @@ const windowLayout = require('../services/window-layout');
 const timemMemory = require('../services/timem-memory');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 
-const WINDOW = { width: 320, height: 360 };
+const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
 
 let mainWindow = null;

@@ -70,9 +70,9 @@
       const scale = Math.min((width * 0.94) / this.baseSize.width, (height * 0.94) / this.baseSize.height) * MODEL_SCALE;
       this.model.scale.set(scale, scale);
       this.model.x = width / 2;
-      // Hiyori's model origin sits near the torso rather than the visual center.
-      // Bottom-aligning the anchor keeps the face visible in the compact pet window.
-      this.model.y = height * 0.9;
+      this.model.y = height * 0.57;
+      // 0.57 是经验值：头部须低于顶部对话气泡区（约窗口上方 160px）
+      // 且腿部不得超出窗口底边；配合 WINDOW.height=600 时两者兼得。
     }
 
     toStagePoint(clientX, clientY) {
