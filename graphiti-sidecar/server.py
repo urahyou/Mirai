@@ -189,7 +189,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except BrokenPipeError:
+            # The Electron client may time out while a long LLM extraction is running.
+            pass
 
     def do_GET(self):
         if self.path == '/health':
@@ -217,7 +221,10 @@ class Handler(BaseHTTPRequestHandler):
                 _init_state = 'error'
                 _init_error = str(exc)[:500]
             print(f'[Graphiti sidecar] request failed: {exc}')
-            self.send_json(503, {'ok': False, 'error': str(exc)[:500]})
+            try:
+                self.send_json(503, {'ok': False, 'error': str(exc)[:500]})
+            except BrokenPipeError:
+                pass
 
 
 if __name__ == '__main__':

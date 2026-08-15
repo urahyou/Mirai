@@ -25,6 +25,13 @@ const DEFAULTS = Object.freeze({
 const PANEL_KEYS = Object.keys(DEFAULTS);
 const REQUEST_TIMEOUT_MS = 8000;
 
+function requestTimeoutMs(pathname) {
+  const values = getSettings();
+  if (pathname === '/episode') return (Number(values.GRAPHITI_EPISODE_TIMEOUT) || 120) * 1000 + 5000;
+  if (pathname === '/search') return (Number(values.GRAPHITI_SEARCH_TIMEOUT) || 30) * 1000 + 5000;
+  return REQUEST_TIMEOUT_MS;
+}
+
 function loadDotEnv() {
   try {
     const values = {};
@@ -96,7 +103,7 @@ async function request(pathname, options = {}) {
   const response = await fetch(`${getConfig().baseUrl}${pathname}`, {
     ...options,
     headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(requestTimeoutMs(pathname)),
   });
   if (!response.ok) throw new Error(`Graphiti sidecar HTTP ${response.status}`);
   return response.json();
