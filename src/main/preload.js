@@ -3,6 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 let deltaListener = null;
 let historyListener = null;
 let displayListener = null;
+let asrListener = null;
+let vadListener = null;
+let asrPartialListener = null;
+let asrFinalListener = null;
+let listeningListener = null;
+let audioListener = null;
+let speakInterruptListener = null;
+let statusListener = null;
 
 contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   greet: () => ipcRenderer.invoke('character:greet'),
@@ -17,6 +25,54 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   getChatHistory: () => ipcRenderer.invoke('chat:getHistory'),
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
+  }),
+  voice: Object.freeze({
+    start: () => ipcRenderer.invoke('voice:start'),
+    stop: () => ipcRenderer.invoke('voice:stop'),
+    getStatus: () => ipcRenderer.invoke('voice:getStatus'),
+    sendPcm: (buffer) => ipcRenderer.send('voice:pcm', buffer),
+    setListening: (on) => ipcRenderer.invoke('voice:setListening', Boolean(on)),
+    onAsr: (callback) => {
+      if (asrListener) ipcRenderer.removeListener('voice:asr', asrListener);
+      asrListener = (_event, text) => callback(text);
+      ipcRenderer.on('voice:asr', asrListener);
+    },
+    onVad: (callback) => {
+      if (vadListener) ipcRenderer.removeListener('voice:vad', vadListener);
+      vadListener = (_event, state) => callback(state);
+      ipcRenderer.on('voice:vad', vadListener);
+    },
+    onAsrPartial: (callback) => {
+      if (asrPartialListener) ipcRenderer.removeListener('voice:asr-partial', asrPartialListener);
+      asrPartialListener = (_event, text) => callback(text);
+      ipcRenderer.on('voice:asr-partial', asrPartialListener);
+    },
+    onAsrFinal: (callback) => {
+      if (asrFinalListener) ipcRenderer.removeListener('voice:asr-final', asrFinalListener);
+      asrFinalListener = (_event, text) => callback(text);
+      ipcRenderer.on('voice:asr-final', asrFinalListener);
+    },
+    onListening: (callback) => {
+      if (listeningListener) ipcRenderer.removeListener('voice:listening-changed', listeningListener);
+      listeningListener = (_event, on) => callback(on);
+      ipcRenderer.on('voice:listening-changed', listeningListener);
+    },
+    speak: (text) => ipcRenderer.invoke('voice:speak', text),
+    onAudio: (callback) => {
+      if (audioListener) ipcRenderer.removeListener('voice:audio', audioListener);
+      audioListener = (_event, audio) => callback(audio);
+      ipcRenderer.on('voice:audio', audioListener);
+    },
+    onSpeakInterrupt: (callback) => {
+      if (speakInterruptListener) ipcRenderer.removeListener('voice:speak-interrupt', speakInterruptListener);
+      speakInterruptListener = () => callback();
+      ipcRenderer.on('voice:speak-interrupt', speakInterruptListener);
+    },
+    onStatus: (callback) => {
+      if (statusListener) ipcRenderer.removeListener('voice:status', statusListener);
+      statusListener = (_event, s) => callback(s);
+      ipcRenderer.on('voice:status', statusListener);
+    },
   }),
   setChatExpanded: (expanded) => ipcRenderer.invoke('chat:setExpanded', expanded),
   chatSubmit: (input) => ipcRenderer.invoke('chat:submit', input),

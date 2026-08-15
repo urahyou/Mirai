@@ -355,5 +355,159 @@ window.desktopPet.display.onChanged(applyDisplaySettings);
 
 window.desktopPet.display.get().then(applyDisplaySettings).catch(() => {});
 
+// ---------------- 语音输入（侧车） ----------------
+let voiceStream = null;
+let voiceContext = null;
+let voiceProcessor = null;
+let voiceListening = false;
+let voiceSidecarReady = false; // 侧车模型是否已就绪（就绪前识别不可用）
+
+async function ensureVoiceCapture() {
+  const voice = window.desktopPet?.voice;
+  if (!voice || voiceStream) return true;
+  voice.start();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    voiceStream = stream;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    voiceContext = new Ctx({ sampleRate: 16000 });
+    await voiceContext.resume();
+    const source = voiceContext.createMediaStreamSource(stream);
+    const proc = voiceContext.createScriptProcessor(4096, 1, 1);
+    proc.onaudioprocess = (e) => {
+      if (!voiceListening) return; // 只有聆听开启时才送 PCM 给侧车
+      const ch = e.inputBuffer.getChannelData(0);
+      const i16 = new Int16Array(ch.length);
+      for (let i = 0; i < ch.length; i++) {
+        const v = ch[i] * 32768;
+        i16[i] = v > 32767 ? 32767 : v < -32768 ? -32768 : v | 0;
+      }
+      voice.sendPcm(i16.buffer);
+    };
+    // 0 增益挂到 destination，让 ScriptProcessor 触发但不出声
+    const silent = voiceContext.createGain();
+    silent.gain.value = 0;
+    source.connect(proc);
+    proc.connect(silent);
+    silent.connect(voiceContext.destination);
+    voiceProcessor = proc;
+    console.log('[Voice] 麦克风采集已就绪, ctx.sampleRate=', voiceContext.sampleRate);
+    return true;
+  } catch (err) {
+    console.error('[Voice] 麦克风启动失败:', err);
+    return false;
+  }
+}
+
+function updateVoiceToggle() {
+  const el = document.getElementById('voice-toggle');
+  if (!el) return;
+  el.classList.toggle('listening', voiceListening && voiceSidecarReady);
+  el.classList.toggle('loading', voiceListening && !voiceSidecarReady);
+  el.title = !voiceListening
+    ? '开启语音输入'
+    : voiceSidecarReady
+      ? '聆听中，说话吧（再点关闭）'
+      : '语音引擎加载中…（就绪后即可说话）';
+  el.setAttribute('aria-label', el.title);
+}
+
+async function applyVoiceListening(on) {
+  on = Boolean(on);
+  voiceListening = on;
+  if (on) {
+    const ok = await ensureVoiceCapture();
+    if (ok) await voiceContext?.resume();
+  } else {
+    await voiceContext?.suspend(); // 停止采集，保留授权避免重复弹窗
+  }
+  updateVoiceToggle();
+}
+
+// 聆听开关状态（主进程单一事实源，跨窗同步）
+window.desktopPet.voice.onListening(applyVoiceListening);
+// 宠物窗自己的 🎤 开关
+const voiceToggle = document.getElementById('voice-toggle');
+if (voiceToggle) {
+  voiceToggle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.desktopPet.voice.setListening(!voiceListening);
+  });
+}
+// 初始同步：若已开启（例如对话窗开过），宠物窗跟着开；同时记录侧车就绪度
+window.desktopPet.voice.getStatus().then((s) => {
+  voiceSidecarReady = Boolean(s?.connected);
+  if (s?.listening) applyVoiceListening(true);
+  updateVoiceToggle();
+}).catch(() => {});
+// 侧车就绪/重启 → 更新 🎤 加载中/就绪状态
+window.desktopPet.voice.onStatus((s) => {
+  voiceSidecarReady = Boolean(s?.connected);
+  updateVoiceToggle();
+});
+
+// ---------------- 语音输出（让小未来开口） ----------------
+let ttsContext = null;
+let ttsSource = null;
+
+async function ensureTtsContext() {
+  if (ttsContext) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  ttsContext = new Ctx();
+  await ttsContext.resume();
+}
+
+function stopSpeech() {
+  if (ttsSource) {
+    try { ttsSource.stop(); } catch {/* already stopped */}
+    ttsSource = null;
+  }
+  document.body.classList.remove('speaking');
+}
+
+function toArrayBuffer(data) {
+  if (data instanceof ArrayBuffer) return data;
+  if (ArrayBuffer.isView(data)) return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  if (data && typeof data === 'object' && Array.isArray(data.data)) return new Uint8Array(data.data).buffer;
+  return null;
+}
+
+async function playSpeech(audio) {
+  const ab = toArrayBuffer(audio?.data);
+  if (!ab || !ab.byteLength) return;
+  try {
+    await ensureTtsContext();
+    stopSpeech(); // 打断前一句，只保留最新
+    const buf = await ttsContext.decodeAudioData(ab);
+    const src = ttsContext.createBufferSource();
+    src.buffer = buf;
+    src.connect(ttsContext.destination);
+    src.onended = () => {
+      if (ttsSource === src) {
+        ttsSource = null;
+        document.body.classList.remove('speaking');
+      }
+    };
+    ttsSource = src;
+    src.start();
+    document.body.classList.add('speaking'); // 说话浮动动画
+  } catch (err) {
+    console.error('[Voice] 播放语音失败:', err);
+    document.body.classList.remove('speaking');
+  }
+}
+
+window.desktopPet.voice.onAudio(playSpeech);
+// 你开口说话 → 打断正播放的语音，转听你说
+window.desktopPet.voice.onSpeakInterrupt(stopSpeech);
+
 setMousePassthrough(true);
 initLive2D();

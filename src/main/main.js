@@ -8,6 +8,7 @@ const displaySettings = require('../services/display-settings');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const timemMemory = require('../services/timem-memory');
+const voiceBridge = require('./voice-bridge');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 
 const WINDOW = { width: 320, height: 600 };
@@ -60,14 +61,13 @@ function setMainWindowAlwaysOnTop(enabled) {
   //  - 无对话框：置顶配置开 → screen-saver（高于一切）；关 → normal。
   //  - 紧凑对话框开启：置顶配置开 → floating（仍高于普通应用如微信，但低于对话框），
   //    关 → normal。这样达成“输入框 > 人物 > 微信”。
-  //  - 展开对话框开启：人物转 normal，让展开的聊天窗当普通窗口用、可被其他应用覆盖。
+  //  - 展开对话框开启：人物保持 floating（始终置顶于普通应用），
+  //    聊天窗本身转 normal（可被其他应用覆盖、当普通窗口用）。
   let level;
   if (!chatInputOpen) {
     level = Boolean(enabled) ? 'screen-saver' : false;
-  } else if (!chatInputExpanded) {
-    level = Boolean(enabled) ? 'floating' : false;
   } else {
-    level = false;
+    level = Boolean(enabled) ? 'floating' : false;
   }
   const shouldStayVisible = Boolean(level);
   if (shouldStayVisible) mainWindow.setAlwaysOnTop(true, level);
@@ -360,6 +360,7 @@ ipcMain.handle('character:greet', async () => {
   if (reply) {
     const message = chatHistory.appendMessage('assistant', reply);
     sendToChatInput('chat:history', { message, source: 'interaction' });
+    speak(reply);
   }
   return reply;
 });
@@ -414,7 +415,7 @@ ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
     if (expanded) {
-      // 展开成普通窗口：角色也转 normal（chatInputExpanded=true 时策略如此），聊天窗可被覆盖
+      // 展开成普通窗口：聊天窗可被覆盖；人物保持 floating 置顶（不消失）
       setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
       chatInputWindow.setAlwaysOnTop(false);
     } else {
@@ -435,23 +436,7 @@ ipcMain.handle('chat:resizeInput', (event, requestedHeight) => {
   const [width] = win.getContentSize();
   return resizeChatInputWindow(win, width, height);
 });
-ipcMain.handle('chat:submit', async (_event, rawInput) => {
-  const input = String(rawInput || '').trim().slice(0, 4000);
-  if (!input) return '';
-  const turnId = crypto.randomUUID();
-  const userMessage = chatHistory.appendMessage('user', input);
-  sendToChatInput('chat:history', { message: userMessage, turnId });
-  broadcastChatDelta({ started: true, done: false, turnId });
-  const emit = (chunk, full) => {
-    broadcastChatDelta({ chunk, full, done: false, turnId });
-  };
-  const reply = await enqueueChat(() => generateChat(input, emit));
-  const assistantMessage = chatHistory.appendMessage('assistant', reply);
-  void timemMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
-  sendToChatInput('chat:history', { message: assistantMessage, turnId });
-  broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
-  return reply;
-});
+ipcMain.handle('chat:submit', async (_event, rawInput) => handleUserUtterance(rawInput));
 
 ipcMain.on('window:moveBy', (event, dx, dy) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -499,6 +484,114 @@ ipcMain.handle('menu:ready', () => {
   return positionMenuWindow(menuPendingPosition, width, height);
 });
 ipcMain.handle('menu:close', () => { closeMenuWindow(); return true; });
+// 统一处理一条用户发言（文本输入或语音识别结果都走这里）：记录历史→流式生成→写回
+async function handleUserUtterance(rawInput) {
+  const input = String(rawInput || '').trim().slice(0, 4000);
+  if (!input) return '';
+  const turnId = crypto.randomUUID();
+  const userMessage = chatHistory.appendMessage('user', input);
+  sendToChatInput('chat:history', { message: userMessage, turnId });
+  broadcastChatDelta({ started: true, done: false, turnId });
+  const emit = (chunk, full) => {
+    broadcastChatDelta({ chunk, full, done: false, turnId });
+  };
+  const reply = await enqueueChat(() => generateChat(input, emit));
+  const assistantMessage = chatHistory.appendMessage('assistant', reply);
+  void timemMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
+  sendToChatInput('chat:history', { message: assistantMessage, turnId });
+  broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
+  // 语音输出：让小未来开口说这句回复
+  speak(reply);
+  return reply;
+}
+
+// 让小未来开口（把文字交给侧车合成并播放）
+function speak(text) {
+  const t = String(text || '').trim();
+  if (!t) return;
+  voiceBridge.speak(t);
+}
+
+// 语音识别结果直接交给统一发言流程
+const isVoiceListening = { value: false };
+
+// 向两个窗口广播语音状态（聆听开关 + 侧车就绪度），供 🎤 按钮显示 加载中/就绪
+function broadcastVoiceStatus() {
+  const status = { ...voiceBridge.getStatus(), listening: isVoiceListening.value };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('voice:status', status);
+  sendToChatInput('voice:status', status);
+}
+
+// 向两个窗口广播聆听开关状态（宠物窗 + 对话窗）
+function broadcastVoiceListening() {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('voice:listening-changed', isVoiceListening.value);
+  sendToChatInput('voice:listening-changed', isVoiceListening.value);
+}
+
+function setVoiceListening(on) {
+  isVoiceListening.value = Boolean(on);
+  if (isVoiceListening.value) voiceBridge.start();
+  broadcastVoiceListening();
+  broadcastVoiceStatus();
+}
+
+// 侧车就绪/退出 → 刷新两侧 🎤 状态（加载中⇄就绪）
+voiceBridge.on('ready-change', broadcastVoiceStatus);
+
+// 飘字：实时部分识别 → 填进对话窗输入框（说话文字显示在“输入对话框”）
+voiceBridge.on('asr-partial', (text) => {
+  if (!isVoiceListening.value) return;
+  sendToChatInput('voice:asr-partial', text);
+});
+
+// 最终识别：对话窗开着→填输入框（是否自动发送由对话窗决定）；对话窗关着→直接自动发送（回复走气泡）
+voiceBridge.on('asr', (text) => {
+  if (!isVoiceListening.value) return;
+  const t = String(text || '').trim();
+  if (!t) return;
+  if (chatInputOpen) sendToChatInput('voice:asr-final', t);
+  else void handleUserUtterance(t);
+});
+
+// 让主窗口（宠物窗）播放小未来的语音
+voiceBridge.on('audio', (audio) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('voice:audio', {
+      id: audio.id,
+      format: audio.format || 'mp3',
+      data: audio.data, // Buffer → 序列化为 Uint8Array，renderer 端解码播放
+    });
+  }
+});
+
+// 你开口说话时（speech_start）→ 通知宠物窗打断正在播放的语音，转听你说
+voiceBridge.on('vad', (state) => {
+  if (state === 'speech_start' && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('voice:speak-interrupt');
+  }
+});
+
+// 让小未来开口（外部显式触发）
+ipcMain.handle('voice:speak', (_event, text) => {
+  voiceBridge.speak(text);
+  return true;
+});
+
+ipcMain.handle('voice:start', () => {
+  voiceBridge.start();
+  return voiceBridge.getStatus();
+});
+ipcMain.handle('voice:stop', () => {
+  voiceBridge.stop();
+  return true;
+});
+ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: isVoiceListening.value }));
+ipcMain.handle('voice:setListening', (_event, on) => {
+  setVoiceListening(on);
+  return isVoiceListening.value;
+});
+ipcMain.on('voice:pcm', (_event, buffer) => voiceBridge.sendPcm(buffer));
+
 ipcMain.handle('menu:quit', () => { app.quit(); return true; });
 
 app.whenReady().then(() => {
@@ -507,6 +600,8 @@ app.whenReady().then(() => {
   displaySettings.setRuntimePath(path.join(app.getPath('userData'), 'display-settings.json'));
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
+  // 启动语音侧车
+  voiceBridge.start();
   createMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -515,4 +610,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  voiceBridge.stop(); // 退出时回收侧车子进程
 });
