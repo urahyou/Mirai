@@ -43,6 +43,21 @@ npm run dev
 
 `npm run dev` 会打开 DevTools，并把渲染进程 console 输出到终端。
 
+#### 一键启用语音（音色克隆）
+若想用本地 GPT-SoVITS 音色克隆（离线），项目已内置一键安装 + 一键启动，无需手动分开装服务：
+
+```bash
+# 首次：把 GPT-SoVITS 装入项目 vendor/（自动检测本机已有安装则复用，不重复下载）
+npm run setup:voice
+
+# 之后每次：先自动拉起 GPT-SoVITS，就绪后再开小未来
+npm run start:voice
+```
+
+- `setup:voice`：定位/下载 GPT-SoVITS 到 `vendor/gpt-sovits/`（gitignore，不入库）、补 venv 与 Mac CPU 配置、写入 `.env` 指向 `gpt-sovits` 引擎。
+- `start:voice`：探测 9880 → 未运行则拉起 GPT-SoVITS 并等就绪（约 10–20s）→ 启动小未来；退出时若 TTS 是本脚本拉起的则一并关闭。
+- 关闭时纯靠 `npm start`（不带语音服务）仍可用，语音走默认 Edge。
+
 ## 使用方式
 
 | 操作 | 效果 |
@@ -78,7 +93,7 @@ TIMEM_SESSION_ID=desktop-session
 
 ### 语音输入与语音输出（可选）
 
-语音识别（输入）和语音朗读（输出）通过一个独立的 Python 侧车进程实现，复用 [Open-LLM-VTuber](https://github.com/r3mur4/Open-LLM-VTuber)（warashi）的 VAD/Silero 与 ASR/Sherpa-ONNX，输出用 `edge-tts` 合成。侧车通过本机 WebSocket 通信，PCM/音频只走 `127.0.0.1`，不经任何云端。
+语音识别（输入）和语音朗读（输出）通过一个独立的 Python 侧车进程实现，复用 [Open-LLM-VTuber](https://github.com/r3mur4/Open-LLM-VTuber)（warashi）的 VAD/Silero 与 ASR/Sherpa-ONNX，输出默认用 `edge-tts` 合成，也可切换到本地 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 音色克隆（见下方 `SIDECAR_TTS_ENGINE`）。侧车通过本机 WebSocket 通信，PCM/音频只走 `127.0.0.1`，不经任何云端。
 
 前置（仅当使用语音时）：
 
@@ -95,7 +110,22 @@ TIMEM_SESSION_ID=desktop-session
 | `MIRAI_SIDECAR_PORT` | `8765` | 侧车 WebSocket 端口 |
 | `MIRAI_SIDECAR_PYTHON` | `<warashi>/.venv/bin/python3` | 侧车 Python 解释器 |
 | `SIDECAR_ASR_LANGUAGE` | `zh` | 识别语言（简体中文） |
-| `SIDECAR_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | `edge-tts` 音色 |
+| `SIDECAR_TTS_ENGINE` | `edge` | TTS 引擎：`edge`（edge-tts 云合成，需联网）或 `gpt-sovits`（本地音色克隆，离线） |
+| `SIDECAR_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | `edge` 用：edge-tts 音色 |
+| `SIDECAR_TTS_URL` | `http://127.0.0.1:9880/` | `gpt-sovits` 用：GPT-SoVITS API 地址（合成端点为 `/tts`） |
+| `SIDECAR_TTS_REF_WAV` | *空* | `gpt-sovits` 用：参考音频绝对路径（服务所在机的路径） |
+| `SIDECAR_TTS_PROMPT_TEXT` | *空* | `gpt-sovits` 用：参考音频对应台词（日文参考通常必填） |
+| `SIDECAR_TTS_PROMPT_LANG` | `zh` | `gpt-sovits` 用：参考台词语言（参考为日文设 `ja`） |
+| `SIDECAR_TTS_TEXT_LANGUAGE` | `zh` | `gpt-sovits` 用：合成生效语言（zh/ja/en/auto…，给侧车的文字是什么语言就设什么） |
+| `SIDECAR_TTS_TEMPERATURE` | `0.9` | `gpt-sovits` 用：温度 |
+| `SIDECAR_TTS_SPEED_FACTOR` | `1.0` | `gpt-sovits` 用：语速 0.75–1.25 |
+| `SIDECAR_TTS_SPEAK_LANG` | *空* | 非空时（如 `ja`=日语）小未来发言前先把“中文回复”翻成该语言再朗读；屏幕气泡文字仍显示中文（需配合 `SIDECAR_TTS_SPEAK_LANG` 与 `SIDECAR_TTS_TEXT_LANGUAGE` 保持一致） |
+
+> **切换音色克隆（路线 A：零样本即时克隆）**
+> 1. 运行 `npm run setup:voice` 把 GPT-SoVITS 装进 `vendor/gpt-sovits/`（本机已装好则自动复用）；用 `npm run start:voice` 一键边起服务边开小未来。
+> 2. 在「设置面板 → 语音设置」或 `.env` 里设 `SIDECAR_TTS_REF_WAV=/绝对/路径/参考音频`（一段 ~10s 干净人声），日文参考另配 `SIDECAR_TTS_PROMPT_TEXT`（对应台词）和 `SIDECAR_TTS_PROMPT_LANG=ja`。
+> 3. 重启 `npm start`，`🎤` 就绪后小未来即用克隆音色开口（离线、输出 wav）。
+> 想要更像，就把参考音频换成该角色更长的干净干声（10–30s）。
 
 若语音不可用，聊天仍完全正常（文字输入/输出不受影响）。
 
@@ -134,7 +164,9 @@ src/main/main.js           主进程、窗口管理、IPC、聊天调度
 src/main/preload.js        contextBridge 安全桥接
 src/main/ipc-validation.js IPC 入参校验
 src/main/voice-bridge.js   语音侧车守护与 WebSocket 桥（输入 PCM + 输出 TTS 音频）
-voice-sidecar/             语音侧车（Python，复用 warashi VAD/ASR + edge-tts）
+voice-sidecar/             语音侧车（Python，复用 warashi VAD/ASR + edge-tts / GPT-SoVITS）
+scripts/                  一键安装/启动语音（setup-voice.js、start-voice.js）
+vendor/gpt-sovits/         GPT-SoVITS 引擎本体（由 setup:voice 装入，gitignore，不入库）
 src/renderer/renderer.js   Live2D 角色、命中检测、气泡、互动、麦克风采集与语音播放
 src/renderer/live2d-avatar.js Live2D 模型封装
 src/renderer/chat-input.* 轻量输入框和展开聊天记录

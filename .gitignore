@@ -39,3 +39,6 @@ build/
 # Python
 __pycache__/
 *.pyc
+
+# 语音引擎本体（GPT-SoVITS 源码/venv/权重，由 npm run setup:voice 安装）
+vendor/

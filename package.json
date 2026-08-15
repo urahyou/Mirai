@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "setup:voice": "node scripts/setup-voice.js",
+    "start:voice": "node scripts/start-voice.js",
     "check": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/main/ipc-validation.js && node --check src/engine/generic.js && node --check src/services/personality-runtime.js && node --check src/services/display-settings.js && node --check src/services/chat-history.js && node --check src/services/window-layout.js && node --check src/services/timem-memory.js && node --check src/renderer/live2d-avatar.js && node --check src/renderer/renderer.js && node --check src/renderer/menu.js && node --check src/renderer/chat-input.js && node --check src/renderer/display-panel.js && node --check src/renderer/provider-panel.js && node --test test/*.test.js"
   },
   "keywords": [
