@@ -152,7 +152,10 @@
     }
 
     setState(state) {
-      if (state === 'idle') this.playMotion('Idle', 0);
+      // Hiyori 没有独立表情文件，使用模型自带动作表达短暂情绪。
+      if (state === 'happy') this.playMotion('Tap', 0);
+      else if (state === 'sad') this.playMotion('FlickDown', 0);
+      else this.playMotion('Idle', 0);
     }
 
     playMotion(group, index) {

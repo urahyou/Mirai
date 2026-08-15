@@ -74,22 +74,33 @@ npm run start:voice
 
 ## 配置
 
-### TiMem 长期记忆（可选）
+### Graphiti 时序关系记忆 PoC（可选）
 
-Mirai 支持通过 TiMem 云服务为正式聊天增加长期记忆检索。默认关闭；启用后，聊天请求会先检索最多 5 条相关记忆注入 Prompt，回复完成后异步提交本轮对话供 TiMem 提炼。TiMem 请求失败不会阻塞本地模型对话。
+Mirai 使用 Graphiti 作为唯一长期记忆。启用后，每轮正式对话会作为带参考时间的 episode 写入本机 Graphiti 侧车；下一轮对话会查询实体关系和事实有效期并注入模型。Graphiti 不可用时仅降级为无长期记忆的普通聊天，不使用其他记忆后端。
 
-将 `.env.example` 复制为 `.env`，仅在本机填写以下配置：
+Graphiti 本身需要 Neo4j（推荐 5.26+）和 Python 侧车。先启动 Neo4j，再在项目根目录安装侧车依赖：
 
-```dotenv
-TIMEM_ENABLED=true
-TIMEM_BASE_URL=https://api.timem.cloud
-TIMEM_API_KEY=你的TiMem密钥
-TIMEM_USER_ID=mirai-owner
-TIMEM_CHARACTER_ID=mirai
-TIMEM_SESSION_ID=desktop-session
+```bash
+docker run --name mirai-neo4j -d -p 7474:7474 -p 7687:7687 \\
+  -e NEO4J_AUTH=neo4j/mirai-dev-password neo4j:latest
+python3 -m venv graphiti-sidecar/.venv
+graphiti-sidecar/.venv/bin/pip install -r graphiti-sidecar/requirements.txt
 ```
 
-也可以使用 `TIMEM_USERNAME` 和 `TIMEM_PASSWORD`，由 Mirai 调用 TiMem 登录接口获取短期令牌。`.env` 已被 Git 忽略，密钥不会进入仓库。TiMem 记忆数据属于第三方云服务；需要完全离线时保持 `TIMEM_ENABLED=false`。
+将 `.env.example` 复制为 `.env`，填写 `GRAPHITI_NEO4J_PASSWORD` 并开启：
+
+```dotenv
+GRAPHITI_ENABLED=true
+GRAPHITI_NEO4J_PASSWORD=你的本机Neo4j密码
+GRAPHITI_LLM_BASE_URL=http://127.0.0.1:11434/v1
+GRAPHITI_LLM_MODEL=你的对话模型
+GRAPHITI_EMBED_BASE_URL=http://127.0.0.1:11434/v1
+GRAPHITI_EMBED_MODEL=bge-m3
+```
+
+`GRAPHITI_LLM_MODEL` 应填写一个支持结构化 JSON 输出的对话模型；`GRAPHITI_EMBED_MODEL` 应填写本地 embedding 模型。若使用云端 OpenAI-compatible 服务，把对应 `*_BASE_URL` 和 `*_API_KEY` 改为该服务配置。
+
+另开终端运行 `npm run start:graphiti`，再启动 Mirai。记忆面板可检查 Graphiti sidecar 状态并修改本机 `.env` 配置；保存后需重启 sidecar。Graphiti 侧车停止后仅跳过长期记忆，不影响普通聊天。
 
 ### 语音输入与语音输出（可选）
 
@@ -131,12 +142,12 @@ TIMEM_SESSION_ID=desktop-session
 
 ### Provider
 
-`src/core/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 只从项目根目录的 `.env` 读取。
+`src/core/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 由 Provider 设置面板直接填写，保存时写入项目根目录的 `.env`；读取配置时不会把密钥回传到渲染界面。旧版配置中的 `apiKeyEnv` 仍兼容，但不再需要用户填写变量名。
 
 - `activeProvider`：优先使用的 Provider。
 - `providers`：OpenAI 兼容服务配置。
 - Provider 对象的键顺序决定自动回退顺序，当前激活项会排在第一位。
-- 每个 Provider 的 `apiKeyEnv` 指向 `.env` 中的变量名；变量为空时不会发送 Authorization 请求头。
+- Provider 面板中的 API Key 输入框支持显示/隐藏；留空保存会保留已有密钥。变量名由程序内部管理，变量为空时不会发送 Authorization 请求头。
 
 不要把模型地址或密钥硬编码到 `src/main/main.js`。
 

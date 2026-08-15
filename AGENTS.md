@@ -54,7 +54,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - `isAvailable()` 探测 `/models` 端点；对应 `.env` 变量为空时不加 Authorization 头。
 - `src/core/personality.json`：角色出厂人格（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
   - 用户编辑的人格覆盖存 userData `personality-runtime.json`（深合并到出厂之上）。当前没有独立主人资料或 owner 服务。
-- 可选 TiMem 长期记忆通过 `src/services/timem-memory.js` 接入；`TIMEM_ENABLED` 默认关闭，密钥仅从本机 `.env` 读取。检索结果只作为 Prompt 参考资料，TiMem 不可用时必须降级为无长期记忆的本地聊天。
+- 长期记忆唯一使用 Graphiti + Neo4j，通过独立 Python sidecar 接入；Graphiti 不可用时降级为无长期记忆的本地聊天，不使用其他记忆服务。
 
 ## 工作偏好（用户明确要求，务必遵守）
 

@@ -110,11 +110,24 @@ function renderEditor() {
   const displayName = makeField('显示名称', 'label', provider.label);
   const model = makeField('模型', 'defaultModel', provider.defaultModel);
   const endpoint = makeField('接口地址', 'baseUrl', provider.baseUrl, { wide: true, input: { placeholder: 'http://127.0.0.1:8000/v1' } });
-  const apiKeyEnv = makeField('API Key 环境变量', 'apiKeyEnv', provider.apiKeyEnv, { wide: true });
+  const apiKey = makeField('API Key', 'apiKey', '', {
+    wide: true,
+    input: {
+      type: 'password',
+      placeholder: provider.apiKeyConfigured ? '已配置（留空保持不变）' : '留空表示无需鉴权',
+      autocomplete: 'new-password',
+    },
+  });
+  const reveal = makeButton('显示', 'field-action', '显示或隐藏 API Key');
+  reveal.addEventListener('click', () => {
+    apiKey.input.type = apiKey.input.type === 'password' ? 'text' : 'password';
+    reveal.textContent = apiKey.input.type === 'password' ? '显示' : '隐藏';
+  });
+  apiKey.label.appendChild(reveal);
   const sectionLabel = element('div', 'section-label', '生成参数');
   const temperature = makeField('Temperature', 'temperature', provider.temperature ?? 0.8, { input: { type: 'number', min: '0', max: '2', step: '0.05' } });
   const topP = makeField('Top P', 'topP', provider.topP ?? 0.9, { input: { type: 'number', min: '0', max: '1', step: '0.05' } });
-  form.append(displayName.label, model.label, endpoint.label, apiKeyEnv.label, sectionLabel, temperature.label, topP.label);
+  form.append(displayName.label, model.label, endpoint.label, apiKey.label, sectionLabel, temperature.label, topP.label);
   editor.append(head, form);
 
   activate.addEventListener('click', () => {
@@ -158,7 +171,7 @@ document.querySelector('#add').addEventListener('click', () => {
       label: '新模型',
       type: 'openai-compatible',
       baseUrl: '',
-      apiKeyEnv: 'MIRAI_PROVIDER_PROVIDER_1_API_KEY',
+      apiKeyConfigured: false,
       defaultModel: '',
       temperature: 0.8,
       topP: 0.9,

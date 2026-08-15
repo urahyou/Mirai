@@ -49,6 +49,10 @@ h1 { margin: 0; font-size: 17px; font-weight: 680; letter-spacing: 0; }
 .field { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 560; }
 .field.wide { grid-column: 1 / -1; }
 .field input { width: 100%; min-width: 0; height: 38px; padding: 0 11px; border: 1px solid rgba(0, 0, 0, .17); border-radius: 6px; outline: none; background: #fff; color: var(--ink); font-size: 13px; }
+.field:has(.field-action) { position: relative; }
+.field:has(.field-action) input { padding-right: 58px; }
+.field-action { position: absolute; right: 6px; bottom: 5px; height: 28px; padding: 0 7px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 11px; }
+.field-action:hover { color: var(--accent); background: var(--accent-soft); }
 .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217, 87, 106, .11); }
 .field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
 .reveal { width: 48px; height: 38px; padding: 0; border: 1px solid rgba(0, 0, 0, .17); border-radius: 6px; background: #fff; color: var(--muted); font-size: 12px; }

@@ -9,7 +9,7 @@ const sidecarEnv = require('../services/sidecar-env');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-settings');
-const memuMemory = require('../services/memu-memory');
+const graphitiMemory = require('../services/graphiti-memory');
 const { probeMaxContext } = require('../services/probe-context');
 const voiceBridge = require('./voice-bridge');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
@@ -198,7 +198,8 @@ function positionBalloon() {
     ? { x: balloonFreedPos.x + width / 2, y: balloonFreedPos.y + height / 2 }
     : anchor;
   const pos = clampToWorkArea({ x: center.x - width / 2, y: center.y - height / 2 }, width, height);
-  balloonWindow.setPosition(pos.x, pos.y);
+  // Electron 的原生窗口位置要求整数；居中计算和缩放后尺寸可能产生浮点数。
+  balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
 }
 
 // 把渲染指令发给气泡窗口。若页面还在加载（首次创建时），先缓存、
@@ -276,12 +277,20 @@ function openMenuWindow(point) {
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: true,
+    // 菜单需要通过失焦检测空白点击；不可聚焦窗口不会触发 blur。
+    focusable: true,
     webPreferences: windowOptions(),
   });
   menuWindow.setAlwaysOnTop(true, 'screen-saver');
+  menuWindow.on('blur', () => {
+    if (menuWindow && !menuWindow.isDestroyed()) closeMenuWindow();
+  });
   positionMenuWindow(point);
   menuWindow.once('ready-to-show', () => {
-    if (menuWindow && !menuWindow.isDestroyed()) menuWindow.show();
+    if (menuWindow && !menuWindow.isDestroyed()) {
+      menuWindow.show();
+      menuWindow.focus();
+    }
   });
   menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
   menuWindow.on('closed', () => { menuWindow = null; });
@@ -536,8 +545,8 @@ async function generatePetLine(purpose) {
 }
 
 async function generateChat(input, emit) {
-  const memories = await memuMemory.search(input);
-  const memoryContext = memuMemory.formatContext(memories);
+  const graphitiResults = await graphitiMemory.search(input);
+  const memoryContext = graphitiMemory.formatContext(graphitiResults);
   const contextMaxTokens = contextSettings.getSettings(cachedModelMaxTokens).maxContextTokens;
   for (const provider of generic.providerChain()) {
     try {
@@ -656,16 +665,9 @@ ipcMain.handle('context:closePanel', () => { closeContextPanel(); return true; }
 ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
 ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
-ipcMain.handle('memory:getStatus', () => memuMemory.getStatus());
-ipcMain.handle('memory:list', () => memuMemory.list());
-ipcMain.handle('memory:listDistillModels', () => memuMemory.listDistillModels());
-ipcMain.handle('memory:setDistillModel', (_event, model) => memuMemory.setDistillModel(String(model || '')));
-ipcMain.handle('memory:remove', (_event, name, track) => {
-  const n = String(name || '').trim().slice(0, 120);
-  const t = String(track || 'memory').trim() === 'skill' ? 'skill' : 'memory';
-  if (!n) return { ok: false, error: '缺少记忆名称' };
-  return memuMemory.remove(n, t);
-});
+ipcMain.handle('memory:getStatus', async () => graphitiMemory.getStatus());
+ipcMain.handle('memory:getSettings', () => graphitiMemory.getSettingsForPanel());
+ipcMain.handle('memory:setSettings', guarded('memory:setSettings', (patch) => graphitiMemory.writeSettings(patch)));
 ipcMain.handle('memory:openPanel', () => { openMemoryPanel(); return true; });
 ipcMain.handle('memory:closePanel', () => { closeMemoryPanel(); return true; });
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
@@ -727,8 +729,8 @@ ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   const [width, height] = balloonWindow.getSize();
   const pos = clampToWorkArea({ x, y }, width, height);
   balloonFreed = true;
-  balloonFreedPos = { x: pos.x, y: pos.y };
-  balloonWindow.setPosition(pos.x, pos.y);
+  balloonFreedPos = { x: Math.round(pos.x), y: Math.round(pos.y) };
+  balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
   return true;
 });
 ipcMain.handle('balloonWindow:release', () => { balloonFreed = true; return true; });
@@ -806,7 +808,11 @@ async function handleUserUtterance(rawInput) {
   };
   const reply = await enqueueChat(() => generateChat(input, emit));
   const assistantMessage = chatHistory.appendMessage('assistant', reply);
-  void memuMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
+  const episode = [
+    { role: 'user', content: input },
+    { role: 'assistant', content: reply },
+  ];
+  void graphitiMemory.add(episode, new Date(userMessage.createdAt).toISOString());
   sendToChatInput('chat:history', { message: assistantMessage, turnId });
   broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
   // 语音输出：让小未来开口说这句回复

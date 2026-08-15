@@ -25,12 +25,10 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   getChatHistory: () => ipcRenderer.invoke('chat:getHistory'),
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
-    list: () => ipcRenderer.invoke('memory:list'),
-    remove: (name, track) => ipcRenderer.invoke('memory:remove', name, track),
+    getSettings: () => ipcRenderer.invoke('memory:getSettings'),
+    setSettings: (patch) => ipcRenderer.invoke('memory:setSettings', patch),
     openPanel: () => ipcRenderer.invoke('memory:openPanel'),
     closePanel: () => ipcRenderer.invoke('memory:closePanel'),
-    listDistillModels: () => ipcRenderer.invoke('memory:listDistillModels'),
-    setDistillModel: (model) => ipcRenderer.invoke('memory:setDistillModel', model),
   }),
   voice: Object.freeze({
     start: () => ipcRenderer.invoke('voice:start'),

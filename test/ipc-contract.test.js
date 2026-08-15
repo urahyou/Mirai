@@ -27,6 +27,16 @@ test('Given malformed or unrelated IPC payloads When validation runs Then every 
   assertRejected('tool:execute', [{ command: 'whoami' }]);
 });
 
+test('Given Graphiti settings When validation receives bounded string fields Then it accepts only allowed keys', () => {
+  assert.deepEqual(validatePayload('memory:setSettings', [{ GRAPHITI_ENABLED: 'true', GRAPHITI_GROUP_ID: 'owner' }]), {
+    ok: true,
+    data: [{ GRAPHITI_ENABLED: 'true', GRAPHITI_GROUP_ID: 'owner' }],
+  });
+  assertRejected('memory:setSettings', [{ UNKNOWN_MEMORY_ENABLED: 'true' }]);
+  assertRejected('memory:setSettings', [{ GRAPHITI_ENABLED: true }]);
+  assertRejected('memory:setSettings', [{ GRAPHITI_GROUP_ID: 'x'.repeat(501) }]);
+});
+
 test('Given display settings When validation receives a bounded patch Then it accepts the patch', () => {
   assert.deepEqual(validatePayload('display:set', [{ scale: 1.25, alwaysOnTop: false, outlineShadow: true }]), {
     ok: true,
@@ -119,6 +129,9 @@ test('Given the character renderer When it is inspected Then rendering and hit t
 
   assert.match(renderer, /live2dAvatar\?\.isHit/);
   assert.match(renderer, /live2dAvatar\?\.setState/);
+  const avatar = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'live2d-avatar.js'), 'utf8');
+  assert.match(avatar, /state === 'happy'.*playMotion\('Tap'/s);
+  assert.match(avatar, /state === 'sad'.*playMotion\('FlickDown'/s);
   assert.doesNotMatch(renderer, /assets\/character|character-img|getImageData/);
   assert.doesNotMatch(index, /character-img|assets\/character/);
   assert.doesNotMatch(style, /character-img|live2d-fallback/);

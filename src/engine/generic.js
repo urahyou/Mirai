@@ -12,11 +12,12 @@ const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
 let providerCache = null;
 let activeProviderName = null;
 let runtimePath = null;
+let dotenvPath = DOTENV_PATH;
 
 function loadDotEnv() {
   try {
     const values = {};
-    for (const rawLine of fs.readFileSync(DOTENV_PATH, 'utf8').split(/\r?\n/)) {
+    for (const rawLine of fs.readFileSync(dotenvPath, 'utf8').split(/\r?\n/)) {
       const line = rawLine.trim();
       if (!line || line.startsWith('#')) continue;
       const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
@@ -35,6 +36,22 @@ function loadDotEnv() {
 
 function defaultApiKeyEnv(name) {
   return `MIRAI_PROVIDER_${String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
+}
+
+function writeDotEnvValues(values) {
+  if (!values || typeof values !== 'object') return;
+  let raw = '';
+  try { raw = fs.readFileSync(dotenvPath, 'utf8'); } catch { /* create on first save */ }
+  const lines = raw.split(/\r?\n/);
+  for (const [key, value] of Object.entries(values)) {
+    if (!/^[A-Z0-9_]+$/.test(key) || String(value).includes('\n')) continue;
+    const line = `${key}=${String(value)}`;
+    const index = lines.findIndex((entry) => new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`).test(entry));
+    if (index >= 0) lines[index] = line;
+    else lines.push(line);
+  }
+  fs.mkdirSync(path.dirname(dotenvPath), { recursive: true });
+  fs.writeFileSync(dotenvPath, lines.join('\n').replace(/\n{3,}/g, '\n\n'));
 }
 
 // 多轮会话记忆：按 token 预算保留最近的对话（user + assistant 配对）。
@@ -104,7 +121,11 @@ function loadProviders() {
 }
 
 function getProviderConfig() {
-  return JSON.parse(JSON.stringify(loadProviders()));
+  const config = JSON.parse(JSON.stringify(loadProviders()));
+  for (const provider of Object.values(config.providers)) {
+    provider.apiKeyConfigured = Boolean(providerKey(provider));
+  }
+  return config;
 }
 
 function normalizeProviderConfig(raw) {
@@ -140,7 +161,15 @@ function normalizeProviderConfig(raw) {
 }
 
 function saveProviderConfig(raw) {
-  const config = normalizeProviderConfig(raw);
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const secrets = {};
+  for (const [name, provider] of Object.entries(source.providers || {})) {
+    if (typeof provider?.apiKey === 'string' && provider.apiKey.trim()) {
+      secrets[String(provider.apiKeyEnv || defaultApiKeyEnv(name))] = provider.apiKey.trim();
+    }
+  }
+  const config = normalizeProviderConfig(source);
+  if (Object.keys(secrets).length) writeDotEnvValues(secrets);
   const target = runtimePath || DEFAULT_PROVIDERS_PATH;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, JSON.stringify(config, null, 2));
@@ -153,6 +182,10 @@ function setRuntimePath(filePath) {
   runtimePath = filePath || null;
   providerCache = null;
   activeProviderName = null;
+}
+
+function setDotEnvPath(filePath) {
+  dotenvPath = filePath || DOTENV_PATH;
 }
 
 /**
@@ -194,10 +227,11 @@ async function isAvailable(name) {
 
 async function checkProvider(provider) {
   try {
+    const temporaryApiKey = typeof provider?.apiKey === 'string' ? provider.apiKey.trim() : '';
     const config = normalizeProviderConfig({ activeProvider: 'test', providers: { test: provider } });
     const candidate = config.providers.test;
     const response = await fetch(`${candidate.baseUrl}/models`, {
-      headers: authorizationHeaders(candidate),
+      headers: temporaryApiKey ? { Authorization: `Bearer ${temporaryApiKey}` } : authorizationHeaders(candidate),
       signal: AbortSignal.timeout(6000),
     });
     return response.ok;
@@ -428,6 +462,7 @@ module.exports = {
   getProviderConfig,
   saveProviderConfig,
   setRuntimePath,
+  setDotEnvPath,
   loadDotEnv,
   defaultApiKeyEnv,
   providerChain,

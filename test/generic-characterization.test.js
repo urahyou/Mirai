@@ -9,6 +9,38 @@ const generic = require('../src/engine/generic');
 const rules = require('../src/engine/rules');
 const personalityRuntime = require('../src/services/personality-runtime');
 
+test('Given a Provider API key When configuration is saved Then the key goes to dotenv and not runtime config', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-provider-secret-'));
+  const runtimeFile = path.join(dir, 'llm-providers.runtime.json');
+  const dotenvFile = path.join(dir, '.env');
+  t.after(() => {
+    generic.setRuntimePath(null);
+    generic.setDotEnvPath(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  generic.setRuntimePath(runtimeFile);
+  generic.setDotEnvPath(dotenvFile);
+  const secret = 'sk-test-secret';
+  const result = generic.saveProviderConfig({
+    activeProvider: 'cloud',
+    providers: {
+      cloud: {
+        label: 'Cloud',
+        baseUrl: 'https://api.example.test/v1',
+        defaultModel: 'deepseek-v4-flash',
+        apiKey: secret,
+        temperature: 0.8,
+        topP: 0.9,
+      },
+    },
+  });
+
+  assert.match(fs.readFileSync(dotenvFile, 'utf8'), /MIRAI_PROVIDER_CLOUD_API_KEY=sk-test-secret/);
+  assert.doesNotMatch(fs.readFileSync(runtimeFile, 'utf8'), /sk-test-secret/);
+  assert.equal(result.providers.cloud.apiKeyConfigured, true);
+});
+
 test('Given a runtime Provider path When configuration is saved Then the repository template is untouched', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-provider-'));
   const runtimeFile = path.join(dir, 'llm-providers.runtime.json');
