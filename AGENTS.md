@@ -56,6 +56,10 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - 用户编辑的人格覆盖存 userData `personality-runtime.json`（深合并到出厂之上）。当前没有独立主人资料或 owner 服务。
 - 可选 TiMem 长期记忆通过 `src/services/timem-memory.js` 接入；`TIMEM_ENABLED` 默认关闭，密钥仅从本机 `.env` 读取。检索结果只作为 Prompt 参考资料，TiMem 不可用时必须降级为无长期记忆的本地聊天。
 
+## 工作偏好（用户明确要求，务必遵守）
+
+- **上下文压缩阈值**：当对话上下文占用达到约 80% 时，自动进行压缩/紧凑摘要，不要等到接近上限。
+
 ## 关键坑（容易踩）
 
 - **角色图**：角色完全由 `assets/live2d/` 下的 Cubism 模型渲染。点击命中必须使用 `Live2DAvatar.isHit()`，不要恢复 PNG fallback 或 alpha 图片命中缓存。模型纹理 PNG 是 Live2D 资源的一部分，不是旧角色 fallback。

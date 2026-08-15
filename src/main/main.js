@@ -226,6 +226,20 @@ function balloonHide() {
   }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
 }
 
+// 把设置面板定位到桌宠主窗口所在的显示器（多显示器下避免面板跑到主屏）。
+// 参考点取主窗口中心；主窗口不可用时退回光标所在屏幕。
+function positionPanelOnMainDisplay(win, width, height) {
+  if (!win || win.isDestroyed()) return;
+  const mainBounds = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow.getBounds()
+    : null;
+  const ref = mainBounds || screen.getCursorScreenPoint();
+  const { workArea } = screen.getDisplayNearestPoint({ x: ref.x, y: ref.y });
+  const x = workArea.x + Math.round((workArea.width - width) / 2);
+  const y = workArea.y + Math.round((workArea.height - height) / 2);
+  win.setPosition(Math.max(workArea.x, x), Math.max(workArea.y, y));
+}
+
 function closeMenuWindow() {
   if (menuWindow && !menuWindow.isDestroyed()) menuWindow.destroy();
   menuWindow = null;
@@ -281,6 +295,7 @@ function openPersonalityPanel() {
     webPreferences: windowOptions(),
   });
   personalityPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(personalityPanelWindow, 520, 680);
   personalityPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'personality-panel.html'));
   personalityPanelWindow.on('closed', () => { personalityPanelWindow = null; });
 }
@@ -303,6 +318,7 @@ function openProviderPanel() {
     webPreferences: windowOptions(),
   });
   providerPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(providerPanelWindow, 760, 560);
   providerPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'provider-panel.html'));
   providerPanelWindow.on('closed', () => { providerPanelWindow = null; });
 }
@@ -323,6 +339,7 @@ function openDisplayPanel() {
     webPreferences: windowOptions(),
   });
   displayPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(displayPanelWindow, 460, 360);
   displayPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'display-panel.html'));
   displayPanelWindow.on('closed', () => { displayPanelWindow = null; });
 }
@@ -343,6 +360,7 @@ function openVoiceSettingsPanel() {
     webPreferences: windowOptions(),
   });
   voiceSettingsPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(voiceSettingsPanelWindow, 480, 360);
   voiceSettingsPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'voice-settings.html'));
   voiceSettingsPanelWindow.on('closed', () => { voiceSettingsPanelWindow = null; });
 }
