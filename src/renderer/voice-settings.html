@@ -33,6 +33,19 @@
 
     <main class="settings-content">
       <section class="setting-section">
+        <label class="toggle-row" for="ttsEnabled">
+          <span>
+            <span class="toggle-title">朗读回复声音</span>
+            <span class="hint">关闭后小未来只显示文字气泡，不发声（语音输入仍可用）</span>
+          </span>
+          <span class="switch">
+            <input id="ttsEnabled" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          </span>
+        </label>
+      </section>
+
+      <section class="setting-section">
         <div class="select-row">
           <label class="select-label" for="speakLang">朗读语言</label>
           <select id="speakLang" class="select">

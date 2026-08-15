@@ -67,32 +67,6 @@
     }
     #send-button:hover { background: #ff4f9e; }
     #send-button:disabled { opacity: .55; cursor: default; }
-    #voice-button {
-      flex: 0 0 42px; height: 42px; border: 1px solid #e9b4cb; border-radius: 50%;
-      color: #b95d85; background: #fff; font-size: 17px; line-height: 1; cursor: pointer;
-      transition: background .2s ease, box-shadow .2s ease;
-    }
-    #voice-button:hover { background: #fff0f6; }
-    #voice-button.listening {
-      background: #3fbf6f; border-color: #2f9d57; color: #fff;
-      box-shadow: 0 0 0 0 rgba(63, 191, 111, .5);
-      animation: voicePulse 1.8s ease-out infinite;
-    }
-    @keyframes voicePulse {
-      0%   { box-shadow: 0 0 0 0 rgba(63, 191, 111, .5); }
-      70%  { box-shadow: 0 0 0 8px rgba(63, 191, 111, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(63, 191, 111, 0); }
-    }
-    #voice-button.loading {
-      background: #f5a623; border-color: #d9880f; color: #fff;
-      box-shadow: 0 0 0 0 rgba(245, 166, 35, .55);
-      animation: voicePulseOrange 1.1s ease-out infinite;
-    }
-    @keyframes voicePulseOrange {
-      0%   { box-shadow: 0 0 0 0 rgba(245, 166, 35, .55); }
-      70%  { box-shadow: 0 0 0 8px rgba(245, 166, 35, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
-    }
     #chatbox.expanded #chat-input { max-height: 82px; }
   </style>
 </head>
@@ -109,7 +83,6 @@
       <div id="history-list"></div>
     </section>
     <div id="compose-row">
-      <button id="voice-button" type="button" title="开启语音输入" aria-label="开启语音输入">🎤</button>
       <textarea id="chat-input" rows="1" placeholder="和小未来聊聊..."></textarea>
       <button id="send-button" type="button">发送</button>
     </div>

@@ -42,6 +42,7 @@ function isPointInside(element, clientX, clientY) {
   return clientX >= rect.left && clientX < rect.right && clientY >= rect.top && clientY < rect.bottom;
 }
 
+
 function setMousePassthrough(passthrough) {
   if (mousePassthrough === passthrough) return;
   mousePassthrough = passthrough;
@@ -50,6 +51,11 @@ function setMousePassthrough(passthrough) {
 
 function updatePointerRegion() {
   pointerUpdateFrame = null;
+  // 语音面板展开期间整个窗口保持可交互（面板内是开关，必须能点到）
+  if (voiceDockOpen) {
+    setMousePassthrough(false);
+    return;
+  }
   if (dragging) {
     character.dataset.pointerHit = 'true';
     setMousePassthrough(false);
@@ -242,7 +248,10 @@ window.addEventListener('mouseup', () => {
 });
 
 character.addEventListener('click', (event) => {
-  if (!pointerHit || dragged || formalChatActive || greetBusy || Date.now() - lastGreetAt < GREET_COOLDOWN_MS) return;
+  if (!pointerHit || dragged || formalChatActive) return;
+  // 单击角色：切换语音控制扇形面板（半透明，内含 🎤/🔊 图标）
+  setVoiceDockOpen(!voiceDockOpen);
+  if (greetBusy || Date.now() - lastGreetAt < GREET_COOLDOWN_MS) return;
   clearTimeout(greetTimer);
   const { clientX, clientY } = event;
   greetTimer = setTimeout(async () => {
@@ -327,17 +336,29 @@ async function ensureVoiceCapture() {
   }
 }
 
-function updateVoiceToggle() {
-  const el = document.getElementById('voice-toggle');
-  if (!el) return;
-  el.classList.toggle('listening', voiceListening && voiceSidecarReady);
-  el.classList.toggle('loading', voiceListening && !voiceSidecarReady);
-  el.title = !voiceListening
-    ? '开启语音输入'
-    : voiceSidecarReady
-      ? '聆听中，说话吧（再点关闭）'
-      : '语音引擎加载中…（就绪后即可说话）';
-  el.setAttribute('aria-label', el.title);
+// ---------- 语音控制扇形面板（单击角色弹出，左/右视空位） ----------
+let voiceTtsEnabled = true; // 语音输出开关（读 .env SIDECAR_TTS_ENABLED）
+let voiceDockOpen = false;
+
+function updateVoiceDockIcons() {
+  const input = document.getElementById('dock-voice-input');
+  const output = document.getElementById('dock-voice-output');
+  if (input) {
+    const on = voiceListening;
+    if (input.checked !== on) input.checked = on;
+    input.closest('.dock-switch').classList.toggle('dock-loading', voiceListening && !voiceSidecarReady);
+    input.title = !voiceListening
+      ? '语音输入：开启'
+      : voiceSidecarReady
+        ? '聆听中，说话吧（再点关闭）'
+        : '语音引擎加载中…（就绪后即可说话）';
+    input.setAttribute('aria-label', input.title);
+  }
+  if (output) {
+    if (output.checked !== voiceTtsEnabled) output.checked = voiceTtsEnabled;
+    output.title = voiceTtsEnabled ? '语音输出：已开启（点击关闭朗读）' : '语音输出：已关闭（点击开启朗读）';
+    output.setAttribute('aria-label', output.title);
+  }
 }
 
 async function applyVoiceListening(on) {
@@ -349,29 +370,78 @@ async function applyVoiceListening(on) {
   } else {
     await voiceContext?.suspend(); // 停止采集，保留授权避免重复弹窗
   }
-  updateVoiceToggle();
+  updateVoiceDockIcons();
+}
+
+// 在窗口内决定扇形面板放角色左边还是右边：看角色投影中心距离左右边缘哪边更宽
+function positionVoiceDock() {
+  const dock = document.getElementById('voice-dock');
+  if (!dock) return;
+  const rect = character.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const spaceLeft = cx;
+  const spaceRight = window.innerWidth - cx;
+  const placeRight = spaceRight >= spaceLeft; // 右边更宽就放右
+  dock.classList.toggle('right', placeRight);
+  dock.style.left = placeRight ? '' : '10px';
+  dock.style.right = placeRight ? '10px' : '';
+}
+
+function setVoiceDockOpen(open) {
+  const dock = document.getElementById('voice-dock');
+  if (!dock) return;
+  voiceDockOpen = Boolean(open);
+  dock.classList.toggle('hidden', !voiceDockOpen);
+  if (voiceDockOpen) {
+    positionVoiceDock();
+    // 面板展开：整个窗口保持可交互（面板内是开关，必须能点到）
+    setMousePassthrough(false);
+  } else {
+    // 面板收起：恢复可穿透（角色/气泡 hover 由后续 mousemove 动态修正）
+    schedulePointerRegionUpdate();
+  }
 }
 
 // 聆听开关状态（主进程单一事实源，跨窗同步）
 window.desktopPet.voice.onListening(applyVoiceListening);
-// 宠物窗自己的 🎤 开关
-const voiceToggle = document.getElementById('voice-toggle');
-if (voiceToggle) {
-  voiceToggle.addEventListener('click', (event) => {
+// 宠物窗扇形面板里的 🎤 语音输入开关
+const dockInputBtn = document.getElementById('dock-voice-input');
+if (dockInputBtn) {
+  dockInputBtn.addEventListener('change', (event) => {
     event.stopPropagation();
-    window.desktopPet.voice.setListening(!voiceListening);
+    window.desktopPet.voice.setListening(dockInputBtn.checked);
   });
 }
-// 初始同步：若已开启（例如对话窗开过），宠物窗跟着开；同时记录侧车就绪度
+// 宠物窗扇形面板里的 🔊 语音输出开关
+const dockOutputBtn = document.getElementById('dock-voice-output');
+if (dockOutputBtn) {
+  dockOutputBtn.addEventListener('change', () => {
+    const next = dockOutputBtn.checked;
+    window.desktopPet.voice.setTtsEnabled(next);
+    voiceTtsEnabled = next;
+    updateVoiceDockIcons();
+  });
+}
+// 点面板外空白处关闭面板（角色区域除外，交给角色 click 切换）
+window.addEventListener('pointerdown', (event) => {
+  if (!voiceDockOpen) return;
+  const dock = document.getElementById('voice-dock');
+  if (!dock || dock.contains(event.target)) return;
+  if (isCharacterHit(event.clientX, event.clientY)) return;
+  setVoiceDockOpen(false);
+});
+// 初始同步：若已开启（例如对话窗开过），宠物窗跟着开；同时记录侧车就绪度与语音输出状态
 window.desktopPet.voice.getStatus().then((s) => {
   voiceSidecarReady = Boolean(s?.connected);
+  if (typeof s?.ttsEnabled === 'boolean') voiceTtsEnabled = s.ttsEnabled;
   if (s?.listening) applyVoiceListening(true);
-  updateVoiceToggle();
-}).catch(() => {});
-// 侧车就绪/重启 → 更新 🎤 加载中/就绪状态
+  updateVoiceDockIcons();
+}).catch(() => updateVoiceDockIcons());
+// 侧车就绪/重启 → 更新 🎤 加载中/就绪状态与 🔊 状态
 window.desktopPet.voice.onStatus((s) => {
   voiceSidecarReady = Boolean(s?.connected);
-  updateVoiceToggle();
+  if (typeof s?.ttsEnabled === 'boolean') voiceTtsEnabled = s.ttsEnabled;
+  updateVoiceDockIcons();
 });
 
 // ---------------- 语音输出（让小未来开口） ----------------

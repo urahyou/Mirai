@@ -20,6 +20,7 @@ function showFeedback(status, hint, isError = false) {
 function render(env) {
   $('speakLang').value = env.SIDECAR_TTS_SPEAK_LANG || '';
   $('ttsEngine').value = env.SIDECAR_TTS_ENGINE || 'edge';
+  $('ttsEnabled').checked = env.SIDECAR_TTS_ENABLED !== 'false';
   const isClone = env.SIDECAR_TTS_ENGINE === 'gpt-sovits';
   $('refNote').textContent = isClone
     ? `当前克隆参考音频：${env.SIDECAR_TTS_REF_WAV || '（未设置）'}${env.SIDECAR_TTS_PROMPT_TEXT ? '（台词：' + env.SIDECAR_TTS_PROMPT_TEXT.slice(0, 24) + '…）' : ''}。需先启动 GPT-SoVITS：bash ~/GPT-SoVITS/start_mac_api.sh`
@@ -55,6 +56,7 @@ async function init() {
   $('resetBtn').addEventListener('click', reset);
   $('speakLang').addEventListener('change', () => save({ SIDECAR_TTS_SPEAK_LANG: $('speakLang').value }));
   $('ttsEngine').addEventListener('change', () => save({ SIDECAR_TTS_ENGINE: $('ttsEngine').value }));
+  $('ttsEnabled').addEventListener('change', () => save({ SIDECAR_TTS_ENABLED: $('ttsEnabled').checked ? 'true' : 'false' }));
 
   try {
     const env = await window.desktopPet.voiceSettings.get();

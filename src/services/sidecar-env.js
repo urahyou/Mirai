@@ -8,6 +8,7 @@ const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
 // 面板可控键的默认值（.env 里没写时用这里）
 const DEFAULTS = Object.freeze({
   SIDECAR_TTS_ENGINE: 'edge',
+  SIDECAR_TTS_ENABLED: 'true',
   SIDECAR_TTS_URL: 'http://127.0.0.1:9880/',
   SIDECAR_TTS_REF_WAV: '',
   SIDECAR_TTS_PROMPT_TEXT: '',
@@ -17,7 +18,7 @@ const DEFAULTS = Object.freeze({
   SIDECAR_TTS_TEMPERATURE: '0.9',
   SIDECAR_TTS_SPEED_FACTOR: '1.0',
 });
-const PANEL_KEYS = ['SIDECAR_TTS_ENGINE', 'SIDECAR_TTS_TEXT_LANGUAGE', 'SIDECAR_TTS_SPEAK_LANG'];
+const PANEL_KEYS = ['SIDECAR_TTS_ENGINE', 'SIDECAR_TTS_TEXT_LANGUAGE', 'SIDECAR_TTS_SPEAK_LANG', 'SIDECAR_TTS_ENABLED'];
 
 function readRaw() {
   try {

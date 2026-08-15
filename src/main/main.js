@@ -551,7 +551,11 @@ ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
     p.SIDECAR_TTS_TEXT_LANGUAGE = p.SIDECAR_TTS_SPEAK_LANG || 'zh';
   }
   const next = sidecarEnv.write(p);
-  if (voiceBridge.getStatus().running) voiceBridge.restart(); // 让新配置立即生效
+  // TTS 输出开关是运行时逻辑，无需重启侧车；其余配置变更需要重启让侧车立即生效。
+  const needsRestart = Object.keys(p).some((k) => k !== 'SIDECAR_TTS_ENABLED');
+  if ('SIDECAR_TTS_ENABLED' in p) _ttsEnabledCache = p.SIDECAR_TTS_ENABLED !== 'false';
+  if (needsRestart && voiceBridge.getStatus().running) voiceBridge.restart(); // 让新配置立即生效
+  else if (!needsRestart) broadcastVoiceStatus(); // 开关变化也要让 🔊 图标同步
   return next;
 }));
 ipcMain.handle('voiceSettings:openPanel', () => { openVoiceSettingsPanel(); return true; });
@@ -722,9 +726,11 @@ async function handleUserUtterance(rawInput) {
 // 让小未来开口（把文字交给侧车合成并播放）
 // 若 .env 设了 SIDECAR_TTS_SPEAK_LANG（如 ja=日语），则先把“中文回复”翻成该语言再发音；
 // 屏幕上显示的气泡文字（chatHistory/chat-input）保持中文不变 —— 实现“中文文字 + 外语朗读”。
+// SIDECAR_TTS_ENABLED=false 时关闭语音输出（沉默模式，只显示文字不发声）。
 function speak(text) {
   const t = String(text || '').trim();
   if (!t) return;
+  if (!voiceOutputEnabled()) return;
   const speakLang = String(voiceBridge.getSidecarEnv().SIDECAR_TTS_SPEAK_LANG || '').trim();
   if (speakLang) {
     // 先翻译再发音，失败则回退原话，避免没声
@@ -736,12 +742,23 @@ function speak(text) {
   voiceBridge.speak(t);
 }
 
+// 语音输出开关：读取 .env 的 SIDECAR_TTS_ENABLED，防止误写时静音判定出错用白名单。
+// 用内存缓存避免 speak() 每句都读盘；写入时由 setVoiceTtsEnabled / voiceSettings:set 同步刷新。
+let _ttsEnabledCache = null;
+function voiceOutputEnabled() {
+  if (_ttsEnabledCache === null) {
+    const v = String(sidecarEnv.read().SIDECAR_TTS_ENABLED || 'true').trim().toLowerCase();
+    _ttsEnabledCache = !(v === 'false' || v === '0' || v === 'off' || v === 'no');
+  }
+  return _ttsEnabledCache;
+}
+
 // 语音识别结果直接交给统一发言流程
 const isVoiceListening = { value: false };
 
-// 向两个窗口广播语音状态（聆听开关 + 侧车就绪度），供 🎤 按钮显示 加载中/就绪
+// 向两个窗口广播语音状态（聆听开关 + 侧车就绪度 + 语音输出开关），供 🎤/🔊 图标显示状态
 function broadcastVoiceStatus() {
-  const status = { ...voiceBridge.getStatus(), listening: isVoiceListening.value };
+  const status = { ...voiceBridge.getStatus(), listening: isVoiceListening.value, ttsEnabled: voiceOutputEnabled() };
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('voice:status', status);
   sendToChatInput('voice:status', status);
 }
@@ -756,6 +773,18 @@ function setVoiceListening(on) {
   isVoiceListening.value = Boolean(on);
   if (isVoiceListening.value) voiceBridge.start();
   broadcastVoiceListening();
+  broadcastVoiceStatus();
+}
+
+// 语音输出开关：写入 .env 的 SIDECAR_TTS_ENABLED，并广播让宠物窗/对话窗 🔊 图标同步
+function setVoiceTtsEnabled(on) {
+  const enabled = Boolean(on);
+  try {
+    sidecarEnv.write({ SIDECAR_TTS_ENABLED: enabled ? 'true' : 'false' });
+  } catch (e) {
+    console.error('[voice] 写入 SIDECAR_TTS_ENABLED 失败:', e.message);
+  }
+  _ttsEnabledCache = enabled;
   broadcastVoiceStatus();
 }
 
@@ -809,10 +838,14 @@ ipcMain.handle('voice:stop', () => {
   voiceBridge.stop();
   return true;
 });
-ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: isVoiceListening.value }));
+ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: isVoiceListening.value, ttsEnabled: voiceOutputEnabled() }));
 ipcMain.handle('voice:setListening', (_event, on) => {
   setVoiceListening(on);
   return isVoiceListening.value;
+});
+ipcMain.handle('voice:setTtsEnabled', (_event, on) => {
+  setVoiceTtsEnabled(on);
+  return voiceOutputEnabled();
 });
 ipcMain.on('voice:pcm', (_event, buffer) => voiceBridge.sendPcm(buffer));
 

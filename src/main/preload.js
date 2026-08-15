@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     getStatus: () => ipcRenderer.invoke('voice:getStatus'),
     sendPcm: (buffer) => ipcRenderer.send('voice:pcm', buffer),
     setListening: (on) => ipcRenderer.invoke('voice:setListening', Boolean(on)),
+    setTtsEnabled: (on) => ipcRenderer.invoke('voice:setTtsEnabled', Boolean(on)),
     onAsr: (callback) => {
       if (asrListener) ipcRenderer.removeListener('voice:asr', asrListener);
       asrListener = (_event, text) => callback(text);

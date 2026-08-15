@@ -23,8 +23,17 @@
       <div id="character-shadow"></div>
     </div>
 
-    <!-- 语音输入开关 -->
-    <button id="voice-toggle" type="button" title="开启语音输入" aria-label="语音输入">🎤</button>
+    <!-- 语音控制扇形面板：单击角色时在角色旁弹出（左/右视空位而定） -->
+    <div id="voice-dock" class="hidden" role="group" aria-label="语音控制">
+      <label class="dock-switch" for="dock-voice-input">
+        <span class="dock-icon">🎤</span>
+        <span class="dock-track"><input id="dock-voice-input" type="checkbox" /><span class="dock-thumb"></span></span>
+      </label>
+      <label class="dock-switch" for="dock-voice-output">
+        <span class="dock-icon">🔊</span>
+        <span class="dock-track"><input id="dock-voice-output" type="checkbox" /><span class="dock-thumb"></span></span>
+      </label>
+    </div>
 
   </div>
 

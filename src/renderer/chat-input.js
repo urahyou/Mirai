@@ -2,7 +2,6 @@ const $ = (selector) => document.querySelector(selector);
 const chatbox = $('#chatbox');
 const input = $('#chat-input');
 const sendButton = $('#send-button');
-const voiceButton = $('#voice-button');
 const expandButton = $('#expand-button');
 const closeButton = $('#close-button');
 const historyList = $('#history-list');
@@ -182,53 +181,22 @@ expandButton.addEventListener('click', () => setExpanded(!expanded));
 closeButton.addEventListener('mousedown', (event) => event.stopPropagation());
 closeButton.addEventListener('click', () => window.desktopPet.closeChatInput());
 
-// ---- 语音输入开关（状态以主进程为准，跨窗同步） ----
-let voiceListening = false;
-let voiceSidecarReady = false; // 侧车模型是否已就绪
-
-function updateVoiceButton() {
-  if (!voiceButton) return;
-  voiceButton.classList.toggle('listening', voiceListening && voiceSidecarReady);
-  voiceButton.classList.toggle('loading', voiceListening && !voiceSidecarReady);
-  voiceButton.title = !voiceListening
-    ? '开启语音输入（识别文字会自动发出）'
-    : voiceSidecarReady
-      ? '聆听中，说话吧（再点关闭）'
-      : '语音引擎加载中…（就绪后即可说话）';
-  voiceButton.setAttribute('aria-label', voiceButton.title);
-}
-
-if (voiceButton) {
-  voiceButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    clearAutoHide();
-    window.desktopPet.voice.setListening(!voiceListening);
-  });
-  window.desktopPet.voice.onListening((on) => {
-    voiceListening = Boolean(on);
-    updateVoiceButton();
-  });
-  window.desktopPet.voice.getStatus().then((s) => { voiceListening = Boolean(s?.listening); voiceSidecarReady = Boolean(s?.connected); updateVoiceButton(); }).catch(() => {});
-  window.desktopPet.voice.onStatus((s) => { voiceSidecarReady = Boolean(s?.connected); updateVoiceButton(); });
-
-  // 说话识别文字 → 实时填入本对话框的输入框（而非她头顶的气泡）
-  const AUTO_SEND_VOICE = true; // true=识别完自动发送(B)；false=只填输入框等自己按发送(A)
-  window.desktopPet.voice.onAsrPartial((text) => {
-    if (!voiceListening) return;
-    input.value = String(text || '');
-    autosize();
-    resizeInputWindow();
-    markActivity();
-  });
-  window.desktopPet.voice.onAsrFinal((text) => {
-    if (!voiceListening) return;
-    input.value = String(text || '');
-    autosize();
-    resizeInputWindow();
-    markActivity();
-    if (AUTO_SEND_VOICE) setTimeout(() => submit(), 320); // 稍作停留让你看清，再自动发出
-  });
-}
+// ---- 语音输入（开启入口在宠物窗扇形面板；这里只负责把识别文字填进输入框） ----
+// 主进程已按聆听开关过滤 asr 事件，故无需本地再判 voiceListening。
+const AUTO_SEND_VOICE = true; // true=识别完自动发送(B)；false=只填输入框等自己按发送(A)
+window.desktopPet.voice.onAsrPartial((text) => {
+  input.value = String(text || '');
+  autosize();
+  resizeInputWindow();
+  markActivity();
+});
+window.desktopPet.voice.onAsrFinal((text) => {
+  input.value = String(text || '');
+  autosize();
+  resizeInputWindow();
+  markActivity();
+  if (AUTO_SEND_VOICE) setTimeout(() => submit(), 320); // 稍作停留让你看清，再自动发出
+});
 
 const zone = $('#drag-zone');
 zone.addEventListener('mousedown', (event) => {
