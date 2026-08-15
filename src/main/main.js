@@ -31,6 +31,7 @@ let balloonVisible = false;
 let balloonFreed = false; // 用户是否已把气泡拖离头顶（true=停在自己拖到的位置）
 let balloonFreedPos = null;
 let balloonHideTimer = null;
+let pendingBalloonRender = null; // 窗口加载期间缓存的渲染指令，load 完成后 flush
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
@@ -155,7 +156,13 @@ function createBalloonWindow() {
     balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
   balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
-  balloonWindow.on('closed', () => { balloonWindow = null; });
+  if (config.dev) {
+    balloonWindow.webContents.on('console-message', (_event, _level, message) => console.log('[balloon-r]', message));
+  }
+  // 注意：首条渲染指令不在此处（did-finish-load）发送——此时 renderer 的 onRender
+  // 可能还没注册好（balloon.js 用轮询等 DOM），did-finish-load 就发会导致丢失。
+  // 改为由 renderer 上报 balloon:ready 后再 flush（见 ipcMain.handle('balloon:ready')）。
+  balloonWindow.on('closed', () => { balloonWindow = null; pendingBalloonRender = null; });
 }
 
 // 气泡锚点：默认贴着角色头顶（主窗水平居中、顶部向下取一个比例）
@@ -186,13 +193,25 @@ function positionBalloon() {
   balloonWindow.setPosition(pos.x, pos.y);
 }
 
+// 把渲染指令发给气泡窗口。若页面还在加载（首次创建时），先缓存、
+// 等 did-finish-load 后 flush，避免首条消息在 load 完成前丢失。
+function dispatchBalloonRender(payload) {
+  if (!balloonWindow || balloonWindow.isDestroyed()) return;
+  if (balloonWindow.webContents.isLoading()) {
+    pendingBalloonRender = payload;
+    return;
+  }
+  balloonWindow.webContents.send('balloon:render', payload);
+  pendingBalloonRender = null;
+}
+
 function balloonRender(payload) {
   createBalloonWindow();
   if (!balloonWindow || balloonWindow.isDestroyed()) return;
   clearTimeout(balloonHideTimer);
   balloonVisible = true;
   positionBalloon();
-  balloonWindow.webContents.send('balloon:render', payload);
+  dispatchBalloonRender(payload);
   balloonWindow.show();
   balloonWindow.moveTop();
 }
@@ -201,7 +220,7 @@ function balloonHide() {
   if (!balloonWindow || balloonWindow.isDestroyed()) return;
   balloonVisible = false;
   clearTimeout(balloonHideTimer);
-  balloonWindow.webContents.send('balloon:render', { action: 'hide' });
+  dispatchBalloonRender({ action: 'hide' });
   balloonHideTimer = setTimeout(() => {
     if (balloonWindow && !balloonWindow.isDestroyed()) balloonWindow.hide();
   }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
@@ -566,17 +585,26 @@ ipcMain.handle('balloon:show', (_event, payload) => {
   return true;
 });
 ipcMain.handle('balloon:update', (_event, full) => {
-  if (balloonWindow && !balloonWindow.isDestroyed()) balloonWindow.webContents.send('balloon:render', { action: 'update', full: String(full || '') });
+  if (balloonWindow && !balloonWindow.isDestroyed()) dispatchBalloonRender({ action: 'update', full: String(full || '') });
   return true;
 });
 ipcMain.handle('balloon:finish', (_event, payload) => {
   if (balloonWindow && !balloonWindow.isDestroyed()) {
     const p = payload && typeof payload === 'object' ? payload : {};
-    balloonWindow.webContents.send('balloon:render', { action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
+    dispatchBalloonRender({ action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
   }
   return true;
 });
 ipcMain.handle('balloon:hide', () => { balloonHide(); return true; });
+
+// renderer 端 onRender 监听注册完成后上报，此时才 flush 加载阶段积压的首条渲染消息
+ipcMain.handle('balloon:ready', () => {
+  if (pendingBalloonRender && balloonWindow && !balloonWindow.isDestroyed()) {
+    balloonWindow.webContents.send('balloon:render', pendingBalloonRender);
+  }
+  pendingBalloonRender = null;
+  return true;
+});
 
 ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   if (!balloonWindow || balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;

@@ -1,24 +1,16 @@
 // 独立气泡窗口渲染器：收到主进程的渲染命令显示/隐藏气泡；可拖到屏幕任意位置并记住位置。
-const $ = (id) => document.getElementById(id);
-
-const balloon = $('#balloon');
-const balloonText = $('#balloon-text');
+//
+// 注意：这个 transparent 独立渲染进程在脚本执行时 document 可能尚未解析完，
+// 实测直接 document.getElementById / querySelector 稳定可靠（而经由局部 $ 闭包
+// 捕获的引用会拿到旧 document），因此这里一律直接使用 document 访问，并轮询
+// 等待 #balloon 元素出现再初始化（参考 chatInputWindow 的 did-finish-load 模式）。
 const BUBBLE_POSITION_STORAGE_KEY = 'mirai.balloon-position.v1';
 
+let balloon = null;
+let balloonText = null;
 let balloonDragging = false;
 let dragOffset = null;
-let balloonPosition = loadBalloonPosition();
-
-function loadBalloonPosition() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(BUBBLE_POSITION_STORAGE_KEY));
-    const x = Number(saved?.x);
-    const y = Number(saved?.y);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  } catch {
-    return null;
-  }
-}
+let balloonPosition = null;
 
 function saveBalloonPosition() {
   if (!balloonPosition) return;
@@ -26,7 +18,7 @@ function saveBalloonPosition() {
 }
 
 function render(message) {
-  if (!message || typeof message !== 'object') return;
+  if (!message || typeof message !== 'object' || !balloon || !balloonText) return;
   switch (message.action) {
     case 'show': {
       balloonText.classList.toggle('typing', Boolean(message.typing));
@@ -64,42 +56,62 @@ function render(message) {
   }
 }
 
-window.desktopPet.balloonWindow.onRender(render);
+function init() {
+  // 直接取真实 document 下的元素（绕过 $ 闭包可能捕获的旧 document）
+  balloon = document.getElementById('balloon');
+  balloonText = document.getElementById('balloon-text');
+  if (!balloon || !balloonText) return; // 轮询 start() 会继续等到就绪再进这里
 
-// 拖拽气泡：用屏幕坐标把独立气泡窗口移动到屏幕任意位置（不再被宠物窗口框住）
-balloon.addEventListener('mousedown', (event) => {
-  if (event.button !== 0 || event.target.closest('#balloon-text')) return;
-  balloonDragging = true;
-  dragOffset = { x: event.screenX - window.screenX, y: event.screenY - window.screenY };
-  event.preventDefault();
-  event.stopPropagation();
-});
+  window.desktopPet.balloonWindow.onRender(render);
+  // onRender 监听已注册，通知主进程可以 flush 掉加载阶段积压的首条渲染消息；
+  // 否则 did-finish-load 时轮询可能还没跑完、监听未挂上，首条 show 会丢失。
+  window.desktopPet.balloonWindow.ready();
 
-window.addEventListener('mousemove', (event) => {
-  if (balloonDragging && dragOffset) {
-    const targetX = event.screenX - dragOffset.x;
-    const targetY = event.screenY - dragOffset.y;
-    balloonPosition = { x: targetX, y: targetY };
-    window.desktopPet.balloonWindow.dragMove(targetX, targetY);
-  }
-});
+  // 拖拽气泡：用屏幕坐标把独立气泡窗口移动到屏幕任意位置（不再被宠物窗口框住）
+  balloon.addEventListener('mousedown', (event) => {
+    if (event.button !== 0 || event.target.closest('#balloon-text')) return;
+    balloonDragging = true;
+    dragOffset = { x: event.screenX - window.screenX, y: event.screenY - window.screenY };
+    event.preventDefault();
+    event.stopPropagation();
+  });
 
-window.addEventListener('mouseup', () => {
-  if (balloonDragging) saveBalloonPosition();
-  balloonDragging = false;
-  dragOffset = null;
-  window.desktopPet.balloonWindow.release();
-});
+  window.addEventListener('mousemove', (event) => {
+    if (balloonDragging && dragOffset) {
+      const targetX = event.screenX - dragOffset.x;
+      const targetY = event.screenY - dragOffset.y;
+      balloonPosition = { x: targetX, y: targetY };
+      window.desktopPet.balloonWindow.dragMove(targetX, targetY);
+    }
+  });
 
-// 双击气泡空白处（非文字）→ 重新跟随角色头顶
-balloon.addEventListener('dblclick', (event) => {
-  if (event.target.closest('#balloon-text')) return;
-  balloonPosition = null;
-  try { window.localStorage.removeItem(BUBBLE_POSITION_STORAGE_KEY); } catch { /* ignore */ }
-  window.desktopPet.balloonWindow.reanchor();
-});
+  window.addEventListener('mouseup', () => {
+    if (balloonDragging) saveBalloonPosition();
+    balloonDragging = false;
+    dragOffset = null;
+    window.desktopPet.balloonWindow.release();
+  });
 
-// 启动时若上次拖离过，恢复那个屏幕位置
-if (balloonPosition) {
-  window.desktopPet.balloonWindow.restore(balloonPosition.x, balloonPosition.y);
+  // 双击气泡空白处（非文字）→ 重新跟随角色头顶
+  balloon.addEventListener('dblclick', (event) => {
+    if (event.target.closest('#balloon-text')) return;
+    balloonPosition = null;
+    try { window.localStorage.removeItem(BUBBLE_POSITION_STORAGE_KEY); } catch { /* ignore */ }
+    window.desktopPet.balloonWindow.reanchor();
+  });
 }
+
+// 轮询等待 DOM 就绪：transparent 窗口脚本执行时 document 可能尚未就绪/元素尚未注入，
+// 直接反复用 document.getElementById 探测（实测 try=2 即稳定就绪）。
+let initTries = 0;
+function start() {
+  initTries += 1;
+  balloon = document.getElementById('balloon');
+  balloonText = document.getElementById('balloon-text');
+  if (!balloon || !balloonText) {
+    setTimeout(start, 60);
+    return;
+  }
+  init();
+}
+start();

@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   // 气泡窗口自身：接收渲染命令 + 拖拽控制
   balloonWindow: Object.freeze({
     onRender: (callback) => ipcRenderer.on('balloon:render', (_event, data) => callback(data)),
+    ready: () => ipcRenderer.invoke('balloon:ready'),
     dragMove: (x, y) => ipcRenderer.invoke('balloonWindow:dragMove', x, y),
     release: () => ipcRenderer.invoke('balloonWindow:release'),
     restore: (x, y) => ipcRenderer.invoke('balloonWindow:restore', x, y),
