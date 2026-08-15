@@ -18,6 +18,8 @@ title.textContent = '小未来';
 menu.appendChild(title);
 addItem('开始聊天', () => window.desktopPet.openChatInput());
 addItem('显示设置', () => window.desktopPet.openDisplayPanel());
+addItem('上下文设置', () => window.desktopPet.openContextPanel());
+addItem('记忆', () => window.desktopPet.memory.openPanel());
 addItem('语音设置', () => window.desktopPet.openVoiceSettingsPanel());
 addItem('小未来的性格', () => window.desktopPet.openPersonalityPanel());
 addItem('模型设置', () => window.desktopPet.openProviderPanel());

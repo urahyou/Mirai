@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 记忆</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="display-panel.css" />
+  <style>
+    .mem-status {
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255, 122, 184, 0.08);
+      border-radius: 8px;
+      padding: 8px 10px;
+      line-height: 1.7;
+      margin-top: 10px;
+    }
+    .mem-status b { color: var(--pink); font-weight: 600; }
+    .mem-status .off { color: var(--danger); }
+    .mem-list { flex: 1; overflow-y: auto; margin-top: 10px; padding-right: 4px; }
+    .mem-item {
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: #fdf5f9;
+    }
+    .mem-item-head { display: flex; align-items: flex-start; gap: 8px; }
+    .mem-item-name {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      flex: 1; word-break: break-all;
+    }
+    .mem-item-track {
+      font-size: 10px; color: var(--pink);
+      border: 1px solid rgba(255,79,158,.4); border-radius: 10px;
+      padding: 1px 7px; flex-shrink: 0;
+    }
+    .mem-item-desc { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .mem-item-content {
+      font-size: 12px; color: var(--text); line-height: 1.6;
+      margin-top: 6px; white-space: pre-wrap; word-break: break-word;
+      background: rgba(255,255,255,.7); border-radius: 8px; padding: 8px 10px;
+    }
+    .mem-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 30px 0; }
+    .mem-error { color: var(--danger); font-size: 12px; margin-top: 8px; }
+    .refresh-hint { font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">记忆</h1>
+      <p class="panel-desc">小未来长期记住的关于主人的事情（本地 memU 存储）</p>
+      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    </header>
+
+    <div class="mem-status" id="statusBox">加载中…</div>
+
+    <div class="mem-list" id="memList"></div>
+    <p class="mem-error" id="memError"></p>
+
+    <footer class="panel-footer">
+      <span class="refresh-hint" id="refreshHint">外出对话后会自动提炼归档</span>
+      <div class="spacer"></div>
+      <button class="btn small ghost" id="refreshBtn" type="button">刷新</button>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+
+  <script src="memory-panel.js"></script>
+</body>
+</html>

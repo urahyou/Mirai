@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 上下文设置</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="display-panel.css" />
+  <style>
+    .context-note {
+      margin-top: 4px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--comment, #888);
+      background: rgba(255, 122, 184, 0.08);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: #ff4f9e;
+      border: 1px solid rgba(255, 79, 158, 0.4);
+      border-radius: 20px;
+      padding: 2px 8px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .model-badge.unknown {
+      color: var(--muted, #999);
+      border-color: rgba(0,0,0,.2);
+    }
+    .probe-hint { font-size: 12px; color: var(--muted, #999); margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">上下文设置</h1>
+      <p class="panel-desc">控制喂给大模型的对话历史长度（按 token 计）</p>
+      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+    </header>
+
+    <main class="settings-content">
+      <section class="setting-section">
+        <div class="setting-heading">
+          <div>
+            <h2 class="section-title">
+              对话上下文窗口
+              <span class="model-badge" id="modelBadge">探测中…</span>
+            </h2>
+            <p class="hint">小未来最多记住最近多少 token 的对话，越大越连贯、但越耗资源</p>
+          </div>
+          <strong class="value" id="contextValue">4K</strong>
+        </div>
+        <input id="contextRange" class="scale-range" type="range" step="1000" />
+        <div class="range-labels">
+          <span id="minLabel">1K</span>
+          <span id="maxLabel">—</span>
+        </div>
+        <p class="probe-hint" id="probeHint"></p>
+      </section>
+
+      <section class="setting-section">
+        <div class="context-note">
+          提示：这里的数值是「发送给模型的对话 token 预算」。建议设为模型最大上下文的一半左右，
+          给回复和系统提示预留空间，避免超限出错。当前值仅影响本次运行期间的新对话。
+        </div>
+      </section>
+    </main>
+
+    <footer class="panel-footer">
+      <span class="hint" id="saveHint" aria-live="polite"></span>
+      <div class="spacer"></div>
+      <button class="btn small ghost" id="probeBtn" type="button">重新探测</button>
+      <button class="btn small ghost" id="resetBtn" type="button">恢复默认</button>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+
+  <script src="context-panel.js"></script>
+</body>
+</html>

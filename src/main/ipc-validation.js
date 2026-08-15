@@ -53,6 +53,16 @@ function validateChatExpanded(args) {
   return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
 }
 
+function validateContextSettingsPatch(args) {
+  if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
+  const patch = args[0];
+  if ('maxContextTokens' in patch) {
+    const v = patch.maxContextTokens;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 1000 || v > 131072) return null;
+  }
+  return Object.keys(patch).length ? args : null;
+}
+
 function validatePayload(channel, args) {
   const values = Array.isArray(args) ? args : [];
   const data = channel === 'personality:set'
@@ -63,7 +73,9 @@ function validatePayload(channel, args) {
         ? validateDisplaySettingsPatch(values)
         : channel === 'chat:setExpanded'
           ? validateChatExpanded(values)
-          : null;
+          : channel === 'context:set'
+            ? validateContextSettingsPatch(values)
+            : null;
   return data ? { ok: true, data } : IPC_ERROR;
 }
 

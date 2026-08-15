@@ -37,9 +37,49 @@ function defaultApiKeyEnv(name) {
   return `MIRAI_PROVIDER_${String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
 }
 
-// 多轮会话记忆：保留最近的对话轮次（user + assistant 配对）
-const HISTORY_MAX_TURNS = 12; // 最多保留 12 对 (user/assistant)
+// 多轮会话记忆：按 token 预算保留最近的对话（user + assistant 配对）。
+// 主要限制从“轮数”改为“token 预算”（contextMaxTokens，由上下文设置面板滑条控制）。
+const HISTORY_MAX_TURNS = 256; // 兜底最大轮数，防止 token 估算误差导致历史无限增长
+const DEFAULT_CONTEXT_MAX_TOKENS = 4096; // 默认上下文 token 预算（与 context-settings 一致）
 let history = [];
+
+/**
+ * 粗略估算一段文本的 token 数。无 tiktoken 依赖，用字符数近似：
+ * 中文约 1 token/1.5 字，英文约 1 token/4 字符。这里保守取 1 token ≈ 1.4 字符，
+ * 对中文和混合文本都偏安全（略高估，避免超限）。
+ */
+function estimateTokens(text) {
+  const s = String(text || '');
+  return Math.ceil(s.length * 0.7);
+}
+
+/**
+ * 生成发送给模型的 messages 数组（不含 system），按 token 预算从后往前截断，
+ * 保证保留最近的对话。
+ * @param {Array<{role:string, content:string}>} msgs
+ * @param {number} budget token 预算
+ * @returns {{messages:Array, droppedTurns:number}}
+ */
+function truncateHistory(msgs, budget) {
+  const list = Array.isArray(msgs) ? msgs.slice() : [];
+  if (!Number.isFinite(budget) || budget <= 0) budget = DEFAULT_CONTEXT_MAX_TOKENS;
+  if (!list.length) return { messages: [], droppedTurns: 0 };
+
+  // 从后往前组包，直到累积 token 超预算或达到轮数兜底
+  const selected = [];
+  let used = 0;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const msg = list[i];
+    const dropMe = estimateTokens(msg.content);
+    // 单条消息若超过整个预算，也必须保留（否则完全没上下文）
+    if (selected.length > 0 && used + dropMe > budget) break;
+    selected.unshift(msg);
+    used += dropMe;
+    // 轮数兜底：最多保留 HISTORY_MAX_TURNS 对，避免无限
+    if (selected.length >= HISTORY_MAX_TURNS * 2) break;
+  }
+  return { messages: selected, droppedTurns: (list.length - selected.length) / 2 | 0 };
+}
 
 function resetConversationHistory() {
   history = [];
@@ -204,10 +244,11 @@ async function generateReply(userInput, options = {}) {
   // 避免请求失败时留下未配对的 user 消息，导致后续对话乱序/重复）。
   const userMessage = { role: 'user', content: String(userInput) };
   const pendingHistory = [...history, userMessage];
-  // 裁剪过长的记忆，只保留最近 HISTORY_MAX_TURNS 对（保持 user/assistant 配对）
-  if (pendingHistory.length > HISTORY_MAX_TURNS * 2) {
-    pendingHistory.splice(0, pendingHistory.length - HISTORY_MAX_TURNS * 2);
-  }
+  // 上下文 token 预算：主要截断依据（来自上下文设置面板滑条）
+  const contextMaxTokens = Number.isFinite(Number(options.contextMaxTokens)) && Number(options.contextMaxTokens) > 0
+    ? Math.round(Number(options.contextMaxTokens))
+    : DEFAULT_CONTEXT_MAX_TOKENS;
+  const { messages: trimmedHistory } = truncateHistory(pendingHistory, contextMaxTokens);
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
@@ -218,14 +259,14 @@ async function generateReply(userInput, options = {}) {
     model: providerConf.defaultModel,
     messages: [
       { role: 'system', content: sys },
-      ...pendingHistory,
+      ...trimmedHistory,
     ],
     temperature: providerConf.temperature ?? 0.8,
     top_p: providerConf.topP ?? 0.9,
     stream,
   };
 
-  console.log(`[LLM] ${provider} chat request: ${base}/chat/completions model=${providerConf.defaultModel} history=${pendingHistory.length} stream=${stream}`);
+  console.log(`[LLM] ${provider} chat request: ${base}/chat/completions model=${providerConf.defaultModel} history=${trimmedHistory.length} contextMax=${contextMaxTokens} stream=${stream}`);
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers,
@@ -392,8 +433,11 @@ module.exports = {
   providerChain,
   isAvailable,
   checkProvider,
+  authorizationHeaders,
   generateReply,
   generatePetLine,
   translate,
   resetConversationHistory,
+  estimateTokens,
+  truncateHistory,
 };

@@ -8,7 +8,9 @@ const displaySettings = require('../services/display-settings');
 const sidecarEnv = require('../services/sidecar-env');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
-const timemMemory = require('../services/timem-memory');
+const contextSettings = require('../services/context-settings');
+const memuMemory = require('../services/memu-memory');
+const { probeMaxContext } = require('../services/probe-context');
 const voiceBridge = require('./voice-bridge');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 
@@ -22,6 +24,8 @@ let personalityPanelWindow = null;
 let providerPanelWindow = null;
 let displayPanelWindow = null;
 let voiceSettingsPanelWindow = null;
+let contextPanelWindow = null;
+let memoryPanelWindow = null;
 let chatInputWindow = null;
 let chatInputExpanded = false;
 let chatInputOpen = false;
@@ -32,10 +36,11 @@ let balloonFreed = false; // 用户是否已把气泡拖离头顶（true=停在�
 let balloonFreedPos = null;
 let balloonHideTimer = null;
 let pendingBalloonRender = null; // 窗口加载期间缓存的渲染指令，load 完成后 flush
+let cachedModelMaxTokens = null; // 探测到的当前 active provider 模型上下文上限（null=未知）
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
-const MENU_WINDOW_SIZE = { width: 196, height: 244 };
+const MENU_WINDOW_SIZE = { width: 200, height: 300 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
 
@@ -368,6 +373,48 @@ function openVoiceSettingsPanel() {
   voiceSettingsPanelWindow.on('closed', () => { voiceSettingsPanelWindow = null; });
 }
 
+function closeContextPanel() {
+  if (contextPanelWindow && !contextPanelWindow.isDestroyed()) contextPanelWindow.destroy();
+  contextPanelWindow = null;
+}
+
+function openContextPanel() {
+  closeContextPanel();
+  contextPanelWindow = new BrowserWindow({
+    width: 460,
+    height: 380,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: windowOptions(),
+  });
+  contextPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(contextPanelWindow, 460, 380);
+  contextPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'context-panel.html'));
+  contextPanelWindow.on('closed', () => { contextPanelWindow = null; });
+}
+
+function closeMemoryPanel() {
+  if (memoryPanelWindow && !memoryPanelWindow.isDestroyed()) memoryPanelWindow.destroy();
+  memoryPanelWindow = null;
+}
+
+function openMemoryPanel() {
+  closeMemoryPanel();
+  memoryPanelWindow = new BrowserWindow({
+    width: 520,
+    height: 560,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: windowOptions(),
+  });
+  memoryPanelWindow.setAlwaysOnTop(true, 'screen-saver');
+  positionPanelOnMainDisplay(memoryPanelWindow, 520, 560);
+  memoryPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'memory-panel.html'));
+  memoryPanelWindow.on('closed', () => { memoryPanelWindow = null; });
+}
+
 function closeChatInputWindow() {
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
     saveChatInputPosition(chatInputWindow);
@@ -489,17 +536,32 @@ async function generatePetLine(purpose) {
 }
 
 async function generateChat(input, emit) {
-  const memories = await timemMemory.search(input);
-  const memoryContext = timemMemory.formatContext(memories);
+  const memories = await memuMemory.search(input);
+  const memoryContext = memuMemory.formatContext(memories);
+  const contextMaxTokens = contextSettings.getSettings(cachedModelMaxTokens).maxContextTokens;
   for (const provider of generic.providerChain()) {
     try {
       if (!(await generic.isAvailable(provider))) continue;
-      return await generic.generateReply(input, { provider, onDelta: emit, memoryContext });
+      return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens });
     } catch {
       // Try the next configured provider.
     }
   }
   return '现在没能连上本地模型，稍后再和我聊聊吧。';
+}
+
+// 探测当前 active provider 的模型最大上下文并缓存（失败返回 null，不阻塞）。
+async function refreshModelMaxTokens() {
+  try {
+    const chain = generic.providerChain();
+    if (!chain.length) { cachedModelMaxTokens = null; return null; }
+    const config = generic.getProviderConfig();
+    const provider = chain[0] && config.providers[chain[0]];
+    cachedModelMaxTokens = provider ? await probeMaxContext(provider, generic.authorizationHeaders) : null;
+  } catch {
+    cachedModelMaxTokens = null;
+  }
+  return cachedModelMaxTokens;
 }
 
 ipcMain.handle('character:greet', async () => {
@@ -564,7 +626,10 @@ ipcMain.handle('voiceSettings:closePanel', () => { closeVoiceSettingsPanel(); re
 ipcMain.handle('provider:getConfig', () => generic.getProviderConfig());
 ipcMain.handle('provider:saveConfig', (_event, config) => {
   try {
-    return { ok: true, config: generic.saveProviderConfig(config) };
+    const result = { ok: true, config: generic.saveProviderConfig(config) };
+    // provider 变化后重新探测模型上下文上限
+    void refreshModelMaxTokens();
+    return result;
   } catch (error) {
     return { ok: false, error: String(error.message || error) };
   }
@@ -573,10 +638,34 @@ ipcMain.handle('provider:check', (_event, provider) => generic.checkProvider(pro
 ipcMain.handle('provider:openPanel', () => { openProviderPanel(); return true; });
 ipcMain.handle('provider:closePanel', () => { closeProviderPanel(); return true; });
 
+// 上下文设置：探测模型最大上下文 + 滑条控制发送给模型的 token 预算
+ipcMain.handle('context:get', async () => {
+  const settings = contextSettings.getSettings(cachedModelMaxTokens);
+  return { ...settings, modelMaxTokens: cachedModelMaxTokens };
+});
+ipcMain.handle('context:set', guarded('context:set', (patch) => {
+  return contextSettings.setSettings(patch, cachedModelMaxTokens);
+}));
+ipcMain.handle('context:probe', async () => {
+  await refreshModelMaxTokens();
+  return cachedModelMaxTokens;
+});
+ipcMain.handle('context:openPanel', () => { openContextPanel(); return true; });
+ipcMain.handle('context:closePanel', () => { closeContextPanel(); return true; });
+
 ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
 ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
-ipcMain.handle('memory:getStatus', () => timemMemory.getStatus());
+ipcMain.handle('memory:getStatus', () => memuMemory.getStatus());
+ipcMain.handle('memory:list', () => memuMemory.list());
+ipcMain.handle('memory:remove', (_event, name, track) => {
+  const n = String(name || '').trim().slice(0, 120);
+  const t = String(track || 'memory').trim() === 'skill' ? 'skill' : 'memory';
+  if (!n) return { ok: false, error: '缺少记忆名称' };
+  return memuMemory.remove(n, t);
+});
+ipcMain.handle('memory:openPanel', () => { openMemoryPanel(); return true; });
+ipcMain.handle('memory:closePanel', () => { closeMemoryPanel(); return true; });
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
@@ -715,7 +804,7 @@ async function handleUserUtterance(rawInput) {
   };
   const reply = await enqueueChat(() => generateChat(input, emit));
   const assistantMessage = chatHistory.appendMessage('assistant', reply);
-  void timemMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
+  void memuMemory.add([{ role: 'user', content: input }, { role: 'assistant', content: reply }]);
   sendToChatInput('chat:history', { message: assistantMessage, turnId });
   broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
   // 语音输出：让小未来开口说这句回复
@@ -860,8 +949,11 @@ app.whenReady().then(() => {
   generic.setRuntimePath(path.join(app.getPath('userData'), 'llm-providers.runtime.json'));
   personalityRuntime.setRuntimePath(path.join(app.getPath('userData'), 'personality-runtime.json'));
   displaySettings.setRuntimePath(path.join(app.getPath('userData'), 'display-settings.json'));
+  contextSettings.setRuntimePath(path.join(app.getPath('userData'), 'context-settings.json'));
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
+  // 启动后异步探测模型最大上下文（不阻塞启动）
+  void refreshModelMaxTokens();
   // 启动语音侧车
   voiceBridge.start();
   createMainWindow();

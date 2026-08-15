@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   getChatHistory: () => ipcRenderer.invoke('chat:getHistory'),
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
+    list: () => ipcRenderer.invoke('memory:list'),
+    remove: (name, track) => ipcRenderer.invoke('memory:remove', name, track),
+    openPanel: () => ipcRenderer.invoke('memory:openPanel'),
+    closePanel: () => ipcRenderer.invoke('memory:closePanel'),
   }),
   voice: Object.freeze({
     start: () => ipcRenderer.invoke('voice:start'),
@@ -137,5 +141,12 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   }),
   openProviderPanel: () => ipcRenderer.invoke('provider:openPanel'),
   closeProviderPanel: () => ipcRenderer.invoke('provider:closePanel'),
+  context: Object.freeze({
+    get: () => ipcRenderer.invoke('context:get'),
+    set: (patch) => ipcRenderer.invoke('context:set', patch),
+    probe: () => ipcRenderer.invoke('context:probe'),
+  }),
+  openContextPanel: () => ipcRenderer.invoke('context:openPanel'),
+  closeContextPanel: () => ipcRenderer.invoke('context:closePanel'),
   quit: () => ipcRenderer.invoke('menu:quit'),
 }));
