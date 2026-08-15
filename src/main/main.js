@@ -21,6 +21,7 @@ let providerPanelWindow = null;
 let displayPanelWindow = null;
 let chatInputWindow = null;
 let chatInputExpanded = false;
+let chatInputOpen = false;
 let chatQueue = Promise.resolve();
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
@@ -55,8 +56,21 @@ function placeAtBottomRight() {
 
 function setMainWindowAlwaysOnTop(enabled) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const shouldStayVisible = Boolean(enabled);
-  if (shouldStayVisible) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  // 层级策略（macOS 层级从高到低：screen-saver > floating > normal）：
+  //  - 无对话框：置顶配置开 → screen-saver（高于一切）；关 → normal。
+  //  - 紧凑对话框开启：置顶配置开 → floating（仍高于普通应用如微信，但低于对话框），
+  //    关 → normal。这样达成“输入框 > 人物 > 微信”。
+  //  - 展开对话框开启：人物转 normal，让展开的聊天窗当普通窗口用、可被其他应用覆盖。
+  let level;
+  if (!chatInputOpen) {
+    level = Boolean(enabled) ? 'screen-saver' : false;
+  } else if (!chatInputExpanded) {
+    level = Boolean(enabled) ? 'floating' : false;
+  } else {
+    level = false;
+  }
+  const shouldStayVisible = Boolean(level);
+  if (shouldStayVisible) mainWindow.setAlwaysOnTop(true, level);
   else mainWindow.setAlwaysOnTop(false);
   if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
     mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
@@ -208,13 +222,15 @@ function openDisplayPanel() {
 }
 
 function closeChatInputWindow() {
-  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
     saveChatInputPosition(chatInputWindow);
     chatInputWindow.destroy();
   }
   chatInputWindow = null;
   chatInputExpanded = false;
+  chatInputOpen = false;
+  // 先置空聊天窗口，再恢复角色置顶，否则会被上面的 chatInputOpen 守卫挡住。
+  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
 }
 
 function saveChatInputPosition(window) {
@@ -229,7 +245,9 @@ function saveChatInputPosition(window) {
 function openChatInputWindow() {
   closeChatInputWindow();
   chatInputExpanded = false;
-  setMainWindowAlwaysOnTop(false);
+  chatInputOpen = true;
+  // 角色从 screen-saver 降到 floating：仍高于普通应用（如微信），但低于对话框。
+  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   chatInputWindow = new BrowserWindow({
     width: CHAT_INPUT_COMPACT_SIZE.width,
     height: CHAT_INPUT_COMPACT_SIZE.height,
@@ -268,10 +286,12 @@ function openChatInputWindow() {
   chatInputWindow.on('close', () => {
     // 兜底：无论以何种方式关闭对话框，都恢复角色窗口的置顶状态，
     // 避免绕开 closeChatInputWindow() 时角色永久失去 always-on-top。
-    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-    if (chatInputWindow && !chatInputWindow.isDestroyed()) saveChatInputPosition(chatInputWindow);
-    chatInputWindow = null;
+    const win = chatInputWindow;
+    chatInputWindow = null; // 先置空，让角色层级恢复不被 chatInputOpen 守卫挡住
     chatInputExpanded = false;
+    chatInputOpen = false;
+    if (win && !win.isDestroyed()) saveChatInputPosition(win);
+    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   });
 }
 
@@ -392,11 +412,14 @@ ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('memory:getStatus', () => timemMemory.getStatus());
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
-  if (expanded) setMainWindowAlwaysOnTop(false);
-  else setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
-    if (expanded) chatInputWindow.setAlwaysOnTop(false);
-    else {
+    if (expanded) {
+      // 展开成普通窗口：角色也转 normal（chatInputExpanded=true 时策略如此），聊天窗可被覆盖
+      setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+      chatInputWindow.setAlwaysOnTop(false);
+    } else {
+      // 收起成悬浮输入框：角色降到 floating（仍高于微信），对话浮动在人物之上
+      setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
       chatInputWindow.setAlwaysOnTop(true, 'floating');
       chatInputWindow.moveTop();
     }
@@ -435,6 +458,28 @@ ipcMain.on('window:moveBy', (event, dx, dy) => {
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
+});
+
+// 绝对定位：拖拽用屏幕坐标直接 setPosition，避免增量模式下 getPosition 读到陈旧窗口位置导致滞后
+ipcMain.on('window:moveTo', (event, x, y) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  win.setPosition(Math.round(x), Math.round(y));
+});
+
+// 拖拽期间把置顶层级从 screen-saver 降为 floating，避免 macOS 逐帧合成导致闪烁
+ipcMain.on('window:setDragState', (event, dragging) => {
+  if (typeof dragging !== 'boolean') return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win !== mainWindow) return;
+  if (dragging) {
+    win.setAlwaysOnTop(true, 'floating');
+    if (typeof win.setVisibleOnAllWorkspaces === 'function') {
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    }
+  } else {
+    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+  }
 });
 
 ipcMain.on('window:setMousePassthrough', (event, passthrough) => {

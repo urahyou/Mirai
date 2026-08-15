@@ -25,11 +25,16 @@ let activeChatTurnId = null;
 let formalChatActive = false;
 let pointerHit = false;
 let mousePassthrough = false;
+// 穿透迟滞：指针离开角色/气泡后要持续这么长时间才允许“点击穿透”，
+// 避免边缘或模型运动瞬间的一帧误判立刻变成穿透到桌面。
+const PASSTHROUGH_GRACE_MS = 200;
+let lastHitAt = 0;
 let lastPointer = null;
 let pointerUpdateFrame = null;
 let balloonDragging = false;
 let balloonDragLast = null;
 let balloonPosition = loadBalloonPosition();
+let dragOffset = null;
 
 function isCharacterHit(clientX, clientY) {
   return Boolean(live2dAvatar?.isHit(clientX, clientY));
@@ -90,8 +95,16 @@ function updatePointerRegion() {
   const { x, y } = lastPointer;
   const characterHit = isCharacterHit(x, y);
   const bubbleHit = isPointInside(balloon, x, y);
+  const now = performance.now();
+  if (characterHit || bubbleHit) lastHitAt = now;
   character.dataset.pointerHit = characterHit ? 'true' : 'false';
-  setMousePassthrough(!characterHit && !bubbleHit);
+  // 迟滞：只有指针离开角色/气泡持续超过 grace 才转成可穿透。
+  // 这样点中的瞬间或模型轻微晃动时，不会因一帧误判而把点击漏到背后的桌面。
+  if (now - lastHitAt >= PASSTHROUGH_GRACE_MS && !characterHit && !bubbleHit) {
+    setMousePassthrough(!characterHit && !bubbleHit);
+  } else {
+    setMousePassthrough(false);
+  }
 }
 
 function schedulePointerRegionUpdate() {
@@ -245,12 +258,17 @@ character.addEventListener('mousedown', (event) => {
   dragging = true;
   dragged = false;
   lastMouse = { x: event.clientX, y: event.clientY };
+  // 记录抓取点相对窗口的偏移，拖拽全程用屏幕坐标做绝对定位
+  dragOffset = { x: event.screenX - window.screenX, y: event.screenY - window.screenY };
 });
 
 window.addEventListener('mousemove', (event) => {
   lastPointer = { x: event.clientX, y: event.clientY };
-  schedulePointerRegionUpdate();
-  live2dAvatar?.focus(event.clientX, event.clientY);
+  // 悬停时同步更新手型光标/鼠标穿透：透明+穿透窗口上 rAF 常不触发，
+  // 必须跟 mousedown 一样直接同步命中检测，否则光标要等点击才出现。
+  updatePointerRegion();
+  // 拖拽过程中暂停视线跟随：否则头部/眼球/身体会拼命追光标，造成抖动
+  if (!dragging) live2dAvatar?.focus(event.clientX, event.clientY);
   if (balloonDragging && balloonDragLast) {
     const dx = event.clientX - balloonDragLast.x;
     const dy = event.clientY - balloonDragLast.y;
@@ -265,12 +283,20 @@ window.addEventListener('mousemove', (event) => {
     }
     return;
   }
-  if (!dragging || !lastMouse) return;
+  if (!dragging || !lastMouse || !dragOffset) return;
+  // 无实际位移的 mousemove（如按下时的微小抖动）不算拖拽，避免误触点击判定
   const dx = event.clientX - lastMouse.x;
   const dy = event.clientY - lastMouse.y;
   if (!dx && !dy) return;
-  dragged = true;
-  window.desktopPet.moveBy(dx, dy);
+  const targetX = event.screenX - dragOffset.x;
+  const targetY = event.screenY - dragOffset.y;
+  // 真正的拖拽（有位移）才降置顶层级：普通点击不触发，避免影响 click/dblclick/contextmenu
+  if (!dragged) {
+    dragged = true;
+    window.desktopPet.setDragState(true);
+  }
+  // 绝对定位：窗口左上角 = 光标屏幕坐标 - 抓取偏移，完全锁定鼠标
+  window.desktopPet.moveTo(targetX, targetY);
   lastMouse = { x: event.clientX, y: event.clientY };
 });
 
@@ -280,6 +306,8 @@ window.addEventListener('mouseup', () => {
   balloonDragLast = null;
   dragging = false;
   lastMouse = null;
+  dragOffset = null;
+  if (dragged) window.desktopPet.setDragState(false);
   schedulePointerRegionUpdate();
 });
 

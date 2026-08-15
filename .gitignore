@@ -21,6 +21,7 @@ llm-providers.runtime.json
 settings.json
 proactive-settings.json
 memory/
+notes/
 *.log
 /tmp/pet_*.log
 

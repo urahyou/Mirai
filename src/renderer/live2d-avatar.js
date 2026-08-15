@@ -104,11 +104,39 @@
       const pixel = new Uint8Array(4);
       try {
         gl.readPixels(pixelX, pixelY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-        return pixel[3] >= ALPHA_HIT_THRESHOLD;
+        if (pixel[3] >= ALPHA_HIT_THRESHOLD) return true;
+        // 单像素未命中时再扫一个小邻域：角色边缘/细发丝/抗锯齿处单像素 alpha 常偏低，
+        // 容易误判成“没点在人物上”而把点击穿透到桌面。
+        return this.scanNeighborhood(pixelX, pixelY);
       } catch (error) {
         console.warn('[Live2D] alpha hit extraction failed:', error);
         return null;
       }
+    }
+
+    // 在命中点周围扫一个小邻域（7x7），任一像素不透明即视为命中，消除边缘误判
+    scanNeighborhood(cx, cy) {
+      const renderer = this.app?.renderer;
+      const gl = renderer?.gl;
+      if (!gl) return false;
+      const r = 3;
+      const x0 = Math.max(0, cx - r);
+      const y0 = Math.max(0, cy - r);
+      const x1 = Math.min(gl.drawingBufferWidth - 1, cx + r);
+      const y1 = Math.min(gl.drawingBufferHeight - 1, cy + r);
+      const width = x1 - x0 + 1;
+      const height = y1 - y0 + 1;
+      const buffer = new Uint8Array(width * height * 4);
+      try {
+        gl.readPixels(x0, y0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+        for (let i = 3; i < buffer.length; i += 4) {
+          if (buffer[i] >= ALPHA_HIT_THRESHOLD) return true;
+        }
+      } catch (error) {
+        console.warn('[Live2D] neighborhood hit extraction failed:', error);
+        return false;
+      }
+      return false;
     }
 
     focus(clientX, clientY) {
