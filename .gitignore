@@ -42,3 +42,9 @@ __pycache__/
 
 # 语音引擎本体（GPT-SoVITS 源码/venv/权重，由 npm run setup:voice 安装）
 vendor/
+
+# 本地中文研究资料（不纳入版本控制）
+/KokoroMemo实现图解.md
+/桌面桌宠记忆调研与建议.md
+/用户体验分析报告.md
+/记忆系统-全面分析.md
