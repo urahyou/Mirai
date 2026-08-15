@@ -24,6 +24,25 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 > 本地规则关键词答话已移除（无 `dialogueMode` 概念），对话一律走大模型。
 
+## 语音子系统（可选，Python 侧车）
+
+语音输入/输出由一个**独立 Python 进程** `voice-sidecar/sidecar_server.py` 实现，与 Electron 主进程通过本机 WebSocket 通信：
+
+- 主进程 `src/main/voice-bridge.js`：spawn 并守护侧车（崩溃自动重启、连接自愈重连），把 renderer 采集的 int16 PCM 转发给侧车，接收 `vad`/`asr`/`audio` 事件。
+- 侧车复用 warashi（Open-LLM-VTuber）的 VAD/Silero + ASR/Sherpa-ONNX；输出用 `edge-tts` 合成 MP3 并以 base64 回传。
+- 协议：客户端→侧车=二进制 int16 PCM(16k) 或 JSON `{type:'speak',text}`；侧车→客户端=JSON `ready/vad/asr/audio`。
+- 音频只在 `127.0.0.1` 上传输，不上任何云端。
+
+关键链路（都在 `main.js`）：
+
+1. 语音输入：`voice:pcm` → sidecar `asr-partial`/`asr` → 开着对话窗时填输入框（`chat-input.js` 决定是否自动发送），否则直接 `handleUserUtterance(text)`。
+2. 语音输出：回复生成后自动 `speak(reply)` → sidecar 合成 MP3 → `voice:audio` 推给宠物窗 WebAudio 播放（带说话动画）；`voice:vad` `speech_start` 会打断正在播放的语音。
+3. 共享状态：`isVoiceListening` 是主进程单一事实源，`voice:listening-changed`/`voice:status` 广播给两个窗口同步 `🎤` 按钮（绿=聆听中，橙=侧车加载中）。
+
+侧车模型加载需 20–50 秒，`npm start` 时后台预热；就绪前识别不可用（`🎤` 橙色脉冲）。未就绪期间 PCM 缓存有限、可能丢弃，属预期。
+
+`preload.js` 暴露的语音 API：`voice.start/stop/getStatus/sendPcm/setListening/onAsr/onVad/onAsrPartial/onAsrFinal/onListening/speak/onAudio/onSpeakInterrupt/onStatus`。
+
 ## 配置（不要硬编码进代码）
 
 - `src/core/llm-providers.json`：**不含密钥的 Provider 出厂模板**。实际配置写入 Electron `userData/llm-providers.runtime.json`；API Key 只从项目根目录 `.env` 的 `apiKeyEnv` 变量读取，勿把密钥写入仓库。
@@ -38,3 +57,4 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - **角色图**：角色完全由 `assets/live2d/` 下的 Cubism 模型渲染。点击命中必须使用 `Live2DAvatar.isHit()`，不要恢复 PNG fallback 或 alpha 图片命中缓存。模型纹理 PNG 是 Live2D 资源的一部分，不是旧角色 fallback。
 - **macOS Gatekeeper**：旧版 Electron（如 31）公证被吊销，运行时报 `SIGKILL`/「包含恶意软件」。当前 Electron 43.3.0 正常。若再遇到该报错，是二进制下载不完整/公证吊销，不是代码问题。
 - **Electron 二进制**：当前 Node 是 v20（brew `node@20`），而新版 Electron 下载工具 `@electron/get@5` 需 Node≥22。若 `npm start` 报 `ENOENT`/闪退，说明 `node_modules/electron/dist` 二进制缺失，需手动补（`path.txt` 内容为 `Electron.app/Contents/MacOS/Electron`）。
+- **语音侧车**：侧车是独立 Python 进程，需 warashi 的 venv 且已装 `silero-vad`/`edge-tts`/`sherpa-onnx`/`numpy`/`websockets`。模型预加载需 20–50 秒；测试后请 `pkill -f sidecar_server.py` 清理残留进程，避免占用端口。

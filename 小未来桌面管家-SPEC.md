@@ -41,6 +41,13 @@
 - 人格面板编辑运行时人格覆盖。
 - 显示面板调整角色大小、是否始终置顶和角色轮廓阴影。
 
+### 2.5 语音（可选，默认本地）
+
+- 语音输入：`🎤` 开启后对桌宠说话，识别文字实时填入输入框并可自动发送；文字输入/输出不受影响。
+- 语音输出：小未来的回复用本地 `edge-tts` 合成并朗读，播放时角色有说话动画，开口可打断。
+- 语音由独立 Python 侧车进程（复用 warashi VAD/ASR，输出 edge-tts）通过本机 WebSocket 提供，音频只在 `127.0.0.1` 传输。
+- `🎤` 状态反映侧车加载进度（绿=就绪，橙=加载中）。
+
 ## 3. 非目标
 
 当前版本不实现以下功能：
@@ -55,9 +62,10 @@
 
 ```text
 Electron main process
-├── main.js                 窗口、IPC、Provider 回退、对话队列
+├── main.js                 窗口、IPC、Provider 回退、对话队列、语音调度
 ├── preload.js              desktopPet 安全桥接
-└── ipc-validation.js       IPC 入参校验
+├── ipc-validation.js       IPC 入参校验
+└── voice-bridge.js         语音侧车守护与 WebSocket 桥（PCN 输入 + TTS 音频输出）
 
 Renderer
 ├── renderer.js             Live2D、气泡、命中检测、点击互动
@@ -75,11 +83,14 @@ Services
 ├── personality-runtime.js  用户人格覆盖
 ├── display-settings.js     角色显示设置
 └── chat-history.js         持久化聊天记录
+
+Voice sidecar（可选，独立进程）
+└── voice-sidecar/sidecar_server.py   warashi VAD/ASR + edge-tts，WS 服务
 ```
 
 ## 5. 数据与隐私
 
-所有用户人格、显示设置和聊天记录默认写入 Electron `userData`。模型请求只发送 system prompt、当前进程上下文和用户输入到用户配置的 Provider。项目不提供云端同步和自动上传功能。
+所有用户人格、显示设置和聊天记录默认写入 Electron `userData`。模型请求只发送 system prompt、当前进程上下文和用户输入到用户配置的 Provider。项目不提供云端同步和自动上传功能。语音模式的 PCM 与合成的 MP3 只在 `127.0.0.1` 上与本地 Python 侧车交换，不经任何云端。
 
 ## 6. 验收标准
 
@@ -88,7 +99,10 @@ Services
 - 单击角色能显示点击回应，重复点击不会并发覆盖气泡。
 - 双击角色能打开输入框并发送流式聊天。
 - 展开聊天记录后，点击其他窗口可以覆盖它。
+- 展开聊天记录后，角色仍保持置顶不消失。
 - 重启应用后，聊天记录仍可显示。
+- 开启 `🎤` 后能对桌宠说话识别；识别文字进入输入框；侧车未就绪时 `🎤` 呈橙色加载态。
+- 语音关闭或侧车不可用时，文字聊天完全正常。
 - `npm run check` 全部通过。
 
 ## 7. 后续候选项

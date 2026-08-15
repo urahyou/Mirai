@@ -8,13 +8,15 @@
 - 透明无边框桌宠窗口，可调整角色大小、是否始终置顶和角色轮廓阴影。
 - 单击角色生成一条独立互动回复；双击角色打开聊天输入框。
 - 轻量输入框支持回车发送、`Shift+Enter` 换行和流式回复。
+- 语音输入（可选）：点击 `🎤` 开启后，对桌宠说话即可识别，说话文字实时填入输入框并由你确认/自动发送。
+- 语音输出（可选）：小未来的回复会用本地 `edge-tts` 合成并朗读，播放时角色有说话动画；你开口时会打断正在播放的语音。
 - 轻量输入框默认覆盖在角色腹部中央，回复气泡居中显示在角色头顶。
 - 展开聊天记录后显示用户与小未来的全部历史消息，支持滚动和关闭。
 - 聊天历史保存在 Electron `userData/chat-history.json`，互动回复也会记录，但不会进入正式多轮上下文。
 - Provider 面板支持 OpenAI 兼容的 Ollama、vLLM、LM Studio 等服务，并按配置顺序自动回退。
 - 人格面板支持编辑运行时人格覆盖。
 
-展开聊天记录时窗口会变成普通窗口，点击其他应用后可以被覆盖；收起后轻量输入框恢复置顶。
+展开聊天记录时聊天窗口会变成普通窗口、可被其他应用覆盖；但角色始终置顶（floating），不会因展开对话框而消失。收起后轻量输入框恢复置顶。
 
 ## 快速开始
 
@@ -24,6 +26,7 @@
 - npm
 - 一个可用的 OpenAI 兼容 `/v1` LLM 服务
 - Electron 43.3.0（由项目依赖安装）
+- 语音（可选）：Python 3.10 + `warashi` 项目的 venv（详见下文「语音输入与语音输出」）
 
 ### 安装与启动
 
@@ -50,6 +53,7 @@ npm run dev
 | 右键角色轮廓 | 打开菜单 |
 | 输入框顶部展开按钮 | 展开或收起聊天记录 |
 | 输入框右上角 `×` | 关闭输入框 |
+| 点击 `🎤`（宠物窗左下角或输入框左侧） | 开启/关闭语音输入；加载中呈橙色脉冲，就绪后呈绿色脉冲 |
 
 只有 Live2D 模型的实际命中区域可互动，透明背景不会触发操作。
 
@@ -71,6 +75,29 @@ TIMEM_SESSION_ID=desktop-session
 ```
 
 也可以使用 `TIMEM_USERNAME` 和 `TIMEM_PASSWORD`，由 Mirai 调用 TiMem 登录接口获取短期令牌。`.env` 已被 Git 忽略，密钥不会进入仓库。TiMem 记忆数据属于第三方云服务；需要完全离线时保持 `TIMEM_ENABLED=false`。
+
+### 语音输入与语音输出（可选）
+
+语音识别（输入）和语音朗读（输出）通过一个独立的 Python 侧车进程实现，复用 [Open-LLM-VTuber](https://github.com/r3mur4/Open-LLM-VTuber)（warashi）的 VAD/Silero 与 ASR/Sherpa-ONNX，输出用 `edge-tts` 合成。侧车通过本机 WebSocket 通信，PCM/音频只走 `127.0.0.1`，不经任何云端。
+
+前置（仅当使用语音时）：
+
+- 已安装 warashi 项目的 venv（Python 3.10），并补装依赖：`silero-vad`、`edge-tts`、`sherpa-onnx`、`numpy`、`websockets`。
+- ASR 模型已就位：`warashi/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/{model.int8.onnx,tokens.txt}`。
+
+开启方式：点击宠物窗左下角或输入框左侧的 `🎤`。侧车在 `npm start` 启动时即后台预热（加载约 1GB 的 SenseVoice 模型，首次需约 20–50 秒），就绪后识别瞬时；就绪前 `🎤` 呈橙色脉冲。语音识别文字会实时填入输入框并自动发送（在 `src/renderer/chat-input.js` 中可用 `AUTO_SEND_VOICE` 关闭自动发送，改为只填输入框由你确认）。
+
+可用的环境变量：
+
+| 变量 | 默认值 | 含义 |
+| --- | --- | --- |
+| `MIRAI_WARASHI_ROOT` | `/Users/urahyou/Desktop/warashi` | warashi 项目根目录 |
+| `MIRAI_SIDECAR_PORT` | `8765` | 侧车 WebSocket 端口 |
+| `MIRAI_SIDECAR_PYTHON` | `<warashi>/.venv/bin/python3` | 侧车 Python 解释器 |
+| `SIDECAR_ASR_LANGUAGE` | `zh` | 识别语言（简体中文） |
+| `SIDECAR_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | `edge-tts` 音色 |
+
+若语音不可用，聊天仍完全正常（文字输入/输出不受影响）。
 
 ### Provider
 
@@ -106,7 +133,9 @@ assets/live2d/             Cubism Core、模型、动作和模型纹理
 src/main/main.js           主进程、窗口管理、IPC、聊天调度
 src/main/preload.js        contextBridge 安全桥接
 src/main/ipc-validation.js IPC 入参校验
-src/renderer/renderer.js   Live2D 角色、命中检测、气泡和互动
+src/main/voice-bridge.js   语音侧车守护与 WebSocket 桥（输入 PCM + 输出 TTS 音频）
+voice-sidecar/             语音侧车（Python，复用 warashi VAD/ASR + edge-tts）
+src/renderer/renderer.js   Live2D 角色、命中检测、气泡、互动、麦克风采集与语音播放
 src/renderer/live2d-avatar.js Live2D 模型封装
 src/renderer/chat-input.* 轻量输入框和展开聊天记录
 src/engine/generic.js      OpenAI 兼容 LLM 调用和进程内多轮上下文
