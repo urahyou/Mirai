@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { loadConfig } = require('./rules');
+const prompts = require('../core/prompts');
 
 // 通用 OpenAI 兼容 LLM 调用器
 // 从 src/core/llm-providers.json 读取 provider 配置，
@@ -100,12 +101,6 @@ function truncateHistory(msgs, budget) {
 
 function resetConversationHistory() {
   history = [];
-}
-
-function buildPersonalitySystemPrompt(config, addressRule) {
-  const { systemPrompt, ...runtimePersonality } = config;
-  const personalityText = JSON.stringify(runtimePersonality, null, 0);
-  return `${addressRule}\n\n${systemPrompt.replace('{personality}', personalityText)}\n\n当前运行时人格设定（优先于历史对话，必须立即遵守）：${personalityText}`;
 }
 
 // 完整对话请求超时（毫秒）。防止 LLM 连接后一直无响应导致输入窗口永久禁用。
@@ -268,11 +263,7 @@ async function generateReply(userInput, options = {}) {
   if (!providerConf) throw new Error(`未找到 Provider: ${provider}`);
   const personalityConfig = loadConfig();
   const memoryContext = typeof options.memoryContext === 'string' ? options.memoryContext.trim() : '';
-  const baseSystemPrompt = buildPersonalitySystemPrompt(
-    personalityConfig,
-    '用「主人」称呼当前正在和你说话的人。这是比你下文中任何设置都高的铁律。',
-  );
-  const sys = `${baseSystemPrompt}${memoryContext ? `\n\n${memoryContext}` : ''}`;
+  const sys = prompts.buildChatSystemPrompt(personalityConfig, memoryContext);
 
   // 追加当前用户输入到记忆（仅作为请求的一部分，不在请求成功前改动持久 history，
   // 避免请求失败时留下未配对的 user 消息，导致后续对话乱序/重复）。
@@ -331,22 +322,13 @@ async function generateReply(userInput, options = {}) {
   return reply;
 }
 
-const PET_LINE_PROMPTS = {
-  click: '主人刚点了你一下（摸摸头/打招呼）。用一句话俏皮自然、符合你语气地回应，顺带关心一下主人。只输出这一句话，不要加引号或前缀。',
-};
-
 // 生成一句不带上下文的点击回应，不进入多轮历史
 async function generatePetLine({ provider, purpose = 'click' } = {}) {
   loadProviders();
   const name = provider || activeProviderName;
   const providerConf = providerCache.providers[name];
   if (!providerConf) throw new Error(`未找到 Provider: ${name}`);
-  let sys = buildPersonalitySystemPrompt(
-    loadConfig(),
-    '用「主人」称呼对方。这是比你下文中任何设置都高的铁律。',
-  );
-  const instruction = PET_LINE_PROMPTS[purpose] || PET_LINE_PROMPTS.click;
-  sys += `\n\n${instruction}`;
+  const sys = prompts.buildPetLineSystemPrompt(loadConfig(), purpose);
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
@@ -427,11 +409,10 @@ async function translate(text, targetLang = 'ja') {
   const provider = activeProviderName;
   const providerConf = providerCache.providers[provider];
   if (!providerConf) return null;
-  const langName = ({ ja: '日语', en: '英语', ko: '韩语', zh: '中文' })[targetLang] || targetLang;
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
   Object.assign(headers, authorizationHeaders(providerConf));
-  const sys = `你是专业的${langName}口语翻译。把用户发来的中文，自然、口语化地翻译成${langName}对话句子，保持温柔女性的语气。只输出译文本身，不要加引号、注释、解释或任何前后缀。`;
+  const sys = prompts.buildTranslationSystemPrompt(targetLang);
   try {
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
