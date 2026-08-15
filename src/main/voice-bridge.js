@@ -3,7 +3,7 @@
 //   - 拉起/守护 voice-sidecar/sidecar_server.py
 //   - 把 renderer 采集的 int16 PCM 转发给侧车
 //   - 接收侧车的 vad/asr 消息，转发为事件（'vad' / 'asr'）
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
@@ -32,6 +32,24 @@ function loadSidecarDotEnv() {
 const MAX_PCM_QUEUE = 1200;
 const RESTART_DELAY_MS = 2000;
 
+// 回收侧车端口：上次进程被强杀（SIGKILL）或父进程崩溃时，Python sidecar 会
+// 变成孤儿（PPID→1）常驻占用 8765。若不先清理，新拉起的 sidecar 会 bind 失败
+// （Errno 48 / address already in use）并触发无限重试。
+// 8765 仅由本项目 sidecar 使用，这里按监听 PID 安全回收。
+function reclaimSidecarPort() {
+  try {
+    const out = execSync(`lsof -tiTCP:${PORT} -sTCP:LISTEN`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const seen = new Set();
+    for (const pid of out.split(/\s+/).filter(Boolean)) {
+      const n = Number(pid);
+      if (Number.isInteger(n) && n > 0 && !seen.has(n)) {
+        seen.add(n);
+        try { process.kill(n, 'SIGTERM'); } catch {/* 进程可能已退出 */}
+      }
+    }
+  } catch {/* 端口空闲，无需回收 */}
+}
+
 class VoiceBridge extends EventEmitter {
   constructor() {
     super();
@@ -53,6 +71,7 @@ class VoiceBridge extends EventEmitter {
   }
 
   spawnSidecar() {
+    reclaimSidecarPort(); // 先清掉常驻的孤儿 sidecar，确保能绑定到 8765
     this.child = spawn(PYTHON, [SIDECAR_SCRIPT], {
       env: {
         ...process.env,
