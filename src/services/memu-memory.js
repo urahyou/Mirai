@@ -201,12 +201,72 @@ async function add(messages) {
   }
 }
 
+// 列出可用于记忆提炼的模型：本机 Ollama 的可对话模型 + “跟随对话模型”选项。
+// 返回 [{ id, label, current }]，id='follow' 表示跟随对话 activeProvider（即不设独立蒸馏模型）。
+async function listDistillModels() {
+  const config = memuEnv.read();
+  const currentModel = String(config.MEMU_DISTILL_MODEL || '').trim();
+  // 从 MEMU_BASE_URL（http://127.0.0.1:11434/v1）推导 Ollama 根地址，取 /api/tags
+  const root = (config.MEMU_BASE_URL || '').replace(/\/+v1\/?$/, '').replace(/\/$/, '');
+  const embedSet = new Set(['bge-m3', 'nomic-embed-text', 'bge-m3:latest', 'nomic-embed-text:latest']);
+  const models = [{ id: 'follow', label: '跟随对话模型', current: !currentModel }];
+  try {
+    const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const data = await res.json();
+      for (const m of (data.models || [])) {
+        const name = String(m.name || '').trim();
+        const base = name.split(':')[0];
+        if (!name || embedSet.has(name) || embedSet.has(base)) continue;
+        const sizeGB = (Number(m.size) || 0) / 1024 ** 3;
+        models.push({
+          id: name,
+          label: sizeGB ? `${name}（约 ${sizeGB.toFixed(1)}GB）` : name,
+          current: currentModel === name,
+        });
+      }
+    }
+  } catch {
+    // Ollama 不可达时忽略，只保留“跟随对话模型”
+  }
+  return {
+    models,
+    current: currentModel || 'follow',
+    baseUrl: config.MEMU_BASE_URL,
+  };
+}
+
+// 设置记忆提炼模型：id='follow'（或空）表示跟随对话模型，否则切到本机 Ollama 的指定模型。
+async function setDistillModel(modelId) {
+  const id = String(modelId || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 80);
+  const config = memuEnv.read();
+  if (!id || id === 'follow') {
+    await memuEnv.write({ MEMU_DISTILL_BASE_URL: '', MEMU_DISTILL_MODEL: '' });
+  } else {
+    const root = (config.MEMU_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\/+v1\/?$/, '').replace(/\/$/, '');
+    await memuEnv.write({ MEMU_DISTILL_BASE_URL: `${root}/v1`, MEMU_DISTILL_MODEL: id });
+  }
+  return getStatus();
+}
+
 // 用 active provider 提炼记忆。返回 {name, description, content} 或 {nothing:true}
 // related：可选项，与之同主题/相关的已存在记忆（用于去重与去冲突——同名即更新覆盖）。
 async function distillMemory(transcript, related = []) {
-  const providers = readProviderConfig();
-  const activeName = providers.activeProvider;
-  const provider = providers.providers[activeName];
+  const config = memuEnv.read();
+  const dBase = String(config.MEMU_DISTILL_BASE_URL || '').trim();
+  const dModel = String(config.MEMU_DISTILL_MODEL || '').trim();
+  let activeName = '';
+  let provider = null;
+  if (dBase && dModel) {
+    // 独立本地蒸馏端点：用本地小模型做摘要，与对话 provider 解耦、全离线。
+    // apiKeyEnv 指向空的 MEMU_API_KEY -> authorizationHeaders 返回 {}（本地无需鉴权）
+    activeName = dModel;
+    provider = { baseUrl: dBase, defaultModel: dModel, apiKeyEnv: 'MEMU_API_KEY' };
+  } else {
+    const providers = readProviderConfig();
+    activeName = providers.activeProvider;
+    provider = providers.providers[activeName] || null;
+  }
   if (!provider) return { nothing: true };
   const headers = { 'Content-Type': 'application/json', ...generic.authorizationHeaders(provider) };
   const base = provider.baseUrl.replace(/\/$/, '');
@@ -236,7 +296,8 @@ async function distillMemory(transcript, related = []) {
     temperature: 0.2,
   };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90000);
+  // 本地小模型需要冷启动加载，蒸馏是后台 fire-and-forget，超时放宽到 300s，避免慢速时被中断。
+  const timer = setTimeout(() => controller.abort(), 300000);
   try {
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
@@ -295,6 +356,9 @@ function getStatus() {
   const providers = readProviderConfig();
   const activeName = providers.activeProvider;
   const provider = providers.providers[activeName] || null;
+  const dBase = String(config.MEMU_DISTILL_BASE_URL || '').trim();
+  const dModel = String(config.MEMU_DISTILL_MODEL || '').trim();
+  const distillLabel = dBase && dModel ? `本地 ${dModel}` : activeName;
   return {
     enabled: !['0', 'false', 'off', 'no'].includes(String(config.MEMU_ENABLED).trim().toLowerCase()),
     configured: Boolean(provider),
@@ -303,7 +367,9 @@ function getStatus() {
     baseUrl: config.MEMU_BASE_URL,
     db: config.MEMU_DB,
     threshold: Number(config.MEMU_RELEVANCE_THRESHOLD) || 0.5,
-    distillProvider: activeName,
+    distillProvider: distillLabel,
+    distillModel: dModel,
+    distillLocal: Boolean(dBase && dModel),
   };
 }
 
@@ -316,4 +382,6 @@ module.exports = {
   readContent,
   remove,
   getStatus,
+  listDistillModels,
+  setDistillModel,
 };

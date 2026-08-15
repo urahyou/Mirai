@@ -658,6 +658,8 @@ ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; }
 ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('memory:getStatus', () => memuMemory.getStatus());
 ipcMain.handle('memory:list', () => memuMemory.list());
+ipcMain.handle('memory:listDistillModels', () => memuMemory.listDistillModels());
+ipcMain.handle('memory:setDistillModel', (_event, model) => memuMemory.setDistillModel(String(model || '')));
 ipcMain.handle('memory:remove', (_event, name, track) => {
   const n = String(name || '').trim().slice(0, 120);
   const t = String(track || 'memory').trim() === 'skill' ? 'skill' : 'memory';

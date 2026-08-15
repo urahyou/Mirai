@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     remove: (name, track) => ipcRenderer.invoke('memory:remove', name, track),
     openPanel: () => ipcRenderer.invoke('memory:openPanel'),
     closePanel: () => ipcRenderer.invoke('memory:closePanel'),
+    listDistillModels: () => ipcRenderer.invoke('memory:listDistillModels'),
+    setDistillModel: (model) => ipcRenderer.invoke('memory:setDistillModel', model),
   }),
   voice: Object.freeze({
     start: () => ipcRenderer.invoke('voice:start'),

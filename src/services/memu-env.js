@@ -31,7 +31,9 @@ const DEFAULTS = Object.freeze({
   MEMU_API_KEY: '',
   MEMU_RELEVANCE_THRESHOLD: '0.5',
   MEMU_MAX_RESULTS: '5',
-  MEMU_DISTILL_PROVIDER: '', // 记忆提炼用的 provider（留空=用 deepseek/vLLM）
+  MEMU_DISTILL_PROVIDER: '', // 记忆提炼 provider 名（已声明，现由 BASE_URL+MODEL 表达，见下）
+  MEMU_DISTILL_BASE_URL: '', // 记忆提炼专用后端（留空=跟随对话 activeProvider）
+  MEMU_DISTILL_MODEL: '', // 记忆提炼专用本地小模型（如 qwen3:8b；需配合 BASE_URL）
 });
 
 function readRaw() {

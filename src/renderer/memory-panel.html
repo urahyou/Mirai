@@ -18,6 +18,15 @@
     }
     .mem-status b { color: var(--pink); font-weight: 600; }
     .mem-status .off { color: var(--danger); }
+    .distill-row {
+      margin-top: 12px;
+    }
+    .distill-row label { font-size: 12px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 5px; }
+    .distill-row select {
+      width: 100%; padding: 7px 9px; font-size: 13px; border-radius: 8px;
+      border: 1px solid rgba(0,0,0,.14); background: #fff; color: var(--text);
+    }
+    .distill-hint { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
     .mem-list { flex: 1; overflow-y: auto; margin-top: 10px; padding-right: 4px; }
     .mem-item {
       border: 1px solid rgba(0,0,0,.08);
@@ -56,6 +65,12 @@
     </header>
 
     <div class="mem-status" id="statusBox">加载中…</div>
+
+    <div class="distill-row">
+      <label for="distillModel">记忆提炼模型</label>
+      <select id="distillModel"><option>加载中…</option></select>
+      <div class="distill-hint">对话后自动把内容提炼成记忆用的模型。默认跟随对话模型；也可选本机 Ollama 的本地模型（全离线）。慢一点但更省电。</div>
+    </div>
 
     <div class="mem-list" id="memList"></div>
     <p class="mem-error" id="memError"></p>

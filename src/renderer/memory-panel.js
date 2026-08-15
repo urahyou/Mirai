@@ -29,10 +29,39 @@ async function renderStatus() {
     box.innerHTML = enabled
       ? `记忆开关：<b>已开启</b>　·　嵌入式：<b>${escapeHtml(st.embedModel || '')}</b>（本地）<br>
         存储：<b>本地 SQLite</b>　·　相关性阈值：<b>${Number(st.threshold).toFixed(2)}</b><br>
-        提炼：用当前对话模型 <b>${escapeHtml(st.distillProvider || '')}</b> 自动归档`
+        提炼：<b>${escapeHtml(st.distillProvider || '')}</b>`
       : '记忆开关：<span class="off">已关闭</span>（在 .env 设 MEMU_ENABLED=true 可开启）';
   } catch {
     $('statusBox').textContent = '无法读取记忆状态';
+  }
+}
+
+async function renderDistillSelect() {
+  const select = $('distillModel');
+  try {
+    const data = await window.desktopPet.memory.listDistillModels();
+    const models = Array.isArray(data?.models) ? data.models : [];
+    select.innerHTML = models.length
+      ? models.map((m) => `<option value="${escapeHtml(m.id)}" ${m.current ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('')
+      : '<option value="follow">本机 Ollama 不可达，跟随对话模型</option>';
+  } catch {
+    select.innerHTML = '<option value="follow">无法加载模型列表</option>';
+  }
+}
+
+async function onDistillChange() {
+  const select = $('distillModel');
+  const model = select.value || 'follow';
+  if (select.dataset.busy) return;
+  select.dataset.busy = '1';
+  try {
+    await window.desktopPet.memory.setDistillModel(model);
+    showFeedback(model === 'follow' ? '已切换：跟随对话模型' : `已切换：${model}`);
+    await renderStatus();
+  } catch {
+    showFeedback('切换失败，请重试', true);
+  } finally {
+    delete select.dataset.busy;
   }
 }
 
@@ -88,10 +117,13 @@ async function init() {
   $('refreshBtn').addEventListener('click', () => {
     renderStatus();
     renderList();
+    renderDistillSelect();
     showFeedback('已刷新');
   });
+  $('distillModel').addEventListener('change', onDistillChange);
   await renderStatus();
   await renderList();
+  await renderDistillSelect();
 }
 
 init();
