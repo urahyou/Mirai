@@ -11,6 +11,8 @@ let balloonText = null;
 let balloonDragging = false;
 let dragOffset = null;
 let balloonPosition = null;
+let lastClickTime = 0;
+let lastClickPos = null;
 
 function saveBalloonPosition() {
   if (!balloonPosition) return;
@@ -85,19 +87,25 @@ function init() {
     }
   });
 
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (event) => {
+    const now = Date.now();
+    const moved = lastClickPos
+      && (Math.abs(event.screenX - lastClickPos.x) > 4 || Math.abs(event.screenY - lastClickPos.y) > 4);
     if (balloonDragging) saveBalloonPosition();
     balloonDragging = false;
     dragOffset = null;
     window.desktopPet.balloonWindow.release();
-  });
-
-  // 双击气泡空白处（非文字）→ 重新跟随角色头顶
-  balloon.addEventListener('dblclick', (event) => {
-    if (event.target.closest('#balloon-text')) return;
-    balloonPosition = null;
-    try { window.localStorage.removeItem(BUBBLE_POSITION_STORAGE_KEY); } catch { /* ignore */ }
-    window.desktopPet.balloonWindow.reanchor();
+    // 双击检测（不依赖原生 dblclick，避免被拖拽 preventDefault 吞掉）：
+    // 两次点击间隔短、位移小、且点在空白（非文字）→ 重新跟随角色头顶
+    if (lastClickTime && now - lastClickTime < 350 && !moved && !event.target.closest('#balloon-text')) {
+      balloonPosition = null;
+      try { window.localStorage.removeItem(BUBBLE_POSITION_STORAGE_KEY); } catch { /* ignore */ }
+      window.desktopPet.balloonWindow.reanchor();
+      lastClickTime = 0;
+    } else {
+      lastClickTime = now;
+      lastClickPos = { x: event.screenX, y: event.screenY };
+    }
   });
 }
 

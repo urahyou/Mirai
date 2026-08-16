@@ -53,8 +53,9 @@ let chatInputOpen = false;
 let chatQueue = Promise.resolve();
 let balloonWindow = null;
 let balloonVisible = false;
-let balloonFreed = false; // 用户是否已把气泡拖离头顶（true=停在自己拖到的位置）
+let balloonFreed = false; // 用户是否已把气泡拖离头顶；true=停在拖走后相对人物的位置（仍随人物移动）
 let balloonFreedPos = null;
+let balloonRelToMain = null; // 气泡被拖走后与主窗的屏幕偏移；人物移动时据此保持相对位置一起跟随
 let balloonHideTimer = null;
 let pendingBalloonRender = null; // 窗口加载期间缓存的渲染指令，load 完成后 flush
 let lastMainWindowPos = null; // 主窗上次位置：聊天输入窗据此实现“随人物一起拖动”
@@ -217,10 +218,16 @@ function positionBalloon() {
   if (!balloonWindow || balloonWindow.isDestroyed() || !balloonVisible) return;
   const [width, height] = balloonWindow.getSize();
   const anchor = balloonAnchorPoint();
-  const center = (balloonFreed && balloonFreedPos)
-    ? { x: balloonFreedPos.x + width / 2, y: balloonFreedPos.y + height / 2 }
-    : anchor;
-  const pos = clampToWorkArea({ x: center.x - width / 2, y: center.y - height / 2 }, width, height);
+  let position;
+  if (balloonFreed && balloonRelToMain && mainWindow && !mainWindow.isDestroyed()) {
+    // 用户拖走过气泡：保持其相对人物的屏幕偏移，人物移动时气泡跟着一起动
+    const main = mainWindow.getBounds();
+    position = { x: main.x + balloonRelToMain.x, y: main.y + balloonRelToMain.y };
+  } else {
+    // 默认贴着角色头顶
+    position = { x: anchor.x - width / 2, y: anchor.y - height / 2 };
+  }
+  const pos = clampToWorkArea(position, width, height);
   // Electron 的原生窗口位置要求整数；居中计算和缩放后尺寸可能产生浮点数。
   balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
 }
@@ -471,7 +478,7 @@ function syncChatInputWithMain() {
 // 未拖离的气泡跟随角色头 + 打开中的聊天窗保持相对位置一起拖动。
 // 不能只依赖系统 'moved' 事件（编程式 setPosition 在部分平台不可靠）。
 function onMainWindowMoved() {
-  if (!balloonFreed) positionBalloon();
+  positionBalloon(); // 未拖离的贴头顶、已拖离的按相对偏移跟随
   syncChatInputWithMain();
 }
 
@@ -781,6 +788,9 @@ ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   const pos = clampToWorkArea({ x, y }, width, height);
   balloonFreed = true;
   balloonFreedPos = { x: Math.round(pos.x), y: Math.round(pos.y) };
+  // 记录气泡相对主窗的偏移，拖走后仍随人物一起移动
+  const main = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
+  balloonRelToMain = main ? { x: balloonFreedPos.x - main.x, y: balloonFreedPos.y - main.y } : null;
   balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
   return true;
 });
@@ -788,6 +798,7 @@ ipcMain.handle('balloonWindow:release', () => { balloonFreed = true; return true
 ipcMain.handle('balloonWindow:reanchor', () => {
   balloonFreed = false;
   balloonFreedPos = null;
+  balloonRelToMain = null;
   if (balloonVisible) positionBalloon();
   return true;
 });
@@ -1009,7 +1020,7 @@ app.whenReady().then(() => {
     mainWindow.on('moved', onMainWindowMoved);
     // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
     lastMainWindowPos = { x: mainWindow.getBounds().x, y: mainWindow.getBounds().y };
-    mainWindow.on('resize', () => { if (!balloonFreed) positionBalloon(); });
+    mainWindow.on('resize', positionBalloon);
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
