@@ -32,6 +32,7 @@ const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
+const petState = require('../systems/pet-state');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
@@ -113,7 +114,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge, eventBus, storage,
+  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState,
 });
 
 app.whenReady().then(() => {
@@ -130,6 +131,8 @@ app.whenReady().then(() => {
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
+  // pet 状态系统（情绪/好感/养成，P0-2）
+  petState.init({ eventBus });
   // 启动后异步探测模型最大上下文（不阻塞启动）
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
