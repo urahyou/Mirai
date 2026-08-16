@@ -175,7 +175,9 @@ class VoiceBridge extends EventEmitter {
     if (!value) return;
     const wire = JSON.stringify({ type: 'speak', text: value, id });
     if (!this.ready || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.speakQueue.length < 16) this.speakQueue.push(wire);
+      // 未就绪：只保留最新一条待读文本，避免就绪后一次性 flush 堆积
+      this.speakQueue.length = 0;
+      this.speakQueue.push(wire);
       this.connect();
       return;
     }

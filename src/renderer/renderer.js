@@ -461,12 +461,13 @@ window.desktopPet.voice.onStatus((s) => {
 // ---------------- 语音输出（让小未来开口） ----------------
 let ttsContext = null;
 let ttsSource = null;
+let ttsToken = 0; // 递增令牌：并发到达的音频只保留最新一句，从根上避免语音重叠
 
-async function ensureTtsContext() {
-  if (ttsContext) return;
+function ensureTtsContext() {
+  if (ttsContext) return Promise.resolve(ttsContext);
   const Ctx = window.AudioContext || window.webkitAudioContext;
   ttsContext = new Ctx();
-  await ttsContext.resume();
+  return ttsContext.resume().then(() => ttsContext);
 }
 
 function stopSpeech() {
@@ -487,15 +488,18 @@ function toArrayBuffer(data) {
 async function playSpeech(audio) {
   const ab = toArrayBuffer(audio?.data);
   if (!ab || !ab.byteLength) return;
+  const token = ++ttsToken; // 抢占最新令牌
+  stopSpeech(); // 打断当前正在播放的语音
   try {
-    await ensureTtsContext();
-    stopSpeech(); // 打断前一句，只保留最新
-    const buf = await ttsContext.decodeAudioData(ab);
-    const src = ttsContext.createBufferSource();
+    const ctx = await ensureTtsContext();
+    const buf = await ctx.decodeAudioData(ab);
+    // decode 期间又有更新的音频到达 → 丢弃本句，只保留最新
+    if (token !== ttsToken) return;
+    const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ttsContext.destination);
+    src.connect(ctx.destination);
     src.onended = () => {
-      if (ttsSource === src) {
+      if (ttsToken === token) {
         ttsSource = null;
         document.body.classList.remove('speaking');
       }

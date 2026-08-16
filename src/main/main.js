@@ -880,10 +880,30 @@ async function handleUserUtterance(rawInput) {
 // 若 .env 设了 SIDECAR_TTS_SPEAK_LANG（如 ja=日语），则先把“中文回复”翻成该语言再发音；
 // 屏幕上显示的气泡文字（chatHistory/chat-input）保持中文不变 —— 实现“中文文字 + 外语朗读”。
 // SIDECAR_TTS_ENABLED=false 时关闭语音输出（沉默模式，只显示文字不发声）。
+// main 端合成去重：同一时刻最多让侧车合成一条，连续 speak 只保留最新一句，
+// 避免侧车堆积合成一堆会被渲染端丢弃的句子（浪费算力，尤其 GPT-SoVITS）。
+let _speakBusy = false;      // 是否有一条朗读正在侧车合成中
+let _speakPending = null;    // 合成进行时累积的最新待读文本（旧的被覆盖丢弃）
+let _speakBusyTimer = null;  // 超时兜底：某条未回 audio（如 TTS 失败）时释放，防 busy 卡死
+
 function speak(text) {
   const t = String(text || '').trim();
   if (!t) return;
   if (!voiceOutputEnabled()) return;
+  if (_speakBusy) {
+    // 上一条还在合成：不发送，只保留最新一句（旧的丢弃）
+    _speakPending = t;
+    return;
+  }
+  _speakBusy = true;
+  _speakPending = null;
+  clearTimeout(_speakBusyTimer);
+  _speakBusyTimer = setTimeout(() => {
+    _speakBusy = false;
+    const pending = _speakPending;
+    _speakPending = null;
+    if (pending) speak(pending);
+  }, 20000);
   const speakLang = String(voiceBridge.getSidecarEnv().SIDECAR_TTS_SPEAK_LANG || '').trim();
   if (speakLang) {
     // 先翻译再发音，失败则回退原话，避免没声
@@ -961,6 +981,14 @@ voiceBridge.on('asr', (text) => {
 
 // 让主窗口（宠物窗）播放小未来的语音
 voiceBridge.on('audio', (audio) => {
+  // 本条已合成完成 → 释放 busy；若期间又积累了最新待读文本，立即发起它（打断式：旧退场新上场）
+  if (_speakBusy) {
+    clearTimeout(_speakBusyTimer);
+    _speakBusy = false;
+    const pending = _speakPending;
+    _speakPending = null;
+    if (pending) speak(pending);
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('voice:audio', {
       id: audio.id,
