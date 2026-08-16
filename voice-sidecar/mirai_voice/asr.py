@@ -1,12 +1,11 @@
 """Mirai 语音侧车 —— ASR（语音识别），基于 Sherpa-ONNX + SenseVoice。
 
-从 warashi (Open-LLM-VTuber) 的 `open_llm_vtuber/asr/sherpa_onnx_asr.py` 抽取并精简：
- - 只保留 Mirai 实际使用的 `sense_voice` 模型分支（去掉 transducer/paraformer/whisper
-   等十几种其它引擎的创建逻辑）；
- - 去掉 opencc 简繁转换（Mirai 要简体，直接返回原文）；
- - 去掉模型缺失时自动下载的逻辑（模型由 `npm run setup:voice` 统一安装到
-   `voice-sidecar/models/`，见 scripts/setup-voice.js）；
- - 去掉 ASRInterface 抽象基类。
+本包为 Mirai 独立实现（按 Open-LLM-VTuber 的 ASR/Sherpa-ONNX 设计思路精简重写），不依赖任何外部项目/
+本机已有环境。
+ - 只保留 `sense_voice` 模型分支；
+ - 不做简繁转换（Mirai 要简体，直接返回原文）；
+ - 不内置模型下载逻辑（模型由 `npm run setup:voice` 统一安装到
+   `voice-sidecar/models/`，见 scripts/setup-voice.js）。
 
 第三方依赖：numpy、sherpa-onnx、onnxruntime、loguru。
 """

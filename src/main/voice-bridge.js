@@ -9,7 +9,7 @@ const path = require('path');
 
 const SIDECAR_SCRIPT = path.join(__dirname, '..', '..', 'voice-sidecar', 'sidecar_server.py');
 const SIDECAR_ROOT = path.join(__dirname, '..', '..', 'voice-sidecar');
-// Mirai 自建独立 venv（不再依赖 warashi）
+// Mirai 自建独立 venv（voice-sidecar/.venv，全新环境一次配置）
 const PYTHON = process.env.MIRAI_SIDECAR_PYTHON || path.join(SIDECAR_ROOT, '.venv', 'bin', 'python3');
 const PORT = Number(process.env.MIRAI_SIDECAR_PORT || 8765);
 

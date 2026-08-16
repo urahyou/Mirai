@@ -54,7 +54,7 @@ npm run setup:voice
 npm run start:voice
 ```
 
-- `setup:voice`：① 建 `voice-sidecar/.venv`（独立环境，含 numpy/torch/silero-vad/sherpa-onnx/onnxruntime/edge-tts 等）并把 SenseVoice 模型装到 `voice-sidecar/models/`（优先从 warashi 一次性拷贝、否则官方下载）；② 定位/下载 GPT-SoVITS 到 `vendor/gpt-sovits/`（gitignore，不入库）、补 venv 与 Mac CPU 配置、写入 `.env` 指向 `gpt-sovits` 引擎。
+- `setup:voice`：① 建 `voice-sidecar/.venv`（独立环境，含 numpy/torch/silero-vad/sherpa-onnx/onnxruntime/edge-tts 等）并从官方下载 SenseVoice 模型到 `voice-sidecar/models/`；② 定位/下载 GPT-SoVITS 到 `vendor/gpt-sovits/`（gitignore，不入库）、补 venv 与 Mac CPU 配置、写入 `.env` 指向 `gpt-sovits` 引擎。
 - `start:voice`：探测 9880 → 未运行则拉起 GPT-SoVITS 并等就绪（约 10–20s）→ 启动小未来；退出时若 TTS 是本脚本拉起的则一并关闭。
 - 关闭时纯靠 `npm start`（不带语音服务）仍可用，语音走默认 Edge。
 
@@ -104,9 +104,9 @@ GRAPHITI_EMBED_MODEL=bge-m3
 
 ### 语音输入与语音输出（可选）
 
-语音识别（输入）和语音朗读（输出）通过一个独立的 Python 侧车进程实现。VAD/Silero 与 ASR/Sherpa-ONNX 内核使用**本地独立包 `voice-sidecar/mirai_voice/`**（从 [Open-LLM-VTuber](https://github.com/r3mur4/Open-LLM-VTuber)（warashi）抽取的最小实现，**不再依赖 warashi**），跑在 Mirai 自己的 venv `voice-sidecar/.venv`；输出默认用 `edge-tts` 合成，也可切换到本地 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 音色克隆（见下方 `SIDECAR_TTS_ENGINE`）。侧车通过本机 WebSocket 通信，PCM/音频只走 `127.0.0.1`，不经任何云端。
+语音识别（输入）和语音朗读（输出）通过一个独立的 Python 侧车进程实现。VAD/Silero 与 ASR/Sherpa-ONNX 内核使用 **本地独立包 `voice-sidecar/mirai_voice/`**（`vad.py`+`asr.py`，Mirai 自带、不依赖任何外部项目），跑在 Mirai 自己的 venv `voice-sidecar/.venv`；输出默认用 `edge-tts` 合成，也可切换到本地 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 音色克隆（见下方 `SIDECAR_TTS_ENGINE`）。侧车通过本机 WebSocket 通信，PCM/音频只走 `127.0.0.1`，不经任何云端。
 
-前置（仅当使用语音时）：运行一次 `npm run setup:voice`——它会把 voice-sidecar 的独立 venv 与 SenseVoice ASR 模型装好（模型在 `voice-sidecar/models/`，无需手动准备）。
+前置（仅当使用语音时）：运行一次 `npm run setup:voice`——它会把 voice-sidecar 的独立 venv 与 SenseVoice ASR 模型装好（模型由 `fetch_models.py` 从官方 release 下载到 `voice-sidecar/models/`，全新环境一次配置）。
 
 开启方式：点击宠物窗左下角或输入框左侧的 `🎤`。侧车在 `npm start` 启动时即后台预热（加载约 1GB 的 SenseVoice 模型，首次需约 20–50 秒），就绪后识别瞬时；就绪前 `🎤` 呈橙色脉冲。语音识别文字会实时填入输入框并自动发送（在 `src/renderer/chat-input.js` 中可用 `AUTO_SEND_VOICE` 关闭自动发送，改为只填输入框由你确认）。
 

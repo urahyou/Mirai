@@ -1,9 +1,7 @@
 """Mirai 语音侧车 —— VAD（语音活动检测），基于 Silero。
 
-从 warashi (Open-LLM-VTuber) 的 `open_llm_vtuber/vad/silero.py` 抽取并精简：
- - 去掉 VADInterface 抽象基类、vad_factory、vad_main/__main__、tqdm 进度展示等
-   sidecar 用不到的代码；
- - 保留 VADEngine + StateMachine 的核心状态机逻辑，行为与原实现一致。
+本包为 Mirai 独立实现（按 Open-LLM-VTuber 的 VAD/Silero 设计思路精简重写），不依赖任何外部项目/
+本机已有环境。保留 VADEngine + StateMachine 核心状态机，行为与经典 Silero 流式 VAD 一致。
 
 第三方依赖：numpy、torch、loguru、pydantic、silero-vad（VAD 模型由该包内置，
 无需额外下载模型文件）。

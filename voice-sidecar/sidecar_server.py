@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Mirai 语音侧车 —— 语音输入半程：
-  微信同级进程边界之外，把"麦克风→VAD→ASR"做成一个本地 WebSocket 服务，
-  VAD/ASR 内核用本地独立包 mirai_voice（从 warashi 抽取的最小实现，不再依赖 warashi）。
+  微信同级进程边界之外，把“麦克风→VAD→ASR”做成一个本地 WebSocket 服务，
+  VAD/ASR 内核用本地独立包 mirai_voice（不依赖任何外部项目，全新环境一次配置）。
 
-协议（与 warashi 前端一致的方向，但做了简化）：
+协议：
   客户端 → 本服务（二进制）：int16 PCM，单声道，16kHz，小端，原始字节块
   客户端 → 本服务（JSON）：
     {"type":"speak","text":"<要朗读的文字>","id":<可选>}   语音输出：合成语音

@@ -17,7 +17,7 @@ const REPO = 'https://github.com/RVC-Boss/GPT-SoVITS';
 const CONFIG_REL = 'GPT_SoVITS/configs/tts_infer_mac.yaml';
 const REQUIREMENTS = 'requirements.txt';
 
-// Mirai 语音内核（从 warashi 抽取的独立 sidecar）
+// Mirai 自己的语音内核（voice-sidecar，本地 mirai_voice 实现）
 const SIDECAR = path.join(APP_ROOT, 'voice-sidecar');
 const SIDECAR_VENV_PY = path.join(SIDECAR, '.venv', 'bin', 'python3');
 const SIDECAR_REQS = path.join(SIDECAR, 'requirements.txt');
@@ -64,13 +64,12 @@ function symlink(src) {
 }
 
 // 拉起的基座解释器：优先用户指定 MIRAI_VOICE_PYTHON，否则系统 python3。
-// （不再依赖 warashi 的 venv 解释器。）
 function systemPython() {
   return process.env.MIRAI_VOICE_PYTHON || (() => { try { execSync('command -v python3', { stdio: 'ignore' }); return 'python3'; } catch { return 'python3'; } })();
 }
 
 // 准备 Mirai 自己的语音内核运行环境（voice-sidecar/.venv + SenseVoice 模型）。
-// 与 warashi 完全解绑：venv 独立，模型从 warashi 一次性拷贝或官方下载。
+// 全新环境一次配置：venv 独立，模型从官方下载（fetch_models.py）。
 function pipInstall(venvPy, req) {
   try {
     execSync(`uv pip install --python "${venvPy}" -r "${req}"`, { stdio: 'inherit', cwd: SIDECAR });
@@ -95,7 +94,7 @@ function prepareSidecar() {
   } else {
     log('voice-sidecar/.venv 已就绪，复用。');
   }
-  // 模型（SenseVoice）：优先 warashi 拷贝，否则官方下载
+  // 模型（SenseVoice）：从官方 release 下载（fetch_models.py）
   log('安装 SenseVoice 模型...');
   const fr = spawnSync(systemPython(), [path.join(SIDECAR, 'fetch_models.py')], { stdio: 'inherit' });
   if (fr.status !== 0) err('SenseVoice 模型安装失败。');
