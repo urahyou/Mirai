@@ -36,6 +36,7 @@ let balloonFreed = false; // 用户是否已把气泡拖离头顶（true=停在�
 let balloonFreedPos = null;
 let balloonHideTimer = null;
 let pendingBalloonRender = null; // 窗口加载期间缓存的渲染指令，load 完成后 flush
+let lastMainWindowPos = null; // 主窗上次位置：聊天输入窗据此实现“随人物一起拖动”
 let cachedModelMaxTokens = null; // 探测到的当前 active provider 模型上下文上限（null=未知）
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
@@ -422,6 +423,26 @@ function openMemoryPanel() {
   positionPanelOnMainDisplay(memoryPanelWindow, 520, 560);
   memoryPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'memory-panel.html'));
   memoryPanelWindow.on('closed', () => { memoryPanelWindow = null; });
+}
+
+// 主窗移动时，让打开中的聊天输入窗保持相对位置一起移动（“随人物拖动”）。
+// 展开成普通窗口（chatInputExpanded）时不跟随，避免与独立使用冲突。
+function syncChatInputWithMain() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const mainBounds = mainWindow.getBounds();
+  if (!lastMainWindowPos) { // 首次：只记录基准，不移动
+    lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
+    return;
+  }
+  if (chatInputWindow && !chatInputWindow.isDestroyed() && !chatInputExpanded) {
+    const dx = mainBounds.x - lastMainWindowPos.x;
+    const dy = mainBounds.y - lastMainWindowPos.y;
+    if (dx || dy) {
+      const [cx, cy] = chatInputWindow.getPosition();
+      chatInputWindow.setPosition(cx + dx, cy + dy);
+    }
+  }
+  lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
 }
 
 function closeChatInputWindow() {
@@ -966,8 +987,13 @@ app.whenReady().then(() => {
   voiceBridge.start();
   createMainWindow();
   if (mainWindow) {
-    // 气泡默认贴着角色头：宠物窗移动/缩放时，未拖离的气泡跟随
-    mainWindow.on('moved', () => { if (!balloonFreed) positionBalloon(); });
+    // 宠物窗移动时：未拖离的气泡跟随角色头 + 打开中的聊天窗也保持相对位置一起拖动
+    mainWindow.on('moved', () => {
+      if (!balloonFreed) positionBalloon();
+      syncChatInputWithMain();
+    });
+    // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
+    lastMainWindowPos = { x: mainWindow.getBounds().x, y: mainWindow.getBounds().y };
     mainWindow.on('resize', () => { if (!balloonFreed) positionBalloon(); });
   }
   app.on('activate', () => {
