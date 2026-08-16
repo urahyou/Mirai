@@ -93,3 +93,11 @@
 - P1 剩余：日程/会议提醒（需日历源）、自动资讯（需 RSS/配置）。
 - P0 收尾：pi 执行引擎网关（接动云端 agent 任务执行）。
 - P2：状态驱动决策深化；P3 主动会话+agent；P4 屏幕观测/录音日记/多角色/群聊。
+
+## 本轮再延续（均已提交推送）
+- **日程/会议提醒 `3064366`**：`src/systems/schedule.js` 读本地 userData/schedule.ics，
+  事件进入 10min lead 窗口时触发提醒；已提醒按(uid+date)去重持久化；支持单次+基础
+  RRULE(DAILY/WEEKLY)；无 .ics 优雅静默。`src/subsystems/schedule.js` 接线 voice.speak
+  朗读 + 宠物窗气泡（复用 proactive say 通道）。6 例测试。
+  - 已生成示例 `~userData/schedule.ics`（45 分钟后"和小未来聊天"），应用每 1min 重读文件。
+- **当前 npm run check 119/119 全绿**。运行实例 PID 37308，日志 /tmp/mirai-run.log。
