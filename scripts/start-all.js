@@ -4,6 +4,8 @@
 // 用法：npm run start:all
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
+const net = require('net');
+const os = require('os');
 const path = require('path');
 
 const APP_ROOT = path.join(__dirname, '..');
@@ -65,6 +67,22 @@ function ensureNeo4j() {
   }
 }
 
+function isListening(port) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ port, host: '127.0.0.1' });
+    sock.once('connect', () => { sock.destroy(); resolve(true); });
+    sock.once('error', () => resolve(false));
+  });
+}
+async function waitReady(port, timeoutMs = 120000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isListening(port)) return true;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return false;
+}
+
 // 2) 启动 Graphiti 记忆侧车（8766）
 function startGraphiti() {
   reclaimPort(8766); // 先清掉可能残留的旧 sidecar，避免 Address already in use
@@ -76,7 +94,48 @@ function startGraphiti() {
   log('Graphiti 记忆侧车已启动 (8766)');
 }
 
-// 3) 启动 Electron 桌宠本体（语音侧车 8765 由本体自动拉起）
+// 3) 若配置了 gpt-sovits 引擎，自动拉起 GPT-SoVITS 服务（9880）
+function startTts() {
+  const engine = dotenv('SIDECAR_TTS_ENGINE', 'edge').toLowerCase();
+  const enabled = dotenv('SIDECAR_TTS_ENABLED', 'true').toLowerCase() !== 'false';
+  if (engine !== 'gpt-sovits' || !enabled) {
+    log(`TTS 引擎=${engine}，无需本地 GPT-SoVITS`);
+    return;
+  }
+  const port = Number(dotenv('MIRAI_SIDECAR_TTS_PORT', '9880'));
+  const candidates = [
+    process.env.MIRAI_GPT_SOVITS_ROOT,
+    path.join(APP_ROOT, 'vendor', 'gpt-sovits'),
+    path.join(os.homedir(), 'GPT-SoVITS'),
+  ].filter(Boolean);
+  const root = candidates.find((c) => fs.existsSync(path.join(c, 'api_v2.py')));
+  if (!root) {
+    log('⚠️ 未找到 GPT-SoVITS（缺 api_v2.py），请先 npm run setup:voice');
+    return;
+  }
+  const venvPy = path.join(root, '.venv', 'bin', 'python3');
+  const config = path.join(root, 'GPT_SoVITS', 'configs', 'tts_infer_mac.yaml');
+  if (!fs.existsSync(venvPy) || !fs.existsSync(config)) {
+    log('⚠️ GPT-SoVITS venv 或 Mac 配置缺失，跳过');
+    return;
+  }
+  if (isListening(port)) {
+    log(`复用已在运行的 GPT-SoVITS（端口 ${port}）`);
+    return;
+  }
+  log(`拉起 GPT-SoVITS（${root}）...`);
+  const child = spawn(
+    venvPy,
+    [path.join(root, 'api_v2.py'), '-a', '127.0.0.1', '-p', String(port), '-c', config],
+    { cwd: root, stdio: 'inherit' },
+  );
+  children.push(child);
+  waitReady(port, 120000).then((ok) => {
+    log(ok ? `GPT-SoVITS 就绪 ✓（端口 ${port}）` : '⚠️ GPT-SoVITS 120s 内未就绪');
+  });
+}
+
+// 4) 启动 Electron 桌宠本体（语音侧车 8765 由本体自动拉起）
 function startElectron() {
   const bin = path.join(APP_ROOT, 'node_modules', '.bin', 'electron');
   const child = spawn(bin, ['.'], { cwd: APP_ROOT, stdio: 'inherit' });
@@ -98,4 +157,5 @@ process.on('SIGTERM', () => cleanup(0));
 
 ensureNeo4j();
 startGraphiti();
+startTts();
 startElectron();
