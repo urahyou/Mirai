@@ -37,6 +37,7 @@ const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 const createPanels = require('./panels');
 const state = require('./state');
 const createVoice = require('./voice');
+const createBalloons = require('./balloons');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
@@ -45,11 +46,6 @@ const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
-
-// 独立气泡窗口（可从头顶拖到桌面任意位置）
-const BALLOON_WINDOW_SIZE = { width: 320, height: 200 };
-const BALLOON_HEAD_ANCHOR_RATIO = 0.24; // 头顶锚点：主窗顶部向下的比例
-const BALLOON_WORK_AREA_MARGIN = 8;
 
 function guarded(channel, handler) {
   return (_event, ...args) => {
@@ -83,6 +79,9 @@ const voice = createVoice({
   sendToChatInput,
   handleUserUtterance,
 });
+
+// 独立气泡窗口模块（创建/定位/渲染/隐藏）——依赖注入所需能力
+const balloons = createBalloons({ state, windowOptions, config });
 
 function placeAtBottomRight() {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
@@ -159,109 +158,6 @@ function createMainWindow() {
     state.mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 }
-
-// ---------------- 独立气泡窗口 ----------------
-
-function createBalloonWindow() {
-  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) return;
-  state.balloonWindow = new BrowserWindow({
-    width: BALLOON_WINDOW_SIZE.width,
-    height: BALLOON_WINDOW_SIZE.height,
-    transparent: true,
-    frame: false,
-    resizable: false,
-    movable: true,
-    show: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    // 需可聚焦，否则无法用鼠标选中文字复制；不会进任务栏（skipTaskbar）。
-    focusable: true,
-    webPreferences: windowOptions(),
-  });
-  state.balloonWindow.setAlwaysOnTop(true, 'screen-saver');
-  if (typeof state.balloonWindow.setVisibleOnAllWorkspaces === 'function') {
-    state.balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-  }
-  state.balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
-  if (config.dev) {
-    state.balloonWindow.webContents.on('console-message', (_event, _level, message) => console.log('[balloon-r]', message));
-  }
-  // 注意：首条渲染指令不在此处（did-finish-load）发送——此时 renderer 的 onRender
-  // 可能还没注册好（balloon.js 用轮询等 DOM），did-finish-load 就发会导致丢失。
-  // 改为由 renderer 上报 balloon:ready 后再 flush（见 ipcMain.handle('balloon:ready')）。
-  state.balloonWindow.on('closed', () => { state.balloonWindow = null; state.pendingBalloonRender = null; });
-}
-
-// 气泡锚点：默认贴着角色头顶（主窗水平居中、顶部向下取一个比例）
-function balloonAnchorPoint() {
-  const mainBounds = state.mainWindow && !state.mainWindow.isDestroyed() ? state.mainWindow.getBounds() : null;
-  const cursor = screen.getCursorScreenPoint();
-  return mainBounds
-    ? { x: mainBounds.x + mainBounds.width / 2, y: mainBounds.y + mainBounds.height * BALLOON_HEAD_ANCHOR_RATIO }
-    : { x: cursor.x, y: cursor.y };
-}
-
-function clampToWorkArea(p, width, height) {
-  const { workArea } = screen.getDisplayNearestPoint(p);
-  return {
-    x: Math.max(workArea.x + BALLOON_WORK_AREA_MARGIN, Math.min(p.x, workArea.x + workArea.width - width - BALLOON_WORK_AREA_MARGIN)),
-    y: Math.max(workArea.y + BALLOON_WORK_AREA_MARGIN, Math.min(p.y, workArea.y + workArea.height - height - BALLOON_WORK_AREA_MARGIN)),
-  };
-}
-
-function positionBalloon() {
-  if (!state.balloonWindow || state.balloonWindow.isDestroyed() || !state.balloonVisible) return;
-  const [width, height] = state.balloonWindow.getSize();
-  const anchor = balloonAnchorPoint();
-  let position;
-  if (state.balloonFreed && state.balloonRelToMain && state.mainWindow && !state.mainWindow.isDestroyed()) {
-    // 用户拖走过气泡：保持其相对人物的屏幕偏移，人物移动时气泡跟着一起动
-    const main = state.mainWindow.getBounds();
-    position = { x: main.x + state.balloonRelToMain.x, y: main.y + state.balloonRelToMain.y };
-  } else {
-    // 默认贴着角色头顶
-    position = { x: anchor.x - width / 2, y: anchor.y - height / 2 };
-  }
-  const pos = clampToWorkArea(position, width, height);
-  // Electron 的原生窗口位置要求整数；居中计算和缩放后尺寸可能产生浮点数。
-  state.balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
-}
-
-// 把渲染指令发给气泡窗口。若页面还在加载（首次创建时），先缓存、
-// 等 did-finish-load 后 flush，避免首条消息在 load 完成前丢失。
-function dispatchBalloonRender(payload) {
-  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
-  if (state.balloonWindow.webContents.isLoading()) {
-    state.pendingBalloonRender = payload;
-    return;
-  }
-  state.balloonWindow.webContents.send('balloon:render', payload);
-  state.pendingBalloonRender = null;
-}
-
-function balloonRender(payload) {
-  createBalloonWindow();
-  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
-  clearTimeout(state.balloonHideTimer);
-  state.balloonVisible = true;
-  positionBalloon();
-  dispatchBalloonRender(payload);
-  state.balloonWindow.show();
-  state.balloonWindow.moveTop();
-}
-
-function balloonHide() {
-  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
-  state.balloonVisible = false;
-  clearTimeout(state.balloonHideTimer);
-  dispatchBalloonRender({ action: 'hide' });
-  state.balloonHideTimer = setTimeout(() => {
-    if (state.balloonWindow && !state.balloonWindow.isDestroyed()) state.balloonWindow.hide();
-  }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
-}
-
-
 // 主窗移动时，让打开中的聊天输入窗保持相对位置一起移动（“随人物拖动”）。
 // 展开成普通窗口（state.chatInputExpanded）时不跟随，避免与独立使用冲突。
 function syncChatInputWithMain() {
@@ -286,7 +182,7 @@ function syncChatInputWithMain() {
 // 未拖离的气泡跟随角色头 + 打开中的聊天窗保持相对位置一起拖动。
 // 不能只依赖系统 'moved' 事件（编程式 setPosition 在部分平台不可靠）。
 function onMainWindowMoved() {
-  positionBalloon(); // 未拖离的贴头顶、已拖离的按相对偏移跟随
+  balloons.positionBalloon(); // 未拖离的贴头顶、已拖离的按相对偏移跟随
   syncChatInputWithMain();
 }
 
@@ -565,21 +461,21 @@ ipcMain.handle('chat:submit', async (_event, rawInput) => handleUserUtterance(ra
 
 // 独立气泡窗口指令（宠物窗发显示/隐藏；气泡窗发拖拽/还原）
 ipcMain.handle('balloon:show', (_event, payload) => {
-  balloonRender(Object.assign({ action: 'show' }, payload && typeof payload === 'object' ? payload : {}));
+  balloons.balloonRender(Object.assign({ action: 'show' }, payload && typeof payload === 'object' ? payload : {}));
   return true;
 });
 ipcMain.handle('balloon:update', (_event, full) => {
-  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) dispatchBalloonRender({ action: 'update', full: String(full || '') });
+  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) balloons.dispatchBalloonRender({ action: 'update', full: String(full || '') });
   return true;
 });
 ipcMain.handle('balloon:finish', (_event, payload) => {
   if (state.balloonWindow && !state.balloonWindow.isDestroyed()) {
     const p = payload && typeof payload === 'object' ? payload : {};
-    dispatchBalloonRender({ action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
+    balloons.dispatchBalloonRender({ action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
   }
   return true;
 });
-ipcMain.handle('balloon:hide', () => { balloonHide(); return true; });
+ipcMain.handle('balloon:hide', () => { balloons.balloonHide(); return true; });
 
 // renderer 端 onRender 监听注册完成后上报，此时才 flush 加载阶段积压的首条渲染消息
 ipcMain.handle('balloon:ready', () => {
@@ -593,7 +489,7 @@ ipcMain.handle('balloon:ready', () => {
 ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   if (!state.balloonWindow || state.balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
   const [width, height] = state.balloonWindow.getSize();
-  const pos = clampToWorkArea({ x, y }, width, height);
+  const pos = balloons.clampToWorkArea({ x, y }, width, height);
   state.balloonFreed = true;
   state.balloonFreedPos = { x: Math.round(pos.x), y: Math.round(pos.y) };
   // 记录气泡相对主窗的偏移，拖走后仍随人物一起移动
@@ -607,7 +503,7 @@ ipcMain.handle('balloonWindow:reanchor', () => {
   state.balloonFreed = false;
   state.balloonFreedPos = null;
   state.balloonRelToMain = null;
-  if (state.balloonVisible) positionBalloon();
+  if (state.balloonVisible) balloons.positionBalloon();
   return true;
 });
 
@@ -704,7 +600,7 @@ app.whenReady().then(() => {
     state.mainWindow.on('moved', onMainWindowMoved);
     // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
     state.lastMainWindowPos = { x: state.mainWindow.getBounds().x, y: state.mainWindow.getBounds().y };
-    state.mainWindow.on('resize', positionBalloon);
+    state.mainWindow.on('resize', () => balloons.positionBalloon());
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

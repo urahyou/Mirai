@@ -160,9 +160,11 @@ test('Given the Live2D avatar When hit testing is inspected Then it checks rende
 
 test('Given always-on-top display settings When the main window is updated Then it remains visible over macOS fullscreen workspaces', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const balloons = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'balloons.js'), 'utf8');
 
   assert.match(main, /setVisibleOnAllWorkspaces\(shouldStayVisible,\s*\{\s*visibleOnFullScreen:\s*shouldStayVisible/);
-  assert.match(main, /setAlwaysOnTop\(true, 'screen-saver'\)/);
+  // 气泡窗始终置顶（screen-saver）已在独立气泡窗模块内实现
+  assert.match(balloons, /setAlwaysOnTop\(true, 'screen-saver'\)/);
 });
 
 test('Given a context menu opens When its content loads Then it is positioned before becoming visible', () => {
