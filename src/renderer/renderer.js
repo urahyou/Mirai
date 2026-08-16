@@ -1,3 +1,17 @@
+/**
+ * 宠物窗（主窗口）渲染进程：Live2D 角色 + 气泡/拖拽/点击交互 + 语音播放。
+ * 与主进程通过 preload 暴露的 `window.desktopPet.*` 通信（不直接 require）。
+ *
+ * 职责分区（按文件内顺序）：
+ *   1. 常量与 DOM 引用
+ *   2. Live2D 角色初始化与命中检测（常用 Live2DAvatar.isHit）
+ *   3. 拖拽（window:moveBy / setDragState）与点击回应（character:greet）
+ *   4. 气泡：接收 balloon.render / show / hide，匹配类型与消失时长
+ *   5. 聊天流式回复：chat:delta 增量展示
+ *   6. 语音播放：voice:audio 解码 + voice:speak-interrupt 打断
+ *   7. 显示设置 / 鼠标穿透 / 菜单 / 各种面板打开
+ */
+
 const $ = (selector) => document.querySelector(selector);
 
 const balloon = $('#balloon'); // 占位命中目标（气泡实际渲染在独立窗口 balloonWindow）

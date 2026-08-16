@@ -1,3 +1,24 @@
+/**
+ * 主进程入口（唯一 Electron 主进程）。
+ *
+ * ▸ 职责分区（按文件内顺序）：
+ *   1. 依赖与全局状态    —— 窗口引用、配置、共享标志（isVoiceListening 等）
+ *   2. 窗口辅助          —— windowOptions / placeAtBottomRight / applyDisplaySettings
+ *   3. 主窗(桌宠)        —— createMainWindow（Live2D 角色、白名单点击）
+ *   4. 独立气泡窗        —— createBalloonWindow / positionBalloon / clampToWorkArea
+ *   5. 聊天输入窗        —— openChatInputWindow / resizeChatInputWindow / syncChatInputWithMain
+ *   6. 菜单窗 + 各设置面板 —— 右键菜单 + personality/provider/display/voice/context/memory 面板
+ *   7. 聊天调度          —— handleUserUtterance / enqueueChat / generateChat / broadcastChatDelta
+ *   8. 长期记忆          —— Graphiti search(注入)+add(回写)（不可用时降级普通聊天）
+ *   9. 语音桥接          —— voiceBridge 事件 / 识别 / TTS 输出 / 打断
+ *   10. IPC 注册         —— 全部 ipcMain.handle/on（与 preload.js 的 desktopPet.* 一一对应）
+ *   11. 状态广播         —— isVoiceListening 等共享状态的跨窗口同步
+ *   12. 应用生命周期     —— app.whenReady / window-all-closed / activate
+ *
+ * 主要入口：对话提交走 `chat:submit`；气泡渲染走 `balloon:show` 等；
+ * Provider/记忆/外部能力均通过 src/engine 与 src/services 注入，本文件不做具体实现。
+ */
+
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
@@ -157,7 +178,8 @@ function createBalloonWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
-    focusable: false,
+    // 需可聚焦，否则无法用鼠标选中文字复制；不会进任务栏（skipTaskbar）。
+    focusable: true,
     webPreferences: windowOptions(),
   });
   balloonWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -443,6 +465,14 @@ function syncChatInputWithMain() {
     }
   }
   lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
+}
+
+// 主窗被移动（系统 moved 事件 或 拖拽 moveTo/moveBy）后统一调用：
+// 未拖离的气泡跟随角色头 + 打开中的聊天窗保持相对位置一起拖动。
+// 不能只依赖系统 'moved' 事件（编程式 setPosition 在部分平台不可靠）。
+function onMainWindowMoved() {
+  if (!balloonFreed) positionBalloon();
+  syncChatInputWithMain();
 }
 
 function closeChatInputWindow() {
@@ -755,14 +785,6 @@ ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   return true;
 });
 ipcMain.handle('balloonWindow:release', () => { balloonFreed = true; return true; });
-ipcMain.handle('balloonWindow:restore', (_event, x, y) => {
-  if (Number.isFinite(x) && Number.isFinite(y)) {
-    balloonFreed = true;
-    balloonFreedPos = { x: Math.round(x), y: Math.round(y) };
-    if (balloonVisible) positionBalloon();
-  }
-  return true;
-});
 ipcMain.handle('balloonWindow:reanchor', () => {
   balloonFreed = false;
   balloonFreedPos = null;
@@ -775,6 +797,7 @@ ipcMain.on('window:moveBy', (event, dx, dy) => {
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
+  if (win === mainWindow) onMainWindowMoved();
 });
 
 // 绝对定位：拖拽用屏幕坐标直接 setPosition，避免增量模式下 getPosition 读到陈旧窗口位置导致滞后
@@ -782,6 +805,7 @@ ipcMain.on('window:moveTo', (event, x, y) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
   win.setPosition(Math.round(x), Math.round(y));
+  if (win === mainWindow) onMainWindowMoved();
 });
 
 // 拖拽期间把置顶层级从 screen-saver 降为 floating，避免 macOS 逐帧合成导致闪烁
@@ -942,12 +966,6 @@ voiceBridge.on('vad', (state) => {
   }
 });
 
-// 让小未来开口（外部显式触发）
-ipcMain.handle('voice:speak', (_event, text) => {
-  voiceBridge.speak(text);
-  return true;
-});
-
 ipcMain.handle('voice:start', () => {
   voiceBridge.start();
   return voiceBridge.getStatus();
@@ -988,10 +1006,7 @@ app.whenReady().then(() => {
   createMainWindow();
   if (mainWindow) {
     // 宠物窗移动时：未拖离的气泡跟随角色头 + 打开中的聊天窗也保持相对位置一起拖动
-    mainWindow.on('moved', () => {
-      if (!balloonFreed) positionBalloon();
-      syncChatInputWithMain();
-    });
+    mainWindow.on('moved', onMainWindowMoved);
     // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
     lastMainWindowPos = { x: mainWindow.getBounds().x, y: mainWindow.getBounds().y };
     mainWindow.on('resize', () => { if (!balloonFreed) positionBalloon(); });

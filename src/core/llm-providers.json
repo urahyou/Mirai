@@ -1,21 +1,12 @@
 {
-  "activeProvider": "ollama-mac",
+  "activeProvider": "ollama-local",
   "providers": {
-    "deepseek": {
-      "label": "DeepSeek / vLLM",
-      "type": "openai-compatible",
-      "baseUrl": "http://192.168.99.130:18000/v1",
-      "apiKeyEnv": "MIRAI_PROVIDER_DEEPSEEK_API_KEY",
-      "defaultModel": "deepseek-v4-flash",
-      "temperature": 0.8,
-      "topP": 0.9
-    },
-    "ollama-mac": {
-      "label": "ollama-mac",
+    "ollama-local": {
+      "label": "本地 Ollama（开箱即用）",
       "type": "openai-compatible",
       "baseUrl": "http://127.0.0.1:11434/v1",
-      "apiKeyEnv": "MIRAI_PROVIDER_OLLAMA_MAC_API_KEY",
-      "defaultModel": "gemma4:e4b-mlx",
+      "apiKeyEnv": "MIRAI_PROVIDER_OLLAMA_LOCAL_API_KEY",
+      "defaultModel": "llama3.2",
       "temperature": 0.8,
       "topP": 0.9
     }

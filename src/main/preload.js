@@ -3,8 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 let deltaListener = null;
 let historyListener = null;
 let displayListener = null;
-let asrListener = null;
-let vadListener = null;
 let asrPartialListener = null;
 let asrFinalListener = null;
 let listeningListener = null;
@@ -37,16 +35,6 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     sendPcm: (buffer) => ipcRenderer.send('voice:pcm', buffer),
     setListening: (on) => ipcRenderer.invoke('voice:setListening', Boolean(on)),
     setTtsEnabled: (on) => ipcRenderer.invoke('voice:setTtsEnabled', Boolean(on)),
-    onAsr: (callback) => {
-      if (asrListener) ipcRenderer.removeListener('voice:asr', asrListener);
-      asrListener = (_event, text) => callback(text);
-      ipcRenderer.on('voice:asr', asrListener);
-    },
-    onVad: (callback) => {
-      if (vadListener) ipcRenderer.removeListener('voice:vad', vadListener);
-      vadListener = (_event, state) => callback(state);
-      ipcRenderer.on('voice:vad', vadListener);
-    },
     onAsrPartial: (callback) => {
       if (asrPartialListener) ipcRenderer.removeListener('voice:asr-partial', asrPartialListener);
       asrPartialListener = (_event, text) => callback(text);
@@ -62,7 +50,6 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
       listeningListener = (_event, on) => callback(on);
       ipcRenderer.on('voice:listening-changed', listeningListener);
     },
-    speak: (text) => ipcRenderer.invoke('voice:speak', text),
     onAudio: (callback) => {
       if (audioListener) ipcRenderer.removeListener('voice:audio', audioListener);
       audioListener = (_event, audio) => callback(audio);
@@ -99,7 +86,6 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     ready: () => ipcRenderer.invoke('balloon:ready'),
     dragMove: (x, y) => ipcRenderer.invoke('balloonWindow:dragMove', x, y),
     release: () => ipcRenderer.invoke('balloonWindow:release'),
-    restore: (x, y) => ipcRenderer.invoke('balloonWindow:restore', x, y),
     reanchor: () => ipcRenderer.invoke('balloonWindow:reanchor'),
   }),
   onChatHistory: (callback) => {

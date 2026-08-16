@@ -32,7 +32,7 @@ html, body {
 
 #balloon.show { opacity: 1; transform: translate(-50%, 0); }
 #balloon.hidden { display: none; }
-#balloon-text { max-height: 126px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; scrollbar-color: #efb1ca transparent; }
+#balloon-text { max-height: 126px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; scrollbar-color: #efb1ca transparent; user-select: text; -webkit-user-select: text; cursor: text; }
 #balloon-text::-webkit-scrollbar { width: 5px; }
 #balloon-text::-webkit-scrollbar-thumb { border-radius: 4px; background: #efb1ca; }
 #balloon-text.typing { min-height: 20px; }
