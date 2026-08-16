@@ -12,12 +12,20 @@ const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
-  voice, sendToChatInput, petState,
+  voice, sendToChatInput, petState, systemSense,
   windowOps: { openChatInputWindow, closeChatInputWindow, resizeChatInputWindow, setMainWindowAlwaysOnTop, displaySettings },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
 }) {
   const crypto = require('crypto');
   const { BrowserWindow } = require('electron');
+
+  // 注入到对话的状态：pet 自身状态 + 电脑/环境实时感知（让发言贴合现实）
+  function buildState() {
+    const pet = petState ? petState.describe() : '';
+    let aw = '';
+    try { if (systemSense && typeof systemSense.getAwareness === 'function') aw = systemSense.getAwareness(); } catch {}
+    return aw ? `${pet}\n环境：${aw}` : pet;
+  }
 
   function broadcastChatDelta(data) {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send(IPC.ChatDelta, data);
@@ -31,11 +39,11 @@ module.exports = function createChat({
   }
 
   async function generatePetLine(purpose) {
-    const stateText = petState ? petState.describe() : '';
+    const ctxState = buildState();
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        const line = await generic.generatePetLine({ provider, purpose, state: stateText });
+        const line = await generic.generatePetLine({ provider, purpose, state: ctxState });
         if (line.trim()) return line.trim();
       } catch {
         // Try the next configured provider.
@@ -51,7 +59,7 @@ module.exports = function createChat({
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens, state: petState ? petState.describe() : '' });
+        return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens, state: buildState() });
       } catch {
         // Try the next configured provider.
       }

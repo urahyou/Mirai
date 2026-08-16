@@ -1,0 +1,62 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const sys = require('../src/systems/system-sense');
+
+test.beforeEach(() => sys._reset());
+
+test('timeOfDay 分时段', () => {
+  assert.strictEqual(sys.timeOfDay(2), '深夜');
+  assert.strictEqual(sys.timeOfDay(7), '清晨');
+  assert.strictEqual(sys.timeOfDay(10), '上午');
+  assert.strictEqual(sys.timeOfDay(13), '中午');
+  assert.strictEqual(sys.timeOfDay(16), '下午');
+  assert.strictEqual(sys.timeOfDay(20), '晚上');
+  assert.strictEqual(sys.timeOfDay(23), '深夜');
+});
+
+test('poll 用注入采集器写入快照', async () => {
+  let bCalled = 0, nCalled = 0;
+  sys.init({
+    now: () => 1786900000000,
+    battery: async () => { bCalled++; return { level: 78, charging: true }; },
+    network: async () => { nCalled++; return true; },
+  });
+  await sys.poll();
+  const s = sys.getSnapshot();
+  assert.strictEqual(s.battery.level, 78);
+  assert.strictEqual(s.battery.charging, true);
+  assert.strictEqual(s.online, true);
+  assert.strictEqual(bCalled, 1);
+  assert.strictEqual(nCalled, 1);
+});
+
+test('getAwareness 拼接时刻+电量+联网', async () => {
+  sys.init({ now: () => new Date(2026, 7, 17, 21).getTime(), battery: async () => ({ level: 20, charging: false }), network: async () => true });
+  await sys.poll();
+  const a = sys.getAwareness();
+  assert.ok(a.includes('此刻：晚上'), a);
+  assert.ok(a.includes('电量 20%'), a);
+  assert.ok(a.includes('联网正常'), a);
+});
+
+test('未联网时意识文案提示离线', async () => {
+  sys.init({ now: () => new Date(2026, 7, 17, 3).getTime(), battery: async () => ({ level: null, charging: null }), network: async () => false });
+  await sys.poll();
+  const a = sys.getAwareness();
+  assert.ok(a.includes('未联网'), a);
+  assert.ok(a.includes('电量 20%') === false, '无电量信息则不写电量');
+});
+
+test('start 自动首轮拉取；stop 停止', async () => {
+  let calls = 0;
+  sys.init({ now: () => Date.now(), battery: async () => { calls++; return { level: 50, charging: false }; }, network: async () => true });
+  sys.start();
+  await new Promise((r) => setTimeout(r, 120)); // 等首轮异步完成
+  assert.ok(calls >= 1, 'start 应触发至少一次轮询');
+  const s = sys.getSnapshot();
+  assert.strictEqual(s.battery.level, 50);
+  sys.stop();
+  const c = calls;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.strictEqual(calls, c, 'stop 后不应继续轮询');
+});
