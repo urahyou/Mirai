@@ -152,14 +152,27 @@ async def add_episode(payload):
     body = '\n'.join(('主人' if m.get('role') == 'user' else '小未来') + '：' + str(m.get('content', '')) for m in messages)
     if not body.strip():
         return {'ok': False, 'error': 'empty episode'}
-    await asyncio.wait_for(graph.add_episode(
-        name='mirai-chat',
-        episode_body=body[:12000],
-        source_description='Mirai desktop companion conversation',
-        reference_time=parse_time(payload.get('reference_time')),
-        group_id=str(payload.get('group_id') or 'mirai-owner'),
-    ), timeout=float(env('GRAPHITI_EPISODE_TIMEOUT', '120')))
-    return {'ok': True}
+    # 抽取 LLM（小模型）偶发会把 entity id 抽成 null 导致 pydantic 校验失败，
+    # 属随机采样问题；重试即恢复。全部重试仍失败才抛出（→503→主进程优雅降级）。
+    retries = max(1, int(env('GRAPHITI_EPISODE_RETRIES', '3')))
+    last_error = None
+    for attempt in range(retries):
+        try:
+            await asyncio.wait_for(graph.add_episode(
+                name='mirai-chat',
+                episode_body=body[:12000],
+                source_description='Mirai desktop companion conversation',
+                reference_time=parse_time(payload.get('reference_time')),
+                group_id=str(payload.get('group_id') or 'mirai-owner'),
+            ), timeout=float(env('GRAPHITI_EPISODE_TIMEOUT', '120')))
+            return {'ok': True}
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries - 1:
+                print(f'[Graphiti sidecar] episode attempt {attempt + 1}/{retries} failed, retrying: {str(exc)[:300]}')
+                await asyncio.sleep(0.5 + attempt)
+    print(f'[Graphiti sidecar] episode failed after {retries} attempts: {last_error}')
+    raise last_error
 
 
 async def search(payload):
