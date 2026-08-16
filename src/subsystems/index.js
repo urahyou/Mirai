@@ -15,6 +15,7 @@ const balloon = require('./balloon');
 const windowCtl = require('./window');
 const menu = require('./menu');
 const petState = require('./pet-state');
+const proactive = require('./proactive');
 
 module.exports = function mountAll(api) {
   personality(api);
@@ -27,4 +28,5 @@ module.exports = function mountAll(api) {
   windowCtl(api);
   menu(api);
   petState(api);
+  proactive(api);
 };

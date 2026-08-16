@@ -286,6 +286,9 @@ function applyEvent(type) {
     pushEvent(type, s, now);
     storage.write(SCHEMA_KEY, { emotion: s.emotion, affection: s.affection, nurture: s.nurture, events: s.events });
 
+    // 广播该事件（供 proactive 主动关怀 / 记忆 / 日记等系统订阅反应）
+    if (bus) bus.emit(type, { emotion: s.emotion, affection: s.affection, nurture: s.nurture });
+
     if (prevStage !== s.nurture.stage && bus) {
       // 广播晋升（P1 记忆 / P4 日记将来订阅）
       bus.emit(E.PET.STAGE_UP, { from: prevStage, to: s.nurture.stage, experience: s.nurture.experience });
