@@ -8,11 +8,12 @@ const { EventEmitter } = require('events');
 const path = require('path');
 
 const SIDECAR_SCRIPT = path.join(__dirname, '..', '..', 'voice-sidecar', 'sidecar_server.py');
-const WARASHI_ROOT = process.env.MIRAI_WARASHI_ROOT || '/Users/urahyou/Desktop/warashi';
-const PYTHON = process.env.MIRAI_SIDECAR_PYTHON || path.join(WARASHI_ROOT, '.venv', 'bin', 'python3');
+const SIDECAR_ROOT = path.join(__dirname, '..', '..', 'voice-sidecar');
+// Mirai 自建独立 venv（不再依赖 warashi）
+const PYTHON = process.env.MIRAI_SIDECAR_PYTHON || path.join(SIDECAR_ROOT, '.venv', 'bin', 'python3');
 const PORT = Number(process.env.MIRAI_SIDECAR_PORT || 8765);
 
-// 从项目根 .env 读取所有 SIDECAR_* / MIRAI_SIDECAR_* / MIRAI_WARASHI_* 键，透传给侧车子进程。
+// 从项目根 .env 读取所有 SIDECAR_* / MIRAI_SIDECAR_* 键，透传给侧车子进程。
 // 这样用户改 .env 就能切 TTS 引擎/音色/URL，无需手动 export 到 shell。
 // 解析统一走 services/dotenv.js（单一事实源）。
 const dotenv = require('../services/dotenv');
@@ -20,7 +21,7 @@ function loadSidecarDotEnv() {
   const extra = {};
   const all = dotenv.readAll();
   for (const [k, v] of Object.entries(all)) {
-    if (/^(SIDECAR_|MIRAI_SIDECAR_|MIRAI_WARASHI_)/.test(k)) extra[k] = v;
+    if (/^(SIDECAR_|MIRAI_SIDECAR_)/.test(k)) extra[k] = v;
   }
   return extra;
 }
@@ -74,7 +75,6 @@ class VoiceBridge extends EventEmitter {
         ...process.env,
         ...loadSidecarDotEnv(), // .env 里的 SIDECAR_* 优先生效
         SIDECAR_PORT: String(PORT),
-        WARASHI_ROOT,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

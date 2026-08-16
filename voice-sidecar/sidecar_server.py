@@ -2,7 +2,7 @@
 """
 Mirai 语音侧车 —— 语音输入半程：
   微信同级进程边界之外，把"麦克风→VAD→ASR"做成一个本地 WebSocket 服务，
-  复用 warashi (Open-LLM-VTuber) 的 VAD/Silero + ASR/Sherpa-ONNX 实现。
+  VAD/ASR 内核用本地独立包 mirai_voice（从 warashi 抽取的最小实现，不再依赖 warashi）。
 
 协议（与 warashi 前端一致的方向，但做了简化）：
   客户端 → 本服务（二进制）：int16 PCM，单声道，16kHz，小端，原始字节块
@@ -17,7 +17,6 @@ Mirai 语音侧车 —— 语音输入半程：
                                                 对 speak 的响应：合成好的 MP3（base64）
 
 环境变量：
-  WARASHI_ROOT       warashi 项目根目录（用于 import 其 VAD/ASR 源码）
   SIDECAR_HOST      默认 127.0.0.1
   SIDECAR_PORT      默认 8765
   SIDECAR_MODEL_DIR / SIDECAR_ASR_MODEL / SIDECAR_TOKENS   ASR 模型路径
@@ -40,30 +39,26 @@ import asyncio
 import base64
 import json
 import os
-import sys
 import threading
 
 import numpy as np
 
-# ---- 复用 warashi 源码（VAD / ASR） ----
-WARASHI_ROOT = os.environ.get("WARASHI_ROOT", "/Users/urahyou/Desktop/warashi")
-_WARASHI_SRC = os.path.join(WARASHI_ROOT, "src")
-if _WARASHI_SRC not in sys.path:
-    sys.path.insert(0, _WARASHI_SRC)
-
-from open_llm_vtuber.vad.silero import VADEngine  # noqa: E402
-from open_llm_vtuber.asr.sherpa_onnx_asr import VoiceRecognition  # noqa: E402
+from mirai_voice.vad import VADEngine
+from mirai_voice.asr import SenseVoiceConfig, SenseVoiceRecognizer
 
 SAMPLE_RATE = 16000
+
+# 本文件所在目录（voice-sidecar/）——包、models、venv 都以它为基准
+_SIDECAR_DIR = os.path.dirname(os.path.abspath(__file__))
 
 HOST = os.environ.get("SIDECAR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SIDECAR_PORT", "8765"))
 
-# ASR 模型路径（默认指向 warashi 已下载的 SenseVoice 模型）
+# ASR 模型路径（默认指向本仓库 voice-sidecar/models/ 下的 SenseVoice 模型）
 _model_dir = os.environ.get(
     "SIDECAR_MODEL_DIR",
     os.path.join(
-        WARASHI_ROOT,
+        _SIDECAR_DIR,
         "models",
         "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
     ),
@@ -90,17 +85,16 @@ _log = lambda *a: print("[sidecar]", *a, flush=True)  # noqa: E731
 
 
 def _build_asr():
-    """直接用 recognizer 跑识别，绕开 warashi 内建的 opencc 简转繁（Mirai 要简体）。"""
-    asr = VoiceRecognition(
-        model_type="sense_voice",
-        sense_voice=ASR_MODEL,
+    """直接建 SenseVoice recognizer，返回简体识别结果（Mirai 要简体）。"""
+    config = SenseVoiceConfig(
+        model=ASR_MODEL,
         tokens=ASR_TOKENS,
         num_threads=ASR_NUM_THREADS,
         use_itn=True,
         language=ASR_LANGUAGE,
         provider="cpu",
     )
-    return asr
+    return SenseVoiceRecognizer(config)
 
 
 # 全局共享的 ASR（解码无状态；用锁防止并发 decode_streams 竞争）
@@ -122,7 +116,6 @@ def asr_decode(raw_int16: bytes) -> str:
         stream.accept_waveform(SAMPLE_RATE, audio)
         _asr.recognizer.decode_streams([stream])
         return stream.result.text
-
 
 async def handle_connection(websocket):
     vad = VADEngine()  # 每个连接独立的状态机
@@ -274,7 +267,7 @@ async def handle_connection(websocket):
                         gen += 1
                         await send_json({"type": "vad", "state": "speech_end"})
                     elif len(out) > 1024:
-                        # warashi 在句末吐出整句字节（在 RESUME 之后单独 yield），供最终识别
+                        # VAD 在句末吐出整句字节（在 RESUME 之后单独 yield），供最终识别
                         gen += 1
                         spawn(decode_final(out, gen))
                 if in_speech:
@@ -309,7 +302,7 @@ async def main():
     _log("preloading ASR model...")
     _asr = _build_asr()
 
-    _log(f"listening on ws://{HOST}:{PORT}  (warashi root: {WARASHI_ROOT})")
+    _log(f"listening on ws://{HOST}:{PORT}  (voice-sidecar)")
     async with websockets.serve(handle_connection, HOST, PORT):
         await asyncio.Future()  # run forever
 

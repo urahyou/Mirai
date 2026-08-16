@@ -5,7 +5,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 ## 常用命令
 
 - 启动：`npm start`
-- 一键语音（音色克隆）：`npm run setup:voice`（装 GPT-SoVITS 进 `vendor/`）+ `npm run start:voice`（自动起 TTS 再开小未来）
+- 一键语音（音色克隆）：`npm run setup:voice`（装 voice-sidecar 语音内核 venv+模型，若需本地音色则再装 GPT-SoVITS 进 `vendor/`）+ `npm run start:voice`（自动起 TTS 再开小未来）
 - 开发调试（打印渲染进程 console、开 DevTools）：`npm run dev`
 - 无 lint / typecheck 脚本；`npm run check` 执行语法检查和 `node:test`，另外可启动 Electron 观察控制台。
 
@@ -40,7 +40,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 语音输入/输出由一个**独立 Python 进程** `voice-sidecar/sidecar_server.py` 实现，与 Electron 主进程通过本机 WebSocket 通信：
 
 - 主进程 `src/main/voice-bridge.js`：spawn 并守护侧车（崩溃自动重启、连接自愈重连），把 renderer 采集的 int16 PCM 转发给侧车，接收 `vad`/`asr`/`audio` 事件。
-- 侧车复用 warashi（Open-LLM-VTuber）的 VAD/Silero + ASR/Sherpa-ONNX；输出用 `edge-tts` 合成 MP3 并以 base64 回传。
+- **VAD/ASR 内核用本地独立包 `voice-sidecar/mirai_voice/`**（`vad.py`+`asr.py`，从 warashi 抽取的最小实现，**不再依赖 warashi**）：跑在 Mirai 自己的 venv `voice-sidecar/.venv`（py3.13 独立，含 numpy/torch/silero-vad/sherpa-onnx/onnxruntime/edge-tts 等，由 `npm run setup:voice` 安装）；SenseVoice ASR 模型装到 `voice-sidecar/models/`（setup 时优先从 warashi 一次性拷贝、否则官方下载）。
 - TTS 引擎可切换（`.env` 里 `SIDECAR_TTS_ENGINE`）：`edge`（默认，云合成需联网）或 `gpt-sovits`（本地音色克隆，GPT-SoVITS API —— `SIDECAR_TTS_URL`/`SIDECAR_TTS_REF_WAV`/`SIDECAR_TTS_PROMPT_TEXT`/`SIDECAR_TTS_PROMPT_LANG` 等），后者 POST 到服务端 `/tts`（api_v2 字段 `ref_audio_path`/`text_lang`/`prompt_lang`），输出 wav、完全离线。
 - **GPT-SoVITS 是独立服务、非 Mirai 进程**：由 `npm run setup:voice` 装入 `vendor/gpt-sovits/`（gitignore；本机已有 `~/GPT-SoVITS` 则软链复用、不重装），`start:voice` 自动拉起 api_v2.py（9880，Mac CPU 配置）等就绪再开小未来，退出时若由它拉起则一并关闭。
 - 外语朗读（`SIDECAR_TTS_SPEAK_LANG`，如 `ja`）：发言前先把中文回复用 LLM 翻译成目标语言再合成朗读，屏幕气泡仍显示中文；译文语言要跟 `SIDECAR_TTS_TEXT_LANGUAGE` 一致（`main.js` 的 `speak()` + `engine/generic.js` 的 `translate()`）。
@@ -75,4 +75,4 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - **角色图**：角色完全由 `assets/live2d/` 下的 Cubism 模型渲染。点击命中必须使用 `Live2DAvatar.isHit()`，不要恢复 PNG fallback 或 alpha 图片命中缓存。模型纹理 PNG 是 Live2D 资源的一部分，不是旧角色 fallback。
 - **macOS Gatekeeper**：旧版 Electron（如 31）公证被吊销，运行时报 `SIGKILL`/「包含恶意软件」。当前 Electron 43.3.0 正常。若再遇到该报错，是二进制下载不完整/公证吊销，不是代码问题。
 - **Electron 二进制**：当前 Node 是 v20（brew `node@20`），而新版 Electron 下载工具 `@electron/get@5` 需 Node≥22。若 `npm start` 报 `ENOENT`/闪退，说明 `node_modules/electron/dist` 二进制缺失，需手动补（`path.txt` 内容为 `Electron.app/Contents/MacOS/Electron`）。
-- **语音侧车**：侧车是独立 Python 进程，需 warashi 的 venv 且已装 `silero-vad`/`edge-tts`/`sherpa-onnx`/`numpy`/`websockets`。模型预加载需 20–50 秒；测试后请 `pkill -f sidecar_server.py` 清理残留进程，避免占用端口。
+- **语音侧车**：侧车是独立 Python 进程，跑在 **Mirai 自己的 `voice-sidecar/.venv`**（py3.13 独立环境，含 silero-vad/sherpa-onnx/torch/edge-tts 等；`npm run setup:voice` 安装，不再依赖 warashi）。模型预加载需 20–50 秒；测试后请 `pkill -f sidecar_server.py` 清理残留进程，避免占用端口。若本机直连 pypi.org 失败，setup 会自动改用清华镜像重试。

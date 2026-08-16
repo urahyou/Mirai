@@ -17,6 +17,11 @@ const REPO = 'https://github.com/RVC-Boss/GPT-SoVITS';
 const CONFIG_REL = 'GPT_SoVITS/configs/tts_infer_mac.yaml';
 const REQUIREMENTS = 'requirements.txt';
 
+// Mirai 语音内核（从 warashi 抽取的独立 sidecar）
+const SIDECAR = path.join(APP_ROOT, 'voice-sidecar');
+const SIDECAR_VENV_PY = path.join(SIDECAR, '.venv', 'bin', 'python3');
+const SIDECAR_REQS = path.join(SIDECAR, 'requirements.txt');
+
 const log = (...a) => console.log(`[setup-voice]`, ...a);
 const err = (m) => { console.error(`[setup-voice] ❌ ${m}`); process.exit(1); };
 
@@ -58,14 +63,50 @@ function symlink(src) {
   }
 }
 
+// 拉起的基座解释器：优先用户指定 MIRAI_VOICE_PYTHON，否则系统 python3。
+// （不再依赖 warashi 的 venv 解释器。）
+function systemPython() {
+  return process.env.MIRAI_VOICE_PYTHON || (() => { try { execSync('command -v python3', { stdio: 'ignore' }); return 'python3'; } catch { return 'python3'; } })();
+}
+
+// 准备 Mirai 自己的语音内核运行环境（voice-sidecar/.venv + SenseVoice 模型）。
+// 与 warashi 完全解绑：venv 独立，模型从 warashi 一次性拷贝或官方下载。
+function pipInstall(venvPy, req) {
+  try {
+    execSync(`uv pip install --python "${venvPy}" -r "${req}"`, { stdio: 'inherit', cwd: SIDECAR });
+  } catch {
+    // 本机（尤其国内网络）直连 pypi.org 常 TLS 失败；回退国内镜像重试。
+    log('pypi.org 直连失败，改用清华镜像重试...');
+    execSync(`uv pip install --python "${venvPy}" -r "${req}" --index-url https://pypi.tuna.tsinghua.edu.cn/simple`, { stdio: 'inherit', cwd: SIDECAR });
+  }
+}
+
+function prepareSidecar() {
+  log('准备 Mirai 语音内核（voice-sidecar）...');
+  const ready = () => {
+    if (!fs.existsSync(SIDECAR_VENV_PY)) return false;
+    try { execSync(`${SIDECAR_VENV_PY} -c "import numpy, torch, sherpa_onnx, silero_vad"`, { stdio: 'ignore' }); return true; } catch { return false; }
+  };
+  if (!ready()) {
+    log('建 voice-sidecar/.venv 并安装依赖（含 torch/sherpa-onnx，需几分钟）...');
+    execSync(`uv venv --python "${systemPython()}" .venv`, { cwd: SIDECAR });
+    pipInstall('.venv/bin/python', SIDECAR_REQS);
+    if (!ready()) err('voice-sidecar venv 安装不完整，请检查网络后重试。');
+  } else {
+    log('voice-sidecar/.venv 已就绪，复用。');
+  }
+  // 模型（SenseVoice）：优先 warashi 拷贝，否则官方下载
+  log('安装 SenseVoice 模型...');
+  const fr = spawnSync(systemPython(), [path.join(SIDECAR, 'fetch_models.py')], { stdio: 'inherit' });
+  if (fr.status !== 0) err('SenseVoice 模型安装失败。');
+}
+
 function freshClone() {
   log(`clone ${REPO} -> vendor/gpt-sovits ...`);
   fs.mkdirSync(path.dirname(VENDOR), { recursive: true });
   execSync(`git clone --depth 1 ${REPO} "${VENDOR}"`, { stdio: 'inherit', cwd: APP_ROOT });
   log('建 venv 并装依赖（含 torch，需几分钟）...');
-  const basePy = process.env.MIRAI_WARASHI_ROOT
-    ? path.join(process.env.MIRAI_WARASHI_ROOT, '.venv', 'bin', 'python3')
-    : (() => { try { execSync('command -v python3', { stdio: 'ignore' }); return 'python3'; } catch { return 'python3'; } })();
+  const basePy = systemPython();
   execSync(`uv venv --system-site-packages .venv --python "${basePy}"`, { stdio: 'inherit', cwd: VENDOR });
   execSync(`uv pip install --python .venv/bin/python -r ${REQUIREMENTS}`, { stdio: 'inherit', cwd: VENDOR });
   log('⚠️  请手动下载基座权重（gsv-v2final）放到 GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/：');
@@ -86,6 +127,7 @@ function wireEnv(root) {
 }
 
 function main() {
+  prepareSidecar();
   if (isReady(VENDOR)) {
     log('vendor/gpt-sovits 已就绪，复用。');
   } else if (fs.existsSync(path.join(VENDOR, 'api_v2.py'))) {

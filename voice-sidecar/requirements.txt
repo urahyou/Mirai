@@ -1,0 +1,19 @@
+# Mirai 语音侧车（voice-sidecar）独立 venv 依赖
+# 安装：npm run setup:voice（会创建 voice-sidecar/.venv 并使用本文件）
+#
+# 说明：这些是通用开源库，不再是 warashi 的依赖——venv 与 warashi 完全解绑。
+
+# --- VAD (mirai_voice/vad.py) ---
+numpy>=1.26
+torch>=2.1
+loguru>=0.7
+pydantic>=2
+silero-vad>=6.0
+
+# --- ASR (mirai_voice/asr.py) ---
+sherpa-onnx>=1.10
+onnxruntime>=1.17
+
+# --- 服务端 / 传输 ---
+websockets>=13
+edge-tts>=7.0

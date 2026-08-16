@@ -43,6 +43,10 @@ __pycache__/
 # 语音引擎本体（GPT-SoVITS 源码/venv/权重，由 npm run setup:voice 安装）
 vendor/
 
+# 语音内核（voice-sidecar）：独立 venv 与 ASR 模型（SenseVoice ~240MB），由 npm run setup:voice 安装
+voice-sidecar/.venv/
+voice-sidecar/models/
+
 # 本地中文文档和研究资料（不纳入版本控制）
 /设计文档.md
 /小未来桌面管家-SPEC.md
