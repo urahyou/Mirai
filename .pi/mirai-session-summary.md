@@ -70,3 +70,26 @@
 - 规则：每次做完一轮 → `npm run check` 全绿 → 提交 + `git push origin memory-poc`，无需批复。
 - 不破坏既有约定：环境文件（.agents/.claude/.pi/skills-lock.json）不入库；提交用 `-F 消息文件`；
   改主进程代码必须重启 Electron（PID 会变）才生效并做真机验收。
+
+## 本轮后续（持续自主开发，每轮已提交推送）
+- **喂养修复 `75d214c`**：真实互动现喂养 pet-state——对话完成 → applyEvent(CONVERSATION)、
+  点击回应 → applyEvent(GREETING)（此前只读 describe 喂 prompt、从不 applyEvent）。
+- **自写日记 `14b0ea4`**：`src/systems/journal.js` 订阅互动/感知事件，按自然日落盘
+  userData/journals/YYYY-MM-DD.md；当天 buffer 持久化 .journal-state.json 防丢；
+  跨天惰性 close+开新页；退出 flush。5 例测试。
+- **系统状态感知 `04e4a65`**：`src/systems/system-sense.js` 电池/联网/时刻 → getAwareness()
+  一句自然语言，注入对话 {state}（chat.buildState = pet状态 + 环境：…）；采集器可注入，
+  默认 pmset -g batt + icmp ping，轮询 5min。本机真跑：深夜/电量100%/联网正常。5 例测试。
+- **当前 npm run check 113/113 全绿**（P0-4/05 + proactive 9 + 喂养 + journal 5 + system-sense 5）。
+
+## 环境限制（重要，非代码缺陷）
+- **Live2D 角色窗对合成点击(clickclic/orca)不可靠**：无论左键或右键、多个坐标，isHit(readPixels)
+  时常不命中 → 无法用合成输入稳定触发 点击问候/右键菜单/开始聊天。这影响"真机点击验收"但
+  不影响功能代码本身（喂养/日记/感知都已用单测+进程内e2e验证）。主人手动点击时正常。
+- vision 后端(qwen122)凌晨偶发 500/502，影响"看图定位"验收。
+- 当前运行实例 PID 32614，pet 窗 841,33，日志 /tmp/mirai-run.log。
+
+## 待办路线（主人授权自主继续）
+- P1 剩余：日程/会议提醒（需日历源）、自动资讯（需 RSS/配置）。
+- P0 收尾：pi 执行引擎网关（接动云端 agent 任务执行）。
+- P2：状态驱动决策深化；P3 主动会话+agent；P4 屏幕观测/录音日记/多角色/群聊。
