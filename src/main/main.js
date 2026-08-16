@@ -2,7 +2,7 @@
  * 主进程入口（唯一 Electron 主进程）。
  *
  * ▸ 职责分区（按文件内顺序）：
- *   1. 依赖与全局状态    —— 窗口引用、配置、共享标志（isVoiceListening 等）
+ *   1. 依赖与全局状态    —— 窗口引用、配置、共享标志（state.isVoiceListening 等）
  *   2. 窗口辅助          —— windowOptions / placeAtBottomRight / applyDisplaySettings
  *   3. 主窗(桌宠)        —— createMainWindow（Live2D 角色、白名单点击）
  *   4. 独立气泡窗        —— createBalloonWindow / positionBalloon / clampToWorkArea
@@ -12,7 +12,7 @@
  *   8. 长期记忆          —— Graphiti search(注入)+add(回写)（不可用时降级普通聊天）
  *   9. 语音桥接          —— voiceBridge 事件 / 识别 / TTS 输出 / 打断
  *   10. IPC 注册         —— 全部 ipcMain.handle/on（与 preload.js 的 desktopPet.* 一一对应）
- *   11. 状态广播         —— isVoiceListening 等共享状态的跨窗口同步
+ *   11. 状态广播         —— state.isVoiceListening 等共享状态的跨窗口同步
  *   12. 应用生命周期     —— app.whenReady / window-all-closed / activate
  *
  * 主要入口：对话提交走 `chat:submit`；气泡渲染走 `balloon:show` 等；
@@ -35,24 +35,10 @@ const { probeMaxContext } = require('../services/probe-context');
 const voiceBridge = require('./voice-bridge');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
 const createPanels = require('./panels');
+const state = require('./state');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
-
-let mainWindow = null;
-let chatInputWindow = null;
-let chatInputExpanded = false;
-let chatInputOpen = false;
-let chatQueue = Promise.resolve();
-let balloonWindow = null;
-let balloonVisible = false;
-let balloonFreed = false; // 用户是否已把气泡拖离头顶；true=停在拖走后相对人物的位置（仍随人物移动）
-let balloonFreedPos = null;
-let balloonRelToMain = null; // 气泡被拖走后与主窗的屏幕偏移；人物移动时据此保持相对位置一起跟随
-let balloonHideTimer = null;
-let pendingBalloonRender = null; // 窗口加载期间缓存的渲染指令，load 完成后 flush
-let lastMainWindowPos = null; // 主窗上次位置：聊天输入窗据此实现“随人物一起拖动”
-let cachedModelMaxTokens = null; // 探测到的当前 active provider 模型上下文上限（null=未知）
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
@@ -80,26 +66,22 @@ function windowOptions(overrides = {}) {
   };
 }
 
-// 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗引用 + 统一 webPreferences + 自动隐藏配置）
+// 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗引用 + 统一 webPreferences）
 const panels = createPanels({
-  getPetWindow: () => mainWindow,
+  getPetWindow: () => state.mainWindow,
   windowOptions,
-  getAutoHide: () => {
-    const s = displaySettings.getSettings();
-    return { enabled: s.panelAutoHide, seconds: s.panelAutoHideSec };
-  },
 });
 
 function placeAtBottomRight() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   const cursor = screen.getCursorScreenPoint();
   const { workArea } = screen.getDisplayNearestPoint(cursor);
-  const [width, height] = mainWindow.getSize();
-  mainWindow.setPosition(workArea.x + workArea.width - width - 20, workArea.y + workArea.height - height - 20);
+  const [width, height] = state.mainWindow.getSize();
+  state.mainWindow.setPosition(workArea.x + workArea.width - width - 20, workArea.y + workArea.height - height - 20);
 }
 
 function setMainWindowAlwaysOnTop(enabled) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   // 层级策略（macOS 层级从高到低：screen-saver > floating > normal）：
   //  - 无对话框：置顶配置开 → screen-saver（高于一切）；关 → normal。
   //  - 紧凑对话框开启：置顶配置开 → floating（仍高于普通应用如微信，但低于对话框），
@@ -107,16 +89,16 @@ function setMainWindowAlwaysOnTop(enabled) {
   //  - 展开对话框开启：人物保持 floating（始终置顶于普通应用），
   //    聊天窗本身转 normal（可被其他应用覆盖、当普通窗口用）。
   let level;
-  if (!chatInputOpen) {
+  if (!state.chatInputOpen) {
     level = Boolean(enabled) ? 'screen-saver' : false;
   } else {
     level = Boolean(enabled) ? 'floating' : false;
   }
   const shouldStayVisible = Boolean(level);
-  if (shouldStayVisible) mainWindow.setAlwaysOnTop(true, level);
-  else mainWindow.setAlwaysOnTop(false);
-  if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-    mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
+  if (shouldStayVisible) state.mainWindow.setAlwaysOnTop(true, level);
+  else state.mainWindow.setAlwaysOnTop(false);
+  if (typeof state.mainWindow.setVisibleOnAllWorkspaces === 'function') {
+    state.mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
       visibleOnFullScreen: shouldStayVisible,
       // 已隐藏 Dock（accessory 辅助应用），跳过默认的进程类型转换，
       // 避免每次调用短暂隐藏窗口/Dock，并确保能加入全屏 Space。
@@ -126,26 +108,26 @@ function setMainWindowAlwaysOnTop(enabled) {
 }
 
 function applyDisplaySettings(settings, preserveCenter = true) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   const nextWidth = Math.round(WINDOW.width * settings.scale);
   const nextHeight = Math.round(WINDOW.height * settings.scale);
-  const bounds = mainWindow.getBounds();
-  mainWindow.setSize(nextWidth, nextHeight);
+  const bounds = state.mainWindow.getBounds();
+  state.mainWindow.setSize(nextWidth, nextHeight);
   if (preserveCenter) {
-    mainWindow.setPosition(
+    state.mainWindow.setPosition(
       Math.round(bounds.x + (bounds.width - nextWidth) / 2),
       Math.round(bounds.y + (bounds.height - nextHeight) / 2),
     );
   }
   setMainWindowAlwaysOnTop(settings.alwaysOnTop);
-  if (mainWindow.webContents && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('display:changed', settings);
+  if (state.mainWindow.webContents && !state.mainWindow.isDestroyed()) {
+    state.mainWindow.webContents.send('display:changed', settings);
   }
 }
 
 function createMainWindow() {
   const settings = displaySettings.getSettings();
-  mainWindow = new BrowserWindow({
+  state.mainWindow = new BrowserWindow({
     width: Math.round(WINDOW.width * settings.scale),
     height: Math.round(WINDOW.height * settings.scale),
     transparent: true,
@@ -157,20 +139,20 @@ function createMainWindow() {
     webPreferences: windowOptions(),
   });
   setMainWindowAlwaysOnTop(settings.alwaysOnTop);
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  state.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   placeAtBottomRight();
 
   if (config.dev) {
-    mainWindow.webContents.on('console-message', (_event, _level, message) => console.log('[renderer]', message));
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    state.mainWindow.webContents.on('console-message', (_event, _level, message) => console.log('[renderer]', message));
+    state.mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
 // ---------------- 独立气泡窗口 ----------------
 
 function createBalloonWindow() {
-  if (balloonWindow && !balloonWindow.isDestroyed()) return;
-  balloonWindow = new BrowserWindow({
+  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) return;
+  state.balloonWindow = new BrowserWindow({
     width: BALLOON_WINDOW_SIZE.width,
     height: BALLOON_WINDOW_SIZE.height,
     transparent: true,
@@ -185,23 +167,23 @@ function createBalloonWindow() {
     focusable: true,
     webPreferences: windowOptions(),
   });
-  balloonWindow.setAlwaysOnTop(true, 'screen-saver');
-  if (typeof balloonWindow.setVisibleOnAllWorkspaces === 'function') {
-    balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+  state.balloonWindow.setAlwaysOnTop(true, 'screen-saver');
+  if (typeof state.balloonWindow.setVisibleOnAllWorkspaces === 'function') {
+    state.balloonWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   }
-  balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
+  state.balloonWindow.loadFile(path.join(__dirname, '..', 'renderer', 'balloon.html'));
   if (config.dev) {
-    balloonWindow.webContents.on('console-message', (_event, _level, message) => console.log('[balloon-r]', message));
+    state.balloonWindow.webContents.on('console-message', (_event, _level, message) => console.log('[balloon-r]', message));
   }
   // 注意：首条渲染指令不在此处（did-finish-load）发送——此时 renderer 的 onRender
   // 可能还没注册好（balloon.js 用轮询等 DOM），did-finish-load 就发会导致丢失。
   // 改为由 renderer 上报 balloon:ready 后再 flush（见 ipcMain.handle('balloon:ready')）。
-  balloonWindow.on('closed', () => { balloonWindow = null; pendingBalloonRender = null; });
+  state.balloonWindow.on('closed', () => { state.balloonWindow = null; state.pendingBalloonRender = null; });
 }
 
 // 气泡锚点：默认贴着角色头顶（主窗水平居中、顶部向下取一个比例）
 function balloonAnchorPoint() {
-  const mainBounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
+  const mainBounds = state.mainWindow && !state.mainWindow.isDestroyed() ? state.mainWindow.getBounds() : null;
   const cursor = screen.getCursorScreenPoint();
   return mainBounds
     ? { x: mainBounds.x + mainBounds.width / 2, y: mainBounds.y + mainBounds.height * BALLOON_HEAD_ANCHOR_RATIO }
@@ -217,75 +199,75 @@ function clampToWorkArea(p, width, height) {
 }
 
 function positionBalloon() {
-  if (!balloonWindow || balloonWindow.isDestroyed() || !balloonVisible) return;
-  const [width, height] = balloonWindow.getSize();
+  if (!state.balloonWindow || state.balloonWindow.isDestroyed() || !state.balloonVisible) return;
+  const [width, height] = state.balloonWindow.getSize();
   const anchor = balloonAnchorPoint();
   let position;
-  if (balloonFreed && balloonRelToMain && mainWindow && !mainWindow.isDestroyed()) {
+  if (state.balloonFreed && state.balloonRelToMain && state.mainWindow && !state.mainWindow.isDestroyed()) {
     // 用户拖走过气泡：保持其相对人物的屏幕偏移，人物移动时气泡跟着一起动
-    const main = mainWindow.getBounds();
-    position = { x: main.x + balloonRelToMain.x, y: main.y + balloonRelToMain.y };
+    const main = state.mainWindow.getBounds();
+    position = { x: main.x + state.balloonRelToMain.x, y: main.y + state.balloonRelToMain.y };
   } else {
     // 默认贴着角色头顶
     position = { x: anchor.x - width / 2, y: anchor.y - height / 2 };
   }
   const pos = clampToWorkArea(position, width, height);
   // Electron 的原生窗口位置要求整数；居中计算和缩放后尺寸可能产生浮点数。
-  balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
+  state.balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
 }
 
 // 把渲染指令发给气泡窗口。若页面还在加载（首次创建时），先缓存、
 // 等 did-finish-load 后 flush，避免首条消息在 load 完成前丢失。
 function dispatchBalloonRender(payload) {
-  if (!balloonWindow || balloonWindow.isDestroyed()) return;
-  if (balloonWindow.webContents.isLoading()) {
-    pendingBalloonRender = payload;
+  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
+  if (state.balloonWindow.webContents.isLoading()) {
+    state.pendingBalloonRender = payload;
     return;
   }
-  balloonWindow.webContents.send('balloon:render', payload);
-  pendingBalloonRender = null;
+  state.balloonWindow.webContents.send('balloon:render', payload);
+  state.pendingBalloonRender = null;
 }
 
 function balloonRender(payload) {
   createBalloonWindow();
-  if (!balloonWindow || balloonWindow.isDestroyed()) return;
-  clearTimeout(balloonHideTimer);
-  balloonVisible = true;
+  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
+  clearTimeout(state.balloonHideTimer);
+  state.balloonVisible = true;
   positionBalloon();
   dispatchBalloonRender(payload);
-  balloonWindow.show();
-  balloonWindow.moveTop();
+  state.balloonWindow.show();
+  state.balloonWindow.moveTop();
 }
 
 function balloonHide() {
-  if (!balloonWindow || balloonWindow.isDestroyed()) return;
-  balloonVisible = false;
-  clearTimeout(balloonHideTimer);
+  if (!state.balloonWindow || state.balloonWindow.isDestroyed()) return;
+  state.balloonVisible = false;
+  clearTimeout(state.balloonHideTimer);
   dispatchBalloonRender({ action: 'hide' });
-  balloonHideTimer = setTimeout(() => {
-    if (balloonWindow && !balloonWindow.isDestroyed()) balloonWindow.hide();
+  state.balloonHideTimer = setTimeout(() => {
+    if (state.balloonWindow && !state.balloonWindow.isDestroyed()) state.balloonWindow.hide();
   }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
 }
 
 
 // 主窗移动时，让打开中的聊天输入窗保持相对位置一起移动（“随人物拖动”）。
-// 展开成普通窗口（chatInputExpanded）时不跟随，避免与独立使用冲突。
+// 展开成普通窗口（state.chatInputExpanded）时不跟随，避免与独立使用冲突。
 function syncChatInputWithMain() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const mainBounds = mainWindow.getBounds();
-  if (!lastMainWindowPos) { // 首次：只记录基准，不移动
-    lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+  const mainBounds = state.mainWindow.getBounds();
+  if (!state.lastMainWindowPos) { // 首次：只记录基准，不移动
+    state.lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
     return;
   }
-  if (chatInputWindow && !chatInputWindow.isDestroyed() && !chatInputExpanded) {
-    const dx = mainBounds.x - lastMainWindowPos.x;
-    const dy = mainBounds.y - lastMainWindowPos.y;
+  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed() && !state.chatInputExpanded) {
+    const dx = mainBounds.x - state.lastMainWindowPos.x;
+    const dy = mainBounds.y - state.lastMainWindowPos.y;
     if (dx || dy) {
-      const [cx, cy] = chatInputWindow.getPosition();
-      chatInputWindow.setPosition(cx + dx, cy + dy);
+      const [cx, cy] = state.chatInputWindow.getPosition();
+      state.chatInputWindow.setPosition(cx + dx, cy + dy);
     }
   }
-  lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
+  state.lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
 }
 
 // 主窗被移动（系统 moved 事件 或 拖拽 moveTo/moveBy）后统一调用：
@@ -297,21 +279,21 @@ function onMainWindowMoved() {
 }
 
 function closeChatInputWindow() {
-  if (chatInputWindow && !chatInputWindow.isDestroyed()) {
-    saveChatInputPosition(chatInputWindow);
-    chatInputWindow.destroy();
+  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
+    saveChatInputPosition(state.chatInputWindow);
+    state.chatInputWindow.destroy();
   }
-  chatInputWindow = null;
-  chatInputExpanded = false;
-  chatInputOpen = false;
-  // 先置空聊天窗口，再恢复角色置顶，否则会被上面的 chatInputOpen 守卫挡住。
+  state.chatInputWindow = null;
+  state.chatInputExpanded = false;
+  state.chatInputOpen = false;
+  // 先置空聊天窗口，再恢复角色置顶，否则会被上面的 state.chatInputOpen 守卫挡住。
   setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
 }
 
 function saveChatInputPosition(window) {
-  if (!window || window.isDestroyed() || !mainWindow || mainWindow.isDestroyed()) return;
+  if (!window || window.isDestroyed() || !state.mainWindow || state.mainWindow.isDestroyed()) return;
   const chatBounds = window.getBounds();
-  const mainBounds = mainWindow.getBounds();
+  const mainBounds = state.mainWindow.getBounds();
   windowLayout.setLayout({
     chatOffset: { x: chatBounds.x - mainBounds.x, y: chatBounds.y - mainBounds.y },
   });
@@ -319,11 +301,11 @@ function saveChatInputPosition(window) {
 
 function openChatInputWindow() {
   closeChatInputWindow();
-  chatInputExpanded = false;
-  chatInputOpen = true;
+  state.chatInputExpanded = false;
+  state.chatInputOpen = true;
   // 角色从 screen-saver 降到 floating：仍高于普通应用（如微信），但低于对话框。
   setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-  chatInputWindow = new BrowserWindow({
+  state.chatInputWindow = new BrowserWindow({
     width: CHAT_INPUT_COMPACT_SIZE.width,
     height: CHAT_INPUT_COMPACT_SIZE.height,
     transparent: true,
@@ -336,20 +318,20 @@ function openChatInputWindow() {
     webPreferences: windowOptions(),
   });
   // floating 高于普通应用窗口但低于系统输入法候选窗；输入期间不再改变层级。
-  chatInputWindow.setAlwaysOnTop(true, 'floating');
-  chatInputWindow.moveTop();
-  chatInputWindow.loadFile(path.join(__dirname, '..', 'renderer', 'chat-input.html'));
-  chatInputWindow.webContents.once('did-finish-load', () => {
-    if (!chatInputWindow || chatInputWindow.isDestroyed()) return;
-    chatInputWindow.focus();
-    chatInputWindow.webContents.focus();
+  state.chatInputWindow.setAlwaysOnTop(true, 'floating');
+  state.chatInputWindow.moveTop();
+  state.chatInputWindow.loadFile(path.join(__dirname, '..', 'renderer', 'chat-input.html'));
+  state.chatInputWindow.webContents.once('did-finish-load', () => {
+    if (!state.chatInputWindow || state.chatInputWindow.isDestroyed()) return;
+    state.chatInputWindow.focus();
+    state.chatInputWindow.webContents.focus();
   });
 
-  const mainBounds = mainWindow && !mainWindow.isDestroyed()
-    ? mainWindow.getBounds()
+  const mainBounds = state.mainWindow && !state.mainWindow.isDestroyed()
+    ? state.mainWindow.getBounds()
     : { x: screen.getCursorScreenPoint().x, y: screen.getCursorScreenPoint().y, ...WINDOW };
   const { workArea } = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
-  const [width, height] = chatInputWindow.getSize();
+  const [width, height] = state.chatInputWindow.getSize();
   const savedOffset = windowLayout.getLayout().chatOffset;
   const bellyCenterX = mainBounds.x + mainBounds.width / 2;
   const bellyCenterY = mainBounds.y + mainBounds.height * CHAT_INPUT_BELLY_CENTER_RATIO;
@@ -357,14 +339,14 @@ function openChatInputWindow() {
   const preferredY = savedOffset ? mainBounds.y + savedOffset.y : bellyCenterY - height / 2;
   const x = Math.max(workArea.x + WORK_AREA_MARGIN, Math.min(Math.round(preferredX), workArea.x + workArea.width - width - WORK_AREA_MARGIN));
   const y = Math.max(workArea.y + WORK_AREA_MARGIN, Math.min(Math.round(preferredY), workArea.y + workArea.height - height - WORK_AREA_MARGIN));
-  chatInputWindow.setPosition(x, y);
-  chatInputWindow.on('close', () => {
+  state.chatInputWindow.setPosition(x, y);
+  state.chatInputWindow.on('close', () => {
     // 兜底：无论以何种方式关闭对话框，都恢复角色窗口的置顶状态，
     // 避免绕开 closeChatInputWindow() 时角色永久失去 always-on-top。
-    const win = chatInputWindow;
-    chatInputWindow = null; // 先置空，让角色层级恢复不被 chatInputOpen 守卫挡住
-    chatInputExpanded = false;
-    chatInputOpen = false;
+    const win = state.chatInputWindow;
+    state.chatInputWindow = null; // 先置空，让角色层级恢复不被 state.chatInputOpen 守卫挡住
+    state.chatInputExpanded = false;
+    state.chatInputOpen = false;
     if (win && !win.isDestroyed()) saveChatInputPosition(win);
     setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   });
@@ -387,19 +369,19 @@ function resizeChatInputWindow(win, width, height) {
 }
 
 function sendToChatInput(channel, data) {
-  if (chatInputWindow && !chatInputWindow.isDestroyed()) {
-    chatInputWindow.webContents.send(channel, data);
+  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
+    state.chatInputWindow.webContents.send(channel, data);
   }
 }
 
 function broadcastChatDelta(data) {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('chat:delta', data);
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('chat:delta', data);
   sendToChatInput('chat:delta', data);
 }
 
 function enqueueChat(work) {
-  const run = chatQueue.then(work, work);
-  chatQueue = run.catch(() => {});
+  const run = state.chatQueue.then(work, work);
+  state.chatQueue = run.catch(() => {});
   return run;
 }
 
@@ -419,7 +401,7 @@ async function generatePetLine(purpose) {
 async function generateChat(input, emit) {
   const graphitiResults = await graphitiMemory.search(input);
   const memoryContext = graphitiMemory.formatContext(graphitiResults);
-  const contextMaxTokens = contextSettings.getSettings(cachedModelMaxTokens).maxContextTokens;
+  const contextMaxTokens = contextSettings.getSettings(state.cachedModelMaxTokens).maxContextTokens;
   for (const provider of generic.providerChain()) {
     try {
       if (!(await generic.isAvailable(provider))) continue;
@@ -435,14 +417,14 @@ async function generateChat(input, emit) {
 async function refreshModelMaxTokens() {
   try {
     const chain = generic.providerChain();
-    if (!chain.length) { cachedModelMaxTokens = null; return null; }
+    if (!chain.length) { state.cachedModelMaxTokens = null; return null; }
     const config = generic.getProviderConfig();
     const provider = chain[0] && config.providers[chain[0]];
-    cachedModelMaxTokens = provider ? await probeMaxContext(provider, generic.authorizationHeaders) : null;
+    state.cachedModelMaxTokens = provider ? await probeMaxContext(provider, generic.authorizationHeaders) : null;
   } catch {
-    cachedModelMaxTokens = null;
+    state.cachedModelMaxTokens = null;
   }
-  return cachedModelMaxTokens;
+  return state.cachedModelMaxTokens;
 }
 
 ipcMain.handle('character:greet', async () => {
@@ -496,7 +478,7 @@ ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
   const next = sidecarEnv.write(p);
   // TTS 输出开关是运行时逻辑，无需重启侧车；其余配置变更需要重启让侧车立即生效。
   const needsRestart = Object.keys(p).some((k) => k !== 'SIDECAR_TTS_ENABLED');
-  if ('SIDECAR_TTS_ENABLED' in p) _ttsEnabledCache = p.SIDECAR_TTS_ENABLED !== 'false';
+  if ('SIDECAR_TTS_ENABLED' in p) state._ttsEnabledCache = p.SIDECAR_TTS_ENABLED !== 'false';
   if (needsRestart && voiceBridge.getStatus().running) voiceBridge.restart(); // 让新配置立即生效
   else if (!needsRestart) broadcastVoiceStatus(); // 开关变化也要让 🔊 图标同步
   return next;
@@ -521,15 +503,15 @@ ipcMain.handle('provider:closePanel', () => { panels.closeProviderPanel(); retur
 
 // 上下文设置：探测模型最大上下文 + 滑条控制发送给模型的 token 预算
 ipcMain.handle('context:get', async () => {
-  const settings = contextSettings.getSettings(cachedModelMaxTokens);
-  return { ...settings, modelMaxTokens: cachedModelMaxTokens };
+  const settings = contextSettings.getSettings(state.cachedModelMaxTokens);
+  return { ...settings, modelMaxTokens: state.cachedModelMaxTokens };
 });
 ipcMain.handle('context:set', guarded('context:set', (patch) => {
-  return contextSettings.setSettings(patch, cachedModelMaxTokens);
+  return contextSettings.setSettings(patch, state.cachedModelMaxTokens);
 }));
 ipcMain.handle('context:probe', async () => {
   await refreshModelMaxTokens();
-  return cachedModelMaxTokens;
+  return state.cachedModelMaxTokens;
 });
 ipcMain.handle('context:openPanel', () => { panels.openContextPanel(); return true; });
 ipcMain.handle('context:closePanel', () => { panels.closeContextPanel(); return true; });
@@ -543,26 +525,26 @@ ipcMain.handle('memory:setSettings', guarded('memory:setSettings', (patch) => gr
 ipcMain.handle('memory:openPanel', () => { panels.openMemoryPanel(); return true; });
 ipcMain.handle('memory:closePanel', () => { panels.closeMemoryPanel(); return true; });
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
-  chatInputExpanded = expanded;
-  if (chatInputWindow && !chatInputWindow.isDestroyed()) {
+  state.chatInputExpanded = expanded;
+  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
     if (expanded) {
       // 展开成普通窗口：聊天窗可被覆盖；人物保持 floating 置顶（不消失）
       setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-      chatInputWindow.setAlwaysOnTop(false);
+      state.chatInputWindow.setAlwaysOnTop(false);
     } else {
       // 收起成悬浮输入框：角色降到 floating（仍高于微信），对话浮动在人物之上
       setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-      chatInputWindow.setAlwaysOnTop(true, 'floating');
-      chatInputWindow.moveTop();
+      state.chatInputWindow.setAlwaysOnTop(true, 'floating');
+      state.chatInputWindow.moveTop();
     }
   }
   const target = expanded ? CHAT_INPUT_EXPANDED_SIZE : CHAT_INPUT_COMPACT_SIZE;
-  return resizeChatInputWindow(chatInputWindow, target.width, target.height);
+  return resizeChatInputWindow(state.chatInputWindow, target.width, target.height);
 }));
 ipcMain.handle('chat:resizeInput', (event, requestedHeight) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return false;
-  if (win !== chatInputWindow || chatInputExpanded) return true;
+  if (win !== state.chatInputWindow || state.chatInputExpanded) return true;
   const height = Math.max(96, Math.min(220, Math.round(Number(requestedHeight) || 96)));
   const [width] = win.getContentSize();
   return resizeChatInputWindow(win, width, height);
@@ -575,11 +557,11 @@ ipcMain.handle('balloon:show', (_event, payload) => {
   return true;
 });
 ipcMain.handle('balloon:update', (_event, full) => {
-  if (balloonWindow && !balloonWindow.isDestroyed()) dispatchBalloonRender({ action: 'update', full: String(full || '') });
+  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) dispatchBalloonRender({ action: 'update', full: String(full || '') });
   return true;
 });
 ipcMain.handle('balloon:finish', (_event, payload) => {
-  if (balloonWindow && !balloonWindow.isDestroyed()) {
+  if (state.balloonWindow && !state.balloonWindow.isDestroyed()) {
     const p = payload && typeof payload === 'object' ? payload : {};
     dispatchBalloonRender({ action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
   }
@@ -589,31 +571,31 @@ ipcMain.handle('balloon:hide', () => { balloonHide(); return true; });
 
 // renderer 端 onRender 监听注册完成后上报，此时才 flush 加载阶段积压的首条渲染消息
 ipcMain.handle('balloon:ready', () => {
-  if (pendingBalloonRender && balloonWindow && !balloonWindow.isDestroyed()) {
-    balloonWindow.webContents.send('balloon:render', pendingBalloonRender);
+  if (state.pendingBalloonRender && state.balloonWindow && !state.balloonWindow.isDestroyed()) {
+    state.balloonWindow.webContents.send('balloon:render', state.pendingBalloonRender);
   }
-  pendingBalloonRender = null;
+  state.pendingBalloonRender = null;
   return true;
 });
 
 ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
-  if (!balloonWindow || balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-  const [width, height] = balloonWindow.getSize();
+  if (!state.balloonWindow || state.balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const [width, height] = state.balloonWindow.getSize();
   const pos = clampToWorkArea({ x, y }, width, height);
-  balloonFreed = true;
-  balloonFreedPos = { x: Math.round(pos.x), y: Math.round(pos.y) };
+  state.balloonFreed = true;
+  state.balloonFreedPos = { x: Math.round(pos.x), y: Math.round(pos.y) };
   // 记录气泡相对主窗的偏移，拖走后仍随人物一起移动
-  const main = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
-  balloonRelToMain = main ? { x: balloonFreedPos.x - main.x, y: balloonFreedPos.y - main.y } : null;
-  balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
+  const main = state.mainWindow && !state.mainWindow.isDestroyed() ? state.mainWindow.getBounds() : null;
+  state.balloonRelToMain = main ? { x: state.balloonFreedPos.x - main.x, y: state.balloonFreedPos.y - main.y } : null;
+  state.balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
   return true;
 });
-ipcMain.handle('balloonWindow:release', () => { balloonFreed = true; return true; });
+ipcMain.handle('balloonWindow:release', () => { state.balloonFreed = true; return true; });
 ipcMain.handle('balloonWindow:reanchor', () => {
-  balloonFreed = false;
-  balloonFreedPos = null;
-  balloonRelToMain = null;
-  if (balloonVisible) positionBalloon();
+  state.balloonFreed = false;
+  state.balloonFreedPos = null;
+  state.balloonRelToMain = null;
+  if (state.balloonVisible) positionBalloon();
   return true;
 });
 
@@ -622,7 +604,7 @@ ipcMain.on('window:moveBy', (event, dx, dy) => {
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
-  if (win === mainWindow) onMainWindowMoved();
+  if (win === state.mainWindow) onMainWindowMoved();
 });
 
 // 绝对定位：拖拽用屏幕坐标直接 setPosition，避免增量模式下 getPosition 读到陈旧窗口位置导致滞后
@@ -630,14 +612,14 @@ ipcMain.on('window:moveTo', (event, x, y) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
   win.setPosition(Math.round(x), Math.round(y));
-  if (win === mainWindow) onMainWindowMoved();
+  if (win === state.mainWindow) onMainWindowMoved();
 });
 
 // 拖拽期间把置顶层级从 screen-saver 降为 floating，避免 macOS 逐帧合成导致闪烁
 ipcMain.on('window:setDragState', (event, dragging) => {
   if (typeof dragging !== 'boolean') return;
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win !== mainWindow) return;
+  if (!win || win !== state.mainWindow) return;
   if (dragging) {
     win.setAlwaysOnTop(true, 'floating');
     if (typeof win.setVisibleOnAllWorkspaces === 'function') {
@@ -650,7 +632,7 @@ ipcMain.on('window:setDragState', (event, dragging) => {
 
 ipcMain.on('window:setMousePassthrough', (event, passthrough) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win !== mainWindow || typeof passthrough !== 'boolean') return;
+  if (!win || win !== state.mainWindow || typeof passthrough !== 'boolean') return;
   if (passthrough) win.setIgnoreMouseEvents(true, { forward: true });
   else win.setIgnoreMouseEvents(false);
 });
@@ -692,26 +674,22 @@ async function handleUserUtterance(rawInput) {
 // SIDECAR_TTS_ENABLED=false 时关闭语音输出（沉默模式，只显示文字不发声）。
 // main 端合成去重：同一时刻最多让侧车合成一条，连续 speak 只保留最新一句，
 // 避免侧车堆积合成一堆会被渲染端丢弃的句子（浪费算力，尤其 GPT-SoVITS）。
-let _speakBusy = false;      // 是否有一条朗读正在侧车合成中
-let _speakPending = null;    // 合成进行时累积的最新待读文本（旧的被覆盖丢弃）
-let _speakBusyTimer = null;  // 超时兜底：某条未回 audio（如 TTS 失败）时释放，防 busy 卡死
-
 function speak(text) {
   const t = String(text || '').trim();
   if (!t) return;
   if (!voiceOutputEnabled()) return;
-  if (_speakBusy) {
+  if (state._speakBusy) {
     // 上一条还在合成：不发送，只保留最新一句（旧的丢弃）
-    _speakPending = t;
+    state._speakPending = t;
     return;
   }
-  _speakBusy = true;
-  _speakPending = null;
-  clearTimeout(_speakBusyTimer);
-  _speakBusyTimer = setTimeout(() => {
-    _speakBusy = false;
-    const pending = _speakPending;
-    _speakPending = null;
+  state._speakBusy = true;
+  state._speakPending = null;
+  clearTimeout(state._speakBusyTimer);
+  state._speakBusyTimer = setTimeout(() => {
+    state._speakBusy = false;
+    const pending = state._speakPending;
+    state._speakPending = null;
     if (pending) speak(pending);
   }, 20000);
   const speakLang = String(voiceBridge.getSidecarEnv().SIDECAR_TTS_SPEAK_LANG || '').trim();
@@ -727,34 +705,32 @@ function speak(text) {
 
 // 语音输出开关：读取 .env 的 SIDECAR_TTS_ENABLED，防止误写时静音判定出错用白名单。
 // 用内存缓存避免 speak() 每句都读盘；写入时由 setVoiceTtsEnabled / voiceSettings:set 同步刷新。
-let _ttsEnabledCache = null;
 function voiceOutputEnabled() {
-  if (_ttsEnabledCache === null) {
+  if (state._ttsEnabledCache === null) {
     const v = String(sidecarEnv.read().SIDECAR_TTS_ENABLED || 'true').trim().toLowerCase();
-    _ttsEnabledCache = !(v === 'false' || v === '0' || v === 'off' || v === 'no');
+    state._ttsEnabledCache = !(v === 'false' || v === '0' || v === 'off' || v === 'no');
   }
-  return _ttsEnabledCache;
+  return state._ttsEnabledCache;
 }
 
-// 语音识别结果直接交给统一发言流程
-const isVoiceListening = { value: false };
+// 语音识别结果直接交给统一发言流程（状态收敛到 state.isVoiceListening）
 
 // 向两个窗口广播语音状态（聆听开关 + 侧车就绪度 + 语音输出开关），供 🎤/🔊 图标显示状态
 function broadcastVoiceStatus() {
-  const status = { ...voiceBridge.getStatus(), listening: isVoiceListening.value, ttsEnabled: voiceOutputEnabled() };
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('voice:status', status);
+  const status = { ...voiceBridge.getStatus(), listening: state.isVoiceListening.value, ttsEnabled: voiceOutputEnabled() };
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('voice:status', status);
   sendToChatInput('voice:status', status);
 }
 
 // 向两个窗口广播聆听开关状态（宠物窗 + 对话窗）
 function broadcastVoiceListening() {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('voice:listening-changed', isVoiceListening.value);
-  sendToChatInput('voice:listening-changed', isVoiceListening.value);
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('voice:listening-changed', state.isVoiceListening.value);
+  sendToChatInput('voice:listening-changed', state.isVoiceListening.value);
 }
 
 function setVoiceListening(on) {
-  isVoiceListening.value = Boolean(on);
-  if (isVoiceListening.value) voiceBridge.start();
+  state.isVoiceListening.value = Boolean(on);
+  if (state.isVoiceListening.value) voiceBridge.start();
   broadcastVoiceListening();
   broadcastVoiceStatus();
 }
@@ -767,7 +743,7 @@ function setVoiceTtsEnabled(on) {
   } catch (e) {
     console.error('[voice] 写入 SIDECAR_TTS_ENABLED 失败:', e.message);
   }
-  _ttsEnabledCache = enabled;
+  state._ttsEnabledCache = enabled;
   broadcastVoiceStatus();
 }
 
@@ -776,31 +752,31 @@ voiceBridge.on('ready-change', broadcastVoiceStatus);
 
 // 飘字：实时部分识别 → 填进对话窗输入框（说话文字显示在“输入对话框”）
 voiceBridge.on('asr-partial', (text) => {
-  if (!isVoiceListening.value) return;
+  if (!state.isVoiceListening.value) return;
   sendToChatInput('voice:asr-partial', text);
 });
 
 // 最终识别：对话窗开着→填输入框（是否自动发送由对话窗决定）；对话窗关着→直接自动发送（回复走气泡）
 voiceBridge.on('asr', (text) => {
-  if (!isVoiceListening.value) return;
+  if (!state.isVoiceListening.value) return;
   const t = String(text || '').trim();
   if (!t) return;
-  if (chatInputOpen) sendToChatInput('voice:asr-final', t);
+  if (state.chatInputOpen) sendToChatInput('voice:asr-final', t);
   else void handleUserUtterance(t);
 });
 
 // 让主窗口（宠物窗）播放小未来的语音
 voiceBridge.on('audio', (audio) => {
   // 本条已合成完成 → 释放 busy；若期间又积累了最新待读文本，立即发起它（打断式：旧退场新上场）
-  if (_speakBusy) {
-    clearTimeout(_speakBusyTimer);
-    _speakBusy = false;
-    const pending = _speakPending;
-    _speakPending = null;
+  if (state._speakBusy) {
+    clearTimeout(state._speakBusyTimer);
+    state._speakBusy = false;
+    const pending = state._speakPending;
+    state._speakPending = null;
     if (pending) speak(pending);
   }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('voice:audio', {
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+    state.mainWindow.webContents.send('voice:audio', {
       id: audio.id,
       format: audio.format || 'mp3',
       data: audio.data, // Buffer → 序列化为 Uint8Array，renderer 端解码播放
@@ -810,8 +786,8 @@ voiceBridge.on('audio', (audio) => {
 
 // 你开口说话时（speech_start）→ 通知宠物窗打断正在播放的语音，转听你说
 voiceBridge.on('vad', (state) => {
-  if (state === 'speech_start' && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('voice:speak-interrupt');
+  if (state === 'speech_start' && state.mainWindow && !state.mainWindow.isDestroyed()) {
+    state.mainWindow.webContents.send('voice:speak-interrupt');
   }
 });
 
@@ -823,10 +799,10 @@ ipcMain.handle('voice:stop', () => {
   voiceBridge.stop();
   return true;
 });
-ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: isVoiceListening.value, ttsEnabled: voiceOutputEnabled() }));
+ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: state.isVoiceListening.value, ttsEnabled: voiceOutputEnabled() }));
 ipcMain.handle('voice:setListening', (_event, on) => {
   setVoiceListening(on);
-  return isVoiceListening.value;
+  return state.isVoiceListening.value;
 });
 ipcMain.handle('voice:setTtsEnabled', (_event, on) => {
   setVoiceTtsEnabled(on);
@@ -853,12 +829,12 @@ app.whenReady().then(() => {
   // 启动语音侧车
   voiceBridge.start();
   createMainWindow();
-  if (mainWindow) {
+  if (state.mainWindow) {
     // 宠物窗移动时：未拖离的气泡跟随角色头 + 打开中的聊天窗也保持相对位置一起拖动
-    mainWindow.on('moved', onMainWindowMoved);
+    state.mainWindow.on('moved', onMainWindowMoved);
     // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
-    lastMainWindowPos = { x: mainWindow.getBounds().x, y: mainWindow.getBounds().y };
-    mainWindow.on('resize', positionBalloon);
+    state.lastMainWindowPos = { x: state.mainWindow.getBounds().x, y: state.mainWindow.getBounds().y };
+    state.mainWindow.on('resize', positionBalloon);
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

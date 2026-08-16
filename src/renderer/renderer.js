@@ -99,6 +99,8 @@ function schedulePointerRegionUpdate() {
 function applyDisplaySettings(settings) {
   character.dataset.outlineShadow = settings?.outlineShadow ? 'true' : 'false';
   bubbleDurationSec = Number(settings?.bubbleDuration) || 0;
+  voiceDockAutoHide = settings?.voiceDockAutoHide !== false;
+  voiceDockAutoHideSec = Number(settings?.voiceDockAutoHideSec) || 6;
 }
 
 function bubbleHideDelay(value) {
@@ -353,6 +355,9 @@ async function ensureVoiceCapture() {
 // ---------- 语音控制扇形面板（单击角色弹出，左/右视空位） ----------
 let voiceTtsEnabled = true; // 语音输出开关（读 .env SIDECAR_TTS_ENABLED）
 let voiceDockOpen = false;
+let voiceDockAutoHide = true; // 扇形面板自动消失开关（读显示设置）
+let voiceDockAutoHideSec = 6; // 扇形面板打开后多少秒自动收起
+let dockHideTimer = null;     // 扇形面板自动收起定时器
 
 function updateVoiceDockIcons() {
   const input = document.getElementById('dock-voice-input');
@@ -401,6 +406,21 @@ function positionVoiceDock() {
   dock.style.right = placeRight ? '10px' : '';
 }
 
+function clearDockHide() {
+  clearTimeout(dockHideTimer);
+  dockHideTimer = null;
+}
+
+// 重启扇形面板自动收起倒计时：打开/交互时调用；使用最新显示设置里的开关与时长
+function restartDockHide() {
+  clearDockHide();
+  if (!voiceDockOpen || !voiceDockAutoHide || voiceDockAutoHideSec <= 0) return;
+  dockHideTimer = setTimeout(() => {
+    dockHideTimer = null;
+    setVoiceDockOpen(false);
+  }, voiceDockAutoHideSec * 1000);
+}
+
 function setVoiceDockOpen(open) {
   const dock = document.getElementById('voice-dock');
   if (!dock) return;
@@ -410,8 +430,10 @@ function setVoiceDockOpen(open) {
     positionVoiceDock();
     // 面板展开：整个窗口保持可交互（面板内是开关，必须能点到）
     setMousePassthrough(false);
+    restartDockHide(); // 打开即启动自动消失倒计时
   } else {
-    // 面板收起：恢复可穿透（角色/气泡 hover 由后续 mousemove 动态修正）
+    // 面板收起：取消自动消失倒计时 + 恢复可穿透（角色/气泡 hover 由后续 mousemove 动态修正）
+    clearDockHide();
     schedulePointerRegionUpdate();
   }
 }
@@ -424,6 +446,7 @@ if (dockInputBtn) {
   dockInputBtn.addEventListener('change', (event) => {
     event.stopPropagation();
     window.desktopPet.voice.setListening(dockInputBtn.checked);
+    restartDockHide(); // 交互重置自动消失倒计时
   });
 }
 // 宠物窗扇形面板里的 🔊 语音输出开关
@@ -434,6 +457,7 @@ if (dockOutputBtn) {
     window.desktopPet.voice.setTtsEnabled(next);
     voiceTtsEnabled = next;
     updateVoiceDockIcons();
+    restartDockHide(); // 交互重置自动消失倒计时
   });
 }
 // 点面板外空白处关闭面板（角色区域除外，交给角色 click 切换）

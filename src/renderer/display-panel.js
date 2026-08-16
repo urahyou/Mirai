@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-let settings = { scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0, panelAutoHide: true, panelAutoHideSec: 8 };
+let settings = { scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0, voiceDockAutoHide: true, voiceDockAutoHideSec: 6 };
 let feedbackTimer = null;
 let previewFrame = null;
 let pendingScale = null;
@@ -30,11 +30,11 @@ function render() {
   $('bubbleRange').value = String(settings.bubbleDuration);
   $('bubbleRange').style.setProperty('--progress', `${(settings.bubbleDuration / 30) * 100}%`);
   $('bubbleValue').textContent = settings.bubbleDuration > 0 ? `${settings.bubbleDuration}s` : '自动';
-  $('panelAutoHide').checked = settings.panelAutoHide;
-  $('autoHideRange').value = String(settings.panelAutoHideSec);
-  $('autoHideRange').style.setProperty('--progress', `${((settings.panelAutoHideSec - 3) / 27) * 100}%`);
-  $('autoHideValue').textContent = `${settings.panelAutoHideSec}s`;
-  $('autoHideSecSection').style.opacity = settings.panelAutoHide ? '1' : '0.5';
+  $('voiceDockAutoHide').checked = settings.voiceDockAutoHide;
+  $('dockHideRange').value = String(settings.voiceDockAutoHideSec);
+  $('dockHideRange').style.setProperty('--progress', `${((settings.voiceDockAutoHideSec - 3) / 27) * 100}%`);
+  $('dockHideValue').textContent = `${settings.voiceDockAutoHideSec}s`;
+  $('dockHideSecSection').style.opacity = settings.voiceDockAutoHide ? '1' : '0.5';
 }
 
 async function save(patch) {
@@ -53,7 +53,7 @@ async function save(patch) {
 async function reset() {
   $('resetBtn').disabled = true;
   try {
-    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0, panelAutoHide: true, panelAutoHideSec: 8 });
+    settings = await window.desktopPet.display.set({ scale: 1, alwaysOnTop: true, outlineShadow: false, bubbleDuration: 0, voiceDockAutoHide: true, voiceDockAutoHideSec: 6 });
     render();
     showFeedback('已恢复默认', '小未来回到标准大小并重新置顶');
   } catch {
@@ -86,19 +86,19 @@ async function init() {
   $('scaleRange').addEventListener('change', () => save({ scale: Number($('scaleRange').value) / 100 }));
   $('alwaysOnTop').addEventListener('change', () => save({ alwaysOnTop: $('alwaysOnTop').checked }));
   $('outlineShadow').addEventListener('change', () => save({ outlineShadow: $('outlineShadow').checked }));
-  $('panelAutoHide').addEventListener('change', () => save({ panelAutoHide: $('panelAutoHide').checked }));
+  $('voiceDockAutoHide').addEventListener('change', () => save({ voiceDockAutoHide: $('voiceDockAutoHide').checked }));
   $('bubbleRange').addEventListener('input', () => {
     const v = Number($('bubbleRange').value);
     $('bubbleValue').textContent = v > 0 ? `${v}s` : '自动';
     $('bubbleRange').style.setProperty('--progress', `${(v / 30) * 100}%`);
   });
   $('bubbleRange').addEventListener('change', () => save({ bubbleDuration: Number($('bubbleRange').value) }));
-  $('autoHideRange').addEventListener('input', () => {
-    const v = Number($('autoHideRange').value);
-    $('autoHideValue').textContent = `${v}s`;
-    $('autoHideRange').style.setProperty('--progress', `${((v - 3) / 27) * 100}%`);
+  $('dockHideRange').addEventListener('input', () => {
+    const v = Number($('dockHideRange').value);
+    $('dockHideValue').textContent = `${v}s`;
+    $('dockHideRange').style.setProperty('--progress', `${((v - 3) / 27) * 100}%`);
   });
-  $('autoHideRange').addEventListener('change', () => save({ panelAutoHideSec: Number($('autoHideRange').value) }));
+  $('dockHideRange').addEventListener('change', () => save({ voiceDockAutoHideSec: Number($('dockHideRange').value) }));
 
   try {
     const loaded = await window.desktopPet.display.get();

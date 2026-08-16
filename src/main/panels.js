@@ -15,7 +15,7 @@ const MENU_WINDOW_SIZE = { width: 200, height: 300 };
 let menuWindow = null;
 let menuPendingPosition = null;
 
-module.exports = function createPanels({ getPetWindow, windowOptions, getAutoHide }) {
+module.exports = function createPanels({ getPetWindow, windowOptions }) {
   // 把窗口定位到桌宠主窗口所在的显示器（多显示器下避免面板跑到主屏）。
   // 参考点取主窗口中心；主窗口不可用时退回光标所在屏幕。
   function positionOnMainDisplay(win, width, height) {
@@ -31,13 +31,9 @@ module.exports = function createPanels({ getPetWindow, windowOptions, getAutoHid
 
   // 统一「面板」工厂：一个面板 = 一组窗口选项配置，open/close 配对，close 清空引用。
   // 原先 6 个面板是各自复制粘贴的 ~20 行样板，这里收敛为一份，改一处全生效。
-  // 支持“自动消失”：若设定开启，面板打开后到达设定秒数即自动关闭。
   function makePanel(cfg) {
     let win = null;
-    let autoTimer = null;
     function close() {
-      clearTimeout(autoTimer);
-      autoTimer = null;
       if (win && !win.isDestroyed()) win.destroy();
       win = null;
     }
@@ -56,12 +52,7 @@ module.exports = function createPanels({ getPetWindow, windowOptions, getAutoHid
       win.setAlwaysOnTop(true, 'screen-saver');
       positionOnMainDisplay(win, cfg.width, cfg.height);
       win.loadFile(path.join(__dirname, '..', 'renderer', cfg.file));
-      win.on('closed', () => { win = null; autoTimer = null; });
-      // 自动消失：开启则定时自动关闭（秒数可在显示设置里调整/关闭）
-      const auto = getAutoHide ? getAutoHide() : null;
-      if (auto && auto.enabled && auto.seconds > 0) {
-        autoTimer = setTimeout(close, auto.seconds * 1000);
-      }
+      win.on('closed', () => { win = null; });
     }
     return { open, close };
   }
