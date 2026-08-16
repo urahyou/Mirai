@@ -3,10 +3,10 @@
 // 原先这些窗口引用 / 标志位 / 队列散落在 main.js 顶层作为模块级 let，
 // 既无法单测也不易追踪。这里把它们集中为一个显式 state 对象：
 //   - 让跨模块共享的变量「可见、可发现、可审计」
-//   - 后续把 windows / chat / voice / 生命周期拆成独立模块时，都从这里读写
+//   - 后续把 window / chat / voice / 生命周期拆成独立模块时，都从这里读写
 //   - 便于在测试里直接构造/断言状态
 //
-// 用法：main.js 及各子模块 `const state = require('./state');` 后读写 `state.xxx`。
+// 用法：main.js 及各子模块 `const state = require('./shared-state');` 后读写 `state.xxx`。
 module.exports = {
   // ---- 窗口引用 ----
   mainWindow: null,          // 桌宠主窗（Live2D + 气泡 + 语音播放宿主）

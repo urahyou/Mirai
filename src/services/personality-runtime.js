@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 
 // 内置出厂人格（只读，升级不覆盖）
-const BASE_PERSONALITY_PATH = path.join(__dirname, '..', 'core', 'personality.json');
+const BASE_PERSONALITY_PATH = path.join(__dirname, '..', 'templates', 'personality.json');
 
 // 运行时人格覆盖文件路径，由 main.js 在 app.whenReady 时注入 userData 路径
 let runtimePath = null;

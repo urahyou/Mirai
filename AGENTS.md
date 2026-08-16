@@ -13,13 +13,13 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 - 入口：`src/main/main.js`（主进程**纯装配**：按序创建各模块（窗口/语音/对话/气泡）→ 构造 api 胶囊 → `mountIpc(api)` 注册全部 IPC 能力域 → 应用生命周期；不保留任何具体实现）
 - 主进程按职责拆分，以依赖注入创建（main.js 只做排序与注入）：
-  - `src/main/windows.js` 窗口辅助——windowOptions/主窗(桌宠)创建/置顶层级/显示应用/聊天输入窗/发送转发
-  - `src/main/panels.js` 菜单窗 + 各设置面板
+  - `src/main/window.js` 窗口辅助——windowOptions/主窗(桌宠)创建/置顶层级/显示应用/聊天输入窗/发送转发
+  - `src/main/panel.js` 菜单窗 + 各设置面板
   - `src/main/voice.js` 语音朗读/识别/打断 + 语音 IPC
   - `src/main/chat.js` 对话调度（handleUserUtterance/generateChat/上下文预算/聊天 IPC）
-  - `src/main/balloons.js` 独立气泡窗（创建/定位/渲染/隐藏）
-  - `src/main/state.js` 共享状态（mainWindow/chatInputWindow/isVoiceListening 等）
-  - `src/subsystems/*.js` IPC 能力域——personality/display/voice-settings/provider/context/memory/balloon/window/menu 各一个 `setup(api)` 注册自己的 ipcMain；main.js 只 `mountIpc(api)` 装配。**新增能力 = 在 subsystems/ 加一个 setup(api) 并在 index.js 注册即可**
+  - `src/main/balloon.js` 独立气泡窗（创建/定位/渲染/隐藏）
+  - `src/main/shared-state.js` 共享状态（mainWindow/chatInputWindow/isVoiceListening 等）
+  - `src/subsystems/*.js` IPC 能力域——personality/display/voice/provider/context/memory/balloon/window/menu 各一个 `setup(api)` 注册自己的 ipcMain；main.js 只 `mountIpc(api)` 装配。**新增能力 = 在 subsystems/ 加一个 setup(api) 并在 index.js 注册即可**
   - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住（并守卫 main.js 不再直接注册 IPC）
   - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/graphiti-memory/voice-bridge/start-all 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
@@ -47,7 +47,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - 协议：客户端→侧车=二进制 int16 PCM(16k) 或 JSON `{type:'speak',text}`；侧车→客户端=JSON `ready/vad/asr/audio`。
 - 音频只在 `127.0.0.1` 上传输，不上任何云端。
 
-关键链路（语音在 `src/main/voice.js`、对话调度在 `src/main/chat.js`、聊天窗跟随在 `src/main/windows.js`）：
+关键链路（语音在 `src/main/voice.js`、对话调度在 `src/main/chat.js`、聊天窗跟随在 `src/main/window.js`）：
 
 1. 语音输入：`voice:pcm` → sidecar `asr-partial`/`asr` → 开着对话窗时填输入框（`chat-input.js` 决定是否自动发送），否则直接 `handleUserUtterance(text)`。
 2. 语音输出：回复生成后自动 `speak(reply)` → sidecar 合成 MP3 → `voice:audio` 推给宠物窗 WebAudio 播放（带说话动画）；`voice:vad` `speech_start` 会打断正在播放的语音。
@@ -59,10 +59,10 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 ## 配置（不要硬编码进代码）
 
-- `src/core/llm-providers.json`：**不含密钥的 Provider 出厂模板**。实际配置写入 Electron `userData/llm-providers.runtime.json`；API Key 只从项目根目录 `.env` 的 `apiKeyEnv` 变量读取，勿把密钥写入仓库。
-  - 仓库默认配置以 `src/core/llm-providers.json` 为准，当前激活项可能是本机 Ollama；不要在文档或代码中写死地址、模型或密钥。
+- `src/templates/llm-providers.json`：**不含密钥的 Provider 出厂模板**。实际配置写入 Electron `userData/llm-providers.runtime.json`；API Key 只从项目根目录 `.env` 的 `apiKeyEnv` 变量读取，勿把密钥写入仓库。
+  - 仓库默认配置以 `src/templates/llm-providers.json` 为准，当前激活项可能是本机 Ollama；不要在文档或代码中写死地址、模型或密钥。
   - `isAvailable()` 探测 `/models` 端点；对应 `.env` 变量为空时不加 Authorization 头。
-- `src/core/personality.json`：角色出厂人格（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
+- `src/templates/personality.json`：角色出厂人格（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
   - 用户编辑的人格覆盖存 userData `personality-runtime.json`（深合并到出厂之上）。当前没有独立主人资料或 owner 服务。
 - 长期记忆唯一使用 Graphiti + Neo4j，通过独立 Python sidecar 接入；Graphiti 不可用时降级为无长期记忆的本地聊天，不使用其他记忆服务。
 

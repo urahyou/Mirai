@@ -108,7 +108,7 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
         menuWindow.focus();
       }
     });
-    menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
+    menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu-panel.html'));
     menuWindow.on('closed', () => { menuWindow = null; });
   }
 

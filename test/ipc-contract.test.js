@@ -115,7 +115,7 @@ test('Given the pet speaks When the balloon is positioned Then it is centered ab
 
 test('Given the compact chat opens When positioned Then its center overlays the character belly', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
-  const windows = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'windows.js'), 'utf8');
+  const windows = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'window.js'), 'utf8');
   const openChatSection = windows.slice(windows.indexOf('function openChatInputWindow'), windows.indexOf('function resizeChatInputWindow'));
 
   assert.match(main, /CHAT_INPUT_BELLY_CENTER_RATIO\s*=\s*0\.68/);
@@ -161,8 +161,8 @@ test('Given the Live2D avatar When hit testing is inspected Then it checks rende
 });
 
 test('Given always-on-top display settings When the main window is updated Then it remains visible over macOS fullscreen workspaces', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'windows.js'), 'utf8');
-  const balloons = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'balloons.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'window.js'), 'utf8');
+  const balloons = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'balloon.js'), 'utf8');
 
   assert.match(main, /setVisibleOnAllWorkspaces\(shouldStayVisible,\s*\{\s*visibleOnFullScreen:\s*shouldStayVisible/);
   // 气泡窗始终置顶（screen-saver）已在独立气泡窗模块内实现
@@ -170,7 +170,7 @@ test('Given always-on-top display settings When the main window is updated Then 
 });
 
 test('Given a context menu opens When its content loads Then it is positioned before becoming visible', () => {
-  const panels = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'panels.js'), 'utf8');
+  const panels = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'panel.js'), 'utf8');
   const menuSection = panels.slice(panels.indexOf('function openMenuWindow'), panels.indexOf('function repositionMenu'));
 
   assert.match(menuSection, /show:\s*false/);
@@ -179,7 +179,7 @@ test('Given a context menu opens When its content loads Then it is positioned be
 });
 
 test('Given a repositioned chat or balloon When it closes or hides Then its relative position is persisted', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'windows.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'window.js'), 'utf8');
   const balloon = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.js'), 'utf8');
 
   assert.match(main, /windowLayout\.setLayout\([\s\S]*?chatOffset/);
@@ -243,7 +243,7 @@ test('Given IPC handlers are decomposed into subsystems, main.js stays a pure as
 
   // 每个能力子系统都从契约引用通道（无裸字符串/拼写漂移）
   const ipcKeys = Object.keys(IPC);
-  for (const f of ['personality', 'display', 'voice-settings', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
+  for (const f of ['personality', 'display', 'voice', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
     const sub = fs.readFileSync(path.join(__dirname, '..', 'src', 'subsystems', `${f}.js`), 'utf8');
     for (const m of sub.matchAll(/IPC\.([A-Za-z]+)/g)) {
       assert.ok(ipcKeys.includes(m[1]), `subsystems/${f}.js 用了契约外的通道: ${m[0]}`);
@@ -256,7 +256,7 @@ test('Given IPC subsystems use actual module paths, they can all be required', (
   // 回归守卫：require 路径错误（如 './subsystems' vs '../subsystems'）只能靠运行或本测试暴露。
   const mountIpc = require('../src/subsystems');
   assert.equal(typeof mountIpc, 'function');
-  for (const f of ['personality', 'display', 'voice-settings', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
+  for (const f of ['personality', 'display', 'voice', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
     assert.equal(typeof require(`../src/subsystems/${f}`), 'function', `${f} 子系统应导出 setup(api)`);
   }
   // main.js 引用的子系统路径必须真实存在（避免 './subsystems' 这类相对路径错误）

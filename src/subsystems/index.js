@@ -7,7 +7,7 @@
 // 新增能力 = 在 src/subsystems/ 加一个 setup(api) 并在本文件注册一行即可（插件化落点）。
 const personality = require('./personality');
 const display = require('./display');
-const voiceSettings = require('./voice-settings');
+const voice = require('./voice');
 const provider = require('./provider');
 const context = require('./context');
 const memory = require('./memory');
@@ -18,7 +18,7 @@ const menu = require('./menu');
 module.exports = function mountAll(api) {
   personality(api);
   display(api);
-  voiceSettings(api);
+  voice(api);
   provider(api);
   context(api);
   memory(api);

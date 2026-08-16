@@ -1,6 +1,6 @@
 // L2：项目根 .env 的统一读写服务（单一事实源）。
 //
-// 此前 .env 解析散落在 generic.js / sidecar-env.js / scripts/start-all.js 等多处，
+// 此前 .env 解析散落在 generic.js / voice-env.js / scripts/start-all.js 等多处，
 // 语义各异（引号、export 前缀、注释处理不一致）。这里统一为一个解析+读写实现，
 // 各处复用，消除重复与行为漂移。
 //

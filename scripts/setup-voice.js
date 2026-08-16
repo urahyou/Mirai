@@ -113,15 +113,15 @@ function freshClone() {
 }
 
 function wireEnv(root) {
-  const sidecarEnv = require(path.join(APP_ROOT, 'src', 'services', 'sidecar-env'));
-  const current = sidecarEnv.read();
+  const voiceEnv = require(path.join(APP_ROOT, 'src', 'services', 'voice-env'));
+  const current = voiceEnv.read();
   const patch = {
     SIDECAR_TTS_ENGINE: 'gpt-sovits',
     SIDECAR_TTS_URL: 'http://127.0.0.1:9880/',
     // 若 .env 还没参考音频，填一个占位提示（用户可在语音设置里改）
     ...(!current.SIDECAR_TTS_REF_WAV ? { SIDECAR_TTS_REF_WAV: `${root}/audio_reference` } : {}),
   };
-  sidecarEnv.write(patch);
+  voiceEnv.write(patch);
   log('.env 已写入 SIDECAR_TTS_ENGINE=gpt-sovits、TTS_URL=http://127.0.0.1:9880/');
 }
 

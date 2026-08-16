@@ -1,14 +1,14 @@
 const path = require('path');
 const fs = require('fs');
-const { loadConfig } = require('./rules');
-const prompts = require('../core/prompts');
+const { loadConfig } = require('./personality-config');
+const prompts = require('./prompts');
 const dotenv = require('../services/dotenv');
 
 // 通用 OpenAI 兼容 LLM 调用器
-// 从 src/core/llm-providers.json 读取 provider 配置，
+// 从 src/templates/llm-providers.json 读取 provider 配置，
 // 通过标准的 /v1/chat/completions 接口与本地或局域网大模型通信。
 
-const DEFAULT_PROVIDERS_PATH = path.join(__dirname, '..', 'core', 'llm-providers.json');
+const DEFAULT_PROVIDERS_PATH = path.join(__dirname, '..', 'templates', 'llm-providers.json');
 
 let providerCache = null;
 let activeProviderName = null;
@@ -29,7 +29,7 @@ function writeDotEnvValues(values) {
 // 多轮会话记忆：按 token 预算保留最近的对话（user + assistant 配对）。
 // 主要限制从“轮数”改为“token 预算”（contextMaxTokens，由上下文设置面板滑条控制）。
 const HISTORY_MAX_TURNS = 256; // 兜底最大轮数，防止 token 估算误差导致历史无限增长
-const DEFAULT_CONTEXT_MAX_TOKENS = 4096; // 默认上下文 token 预算（与 context-settings 一致）
+const DEFAULT_CONTEXT_MAX_TOKENS = 4096; // 默认上下文 token 预算（与 context-budget 一致）
 let history = [];
 
 /**

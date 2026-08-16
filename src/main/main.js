@@ -2,16 +2,16 @@
  * 主进程入口（唯一 Electron 主进程）。
  *
  * ▸ 职责分区（按文件内顺序；已拆模块见各 require）
- *   1. 依赖与全局状态    —— 共享引用/配置/标志（state.isVoiceListening 等），已拆 state.js
- *   2. 窗口辅助          —— 已拆 windows.js（windowOptions / 主窗创建 / 置顶 / 显示应用 / 聊天输入窗 / 转发）
- *   3. 主窗(桌宠)        —— createMainWindow 已随 windows.js 拆出（Live2D 角色、白名单点击）
- *   4. 独立气泡窗        —— 已拆 balloons.js（创建/定位/渲染/隐藏）
+ *   1. 依赖与全局状态    —— 共享引用/配置/标志（state.isVoiceListening 等），已拆 shared-state.js
+ *   2. 窗口辅助          —— 已拆 window.js（windowOptions / 主窗创建 / 置顶 / 显示应用 / 聊天输入窗 / 转发）
+ *   3. 主窗(桌宠)        —— createMainWindow 已随 window.js 拆出（Live2D 角色、白名单点击）
+ *   4. 独立气泡窗        —— 已拆 balloon.js（创建/定位/渲染/隐藏）
  *   5. 聊天输入窗        —— open/close/resize/syncChatInputWithMain
- *   6. 菜单窗 + 各设置面板 —— 已拆 panels.js
+ *   6. 菜单窗 + 各设置面板 —— 已拆 panel.js
  *   7. 聊天调度          —— 已拆 chat.js（handleUserUtterance / generateChat / 单句点击回应 / 聊天 IPC / 上下文预算）
  *   8. 长期记忆          —— Graphiti search(注入)+add(回写)（不可用时降级普通聊天）
  *   9. 语音桥接          —— 已拆 voice.js（朗读/识别/打断/语音 IPC）
- *   10. IPC 能力         —— 已拆 src/subsystems/*.js（personality/display/voice-settings/provider/context/memory/balloon/window/menu），本文件仅 mountIpc 装配
+ *   10. IPC 能力         —— 已拆 src/subsystems/*.js（personality/display/voice/provider/context/memory/balloon/window/menu），本文件仅 mountIpc 装配
  *   11. IPC 校验         —— guarded/validatePayload 集中在 ipc-validation.js
  *   12. 应用生命周期     —— app.whenReady / window-all-closed / activate
  *
@@ -22,27 +22,27 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const generic = require('../engine/generic');
-const rules = require('../engine/rules');
+const personalityConfig = require('../engine/personality-config');
 const personalityRuntime = require('../services/personality-runtime');
 const displaySettings = require('../services/display-settings');
-const sidecarEnv = require('../services/sidecar-env');
+const voiceEnv = require('../services/voice-env');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
-const contextSettings = require('../services/context-settings');
+const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
-const { probeMaxContext } = require('../services/probe-context');
+const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
-const createPanels = require('./panels');
-const state = require('./state');
+const createPanels = require('./panel');
+const state = require('./shared-state');
 const createVoice = require('./voice');
-const createBalloons = require('./balloons');
+const createBalloons = require('./balloon');
 const createChat = require('./chat');
-const createWindows = require('./windows');
+const createWindows = require('./window');
 const mountIpc = require('../subsystems');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
-// 统一定制 webPreferences（windows.js 模块级导出，供 panels/balloons 复用）
+// 统一定制 webPreferences（window.js 模块级导出，供 panels/balloons 复用）
 const windowOptions = createWindows.windowOptions;
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
@@ -74,7 +74,7 @@ const chatRef = {};
 const voice = createVoice({
   voiceBridge,
   generic,
-  sidecarEnv,
+  voiceEnv,
   ipcMain,
   state,
   sendToChatInput: windows.sendToChatInput,
@@ -103,12 +103,12 @@ const chat = createChat({
 });
 chatRef.handleUserUtterance = chat.handleUserUtterance;
 
-// 注册全部 IPC 能力子系统（personality/display/voice-settings/provider/context/memory/balloon/window/menu）。
+// 注册全部 IPC 能力子系统（personality/display/voice/provider/context/memory/balloon/window/menu）。
 // 每个子系统各自 require 纯工具（contracts/ipc、ipc-validation），运行时依赖全部经下面的 api 胶囊注入。
 mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
-  generic, rules, personalityRuntime, displaySettings, sidecarEnv,
+  generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
   contextSettings, graphitiMemory, voiceBridge,
 });
 

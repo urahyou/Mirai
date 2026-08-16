@@ -4,7 +4,7 @@
 // 依赖：state（共享窗口引用/标志）、balloons（主窗移动/缩放时让气泡跟随）、
 //   displaySettings / windowLayout（显示与窗口布局服务）、config.dev、
 //   WINDOW 与 CHAT_INPUT_* 尺寸常量。
-// windowOptions 是纯函数、模块级导出，供 panels.js / balloons.js 复用统一定制 webPreferences。
+// windowOptions 是纯函数、模块级导出，供 panel.js / balloon.js 复用统一定制 webPreferences。
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 const IPC = require('../contracts/ipc');

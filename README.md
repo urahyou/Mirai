@@ -138,7 +138,7 @@ GRAPHITI_EMBED_MODEL=bge-m3
 
 ### Provider
 
-`src/core/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 由 Provider 设置面板直接填写，保存时写入项目根目录的 `.env`；读取配置时不会把密钥回传到渲染界面。旧版配置中的 `apiKeyEnv` 仍兼容，但不再需要用户填写变量名。
+`src/templates/llm-providers.json` 只提供不含密钥的出厂模板。右键菜单中的 Provider 面板会把实际配置写入 Electron `userData/llm-providers.runtime.json`，不会改写或上传仓库文件。API Key 由 Provider 设置面板直接填写，保存时写入项目根目录的 `.env`；读取配置时不会把密钥回传到渲染界面。旧版配置中的 `apiKeyEnv` 仍兼容，但不再需要用户填写变量名。
 
 - `activeProvider`：优先使用的 Provider。
 - `providers`：OpenAI 兼容服务配置。
@@ -149,7 +149,7 @@ GRAPHITI_EMBED_MODEL=bge-m3
 
 ### 人格与本地数据
 
-- 出厂人格：`src/core/personality.json`
+- 出厂人格：`src/templates/personality.json`
 - 用户人格覆盖：Electron `userData/personality-runtime.json`
 - 显示设置：Electron `userData/display-settings.json`
 - 聊天记录：Electron `userData/chat-history.json`
@@ -168,12 +168,12 @@ macOS 默认 userData 目录通常是：
 ```text
 assets/live2d/             Cubism Core、模型、动作和模型纹理
 src/main/main.js           主进程纯装配（模块创建排序 + mountIpc(api) + 生命周期）
-src/main/windows.js        窗口辅助（主窗/聊天输入窗/置顶/定位/转发）
-src/main/panels.js         菜单窗 + 各设置面板
+src/main/window.js        窗口辅助（主窗/聊天输入窗/置顶/定位/转发）
+src/main/panel.js         菜单窗 + 各设置面板
 src/main/voice.js          语音朗读/识别/打断 + 语音 IPC
 src/main/chat.js           对话调度 + 聊天 IPC
-src/main/balloons.js       独立气泡窗
-src/main/state.js          共享状态
+src/main/balloon.js       独立气泡窗
+src/main/shared-state.js          共享状态
 src/subsystems/           IPC 能力域子系统（各 setup(api)，main.js 只 mountIpc 装配）
 src/contracts/ipc.js       IPC 通道常量单一事实源
 src/main/preload.js        contextBridge 安全桥接
@@ -188,7 +188,7 @@ src/renderer/live2d-avatar.js Live2D 模型封装
 src/renderer/chat-input.* 轻量输入框和展开聊天记录
 src/engine/generic.js      OpenAI 兼容 LLM 调用和进程内多轮上下文
 src/services/              人格、显示设置和聊天历史服务
-src/core/                  出厂人格和 Provider 配置
+src/templates/               出厂人格与 Provider 配置（personality.json / llm-providers.json）
 test/                      Node.js 自动化测试
 ```
 

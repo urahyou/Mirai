@@ -19,7 +19,7 @@ module.exports = {
   ChatSetExpanded: 'chat:setExpanded',
   ChatResizeInput: 'chat:resizeInput',
 
-  // 气泡（balloons.js + main.js 转发）
+  // 气泡（balloon.js + main.js 转发）
   BalloonShow: 'balloon:show',
   BalloonUpdate: 'balloon:update',
   BalloonFinish: 'balloon:finish',
@@ -44,7 +44,7 @@ module.exports = {
   VoiceAudio: 'voice:audio',
   VoiceSpeakInterrupt: 'voice:speak-interrupt',
 
-  // 菜单（panels.js）
+  // 菜单（panel.js）
   MenuOpen: 'menu:open',
   MenuReady: 'menu:ready',
   MenuClose: 'menu:close',

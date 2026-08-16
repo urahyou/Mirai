@@ -6,7 +6,7 @@ const { ReadableStream } = require('node:stream/web');
 const test = require('node:test');
 
 const generic = require('../src/engine/generic');
-const rules = require('../src/engine/rules');
+const personalityConfig = require('../src/engine/personality-config');
 const personalityRuntime = require('../src/services/personality-runtime');
 
 test('Given a Provider API key When configuration is saved Then the key goes to dotenv and not runtime config', (t) => {
@@ -44,7 +44,7 @@ test('Given a Provider API key When configuration is saved Then the key goes to 
 test('Given a runtime Provider path When configuration is saved Then the repository template is untouched', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirai-provider-'));
   const runtimeFile = path.join(dir, 'llm-providers.runtime.json');
-  const templateFile = path.join(__dirname, '..', 'src', 'core', 'llm-providers.json');
+  const templateFile = path.join(__dirname, '..', 'src', 'templates', 'llm-providers.json');
   const templateBefore = fs.readFileSync(templateFile, 'utf8');
   t.after(() => {
     generic.setRuntimePath(null);
@@ -181,7 +181,7 @@ test('Given a saved runtime personality When the next chat starts Then the new p
       selfIntro: '我是测试未来。',
     },
   });
-  rules.resetConfig();
+  personalityConfig.resetConfig();
   generic.resetConversationHistory();
   global.fetch = async (url, options) => {
     requests.push({ url, options });
@@ -191,7 +191,7 @@ test('Given a saved runtime personality When the next chat starts Then the new p
     global.fetch = originalFetch;
     generic.resetConversationHistory();
     personalityRuntime.setRuntimePath(null);
-    rules.resetConfig();
+    personalityConfig.resetConfig();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

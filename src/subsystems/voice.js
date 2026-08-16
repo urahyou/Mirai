@@ -3,15 +3,15 @@
 const IPC = require('../contracts/ipc');
 const { guarded } = require('../main/ipc-validation');
 
-module.exports = function setup({ ipcMain, sidecarEnv, state, voiceBridge, voice, panels }) {
-  ipcMain.handle(IPC.VoiceSettingsGet, () => sidecarEnv.read());
+module.exports = function setup({ ipcMain, voiceEnv, state, voiceBridge, voice, panels }) {
+  ipcMain.handle(IPC.VoiceSettingsGet, () => voiceEnv.read());
   ipcMain.handle(IPC.VoiceSettingsSet, guarded(IPC.VoiceSettingsSet, (patch) => {
     const p = { ...patch };
     // 朗读语言改变时，合成语言自动跟随（GPT-SoVITS 按该语言发音）；为空（跟随回复）默认中文。
     if (typeof p.SIDECAR_TTS_SPEAK_LANG === 'string') {
       p.SIDECAR_TTS_TEXT_LANGUAGE = p.SIDECAR_TTS_SPEAK_LANG || 'zh';
     }
-    const next = sidecarEnv.write(p);
+    const next = voiceEnv.write(p);
     // TTS 输出开关是运行时逻辑，无需重启侧车；其余配置变更需要重启让侧车立即生效。
     const needsRestart = Object.keys(p).some((k) => k !== 'SIDECAR_TTS_ENABLED');
     if ('SIDECAR_TTS_ENABLED' in p) state._ttsEnabledCache = p.SIDECAR_TTS_ENABLED !== 'false';

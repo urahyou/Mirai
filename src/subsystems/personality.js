@@ -2,17 +2,17 @@
 const IPC = require('../contracts/ipc');
 const { guarded } = require('../main/ipc-validation');
 
-module.exports = function setup({ ipcMain, personalityRuntime, rules, generic, panels }) {
+module.exports = function setup({ ipcMain, personalityRuntime, personalityConfig, generic, panels }) {
   ipcMain.handle(IPC.PersonalityGet, () => personalityRuntime.getPersonality());
   ipcMain.handle(IPC.PersonalitySet, guarded(IPC.PersonalitySet, (patch) => {
     const next = personalityRuntime.setPersonality(patch);
-    rules.resetConfig();
+    personalityConfig.resetConfig();
     generic.resetConversationHistory();
     return next;
   }));
   ipcMain.handle(IPC.PersonalityReset, () => {
     const next = personalityRuntime.resetPersonality();
-    rules.resetConfig();
+    personalityConfig.resetConfig();
     generic.resetConversationHistory();
     return next;
   });

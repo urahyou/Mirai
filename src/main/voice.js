@@ -1,12 +1,12 @@
 // 语音子系统（主进程侧）：朗读合成去重、语音识别分发、语音状态广播与语音 IPC。
 //
 // 通过依赖注入（createVoice）获得所需能力，避免触碰主进程其它模块的可变全局：
-//   - voiceBridge / generic / sidecarEnv / ipcMain / state
+//   - voiceBridge / generic / voiceEnv / ipcMain / state
 //   - sendToChatInput / handleUserUtterance（由主进程提供，避免互相 require 造成循环）
 // 共享可变状态（state.isVoiceListening / state._speakBusy 等）统一读写 state。
 const IPC = require('../contracts/ipc');
 module.exports = function createVoice({
-  voiceBridge, generic, sidecarEnv, ipcMain, state,
+  voiceBridge, generic, voiceEnv, ipcMain, state,
   sendToChatInput, handleUserUtterance,
 }) {
   // 让小未来开口（把文字交给侧车合成并播放）
@@ -48,7 +48,7 @@ module.exports = function createVoice({
   // 用内存缓存避免 speak() 每句都读盘；写入时由 setVoiceTtsEnabled / voiceSettings:set 同步刷新。
   function voiceOutputEnabled() {
     if (state._ttsEnabledCache === null) {
-      const v = String(sidecarEnv.read().SIDECAR_TTS_ENABLED || 'true').trim().toLowerCase();
+      const v = String(voiceEnv.read().SIDECAR_TTS_ENABLED || 'true').trim().toLowerCase();
       state._ttsEnabledCache = !(v === 'false' || v === '0' || v === 'off' || v === 'no');
     }
     return state._ttsEnabledCache;
@@ -78,7 +78,7 @@ module.exports = function createVoice({
   function setVoiceTtsEnabled(on) {
     const enabled = Boolean(on);
     try {
-      sidecarEnv.write({ SIDECAR_TTS_ENABLED: enabled ? 'true' : 'false' });
+      voiceEnv.write({ SIDECAR_TTS_ENABLED: enabled ? 'true' : 'false' });
     } catch (e) {
       console.error('[voice] 写入 SIDECAR_TTS_ENABLED 失败:', e.message);
     }
