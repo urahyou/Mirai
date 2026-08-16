@@ -11,7 +11,16 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 ## 架构（非直觉，务必先读）
 
-- 入口：`src/main/main.js`（主进程：窗口、IPC、对话调度、provider 状态）
+- 入口：`src/main/main.js`（主进程**编排**：IPC 注册、生命周期、provider 状态；不保留具体实现）
+- 主进程按职责拆分，以依赖注入创建（main.js 只做排序与注入）：
+  - `src/main/windows.js` 窗口辅助——windowOptions/主窗(桌宠)创建/置顶层级/显示应用/聊天输入窗/发送转发
+  - `src/main/panels.js` 菜单窗 + 各设置面板
+  - `src/main/voice.js` 语音朗读/识别/打断 + 语音 IPC
+  - `src/main/chat.js` 对话调度（handleUserUtterance/generateChat/上下文预算/聊天 IPC）
+  - `src/main/balloons.js` 独立气泡窗（创建/定位/渲染/隐藏）
+  - `src/main/state.js` 共享状态（mainWindow/chatInputWindow/isVoiceListening 等）
+  - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住
+  - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/graphiti-memory/voice-bridge/start-all 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
 - 安全桥接 `src/main/preload.js`：所有 IPC 经 `desktopPet.*` 暴露，渲染进程不直接 require。
 

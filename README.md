@@ -171,10 +171,18 @@ macOS 默认 userData 目录通常是：
 
 ```text
 assets/live2d/             Cubism Core、模型、动作和模型纹理
-src/main/main.js           主进程、窗口管理、IPC、聊天调度
+src/main/main.js           主进程编排（IPC 注册、生命周期、provider 状态）
+src/main/windows.js        窗口辅助（主窗/聊天输入窗/置顶/定位/转发）
+src/main/panels.js         菜单窗 + 各设置面板
+src/main/voice.js          语音朗读/识别/打断 + 语音 IPC
+src/main/chat.js           对话调度 + 聊天 IPC
+src/main/balloons.js       独立气泡窗
+src/main/state.js          共享状态
+src/contracts/ipc.js       IPC 通道常量单一事实源
 src/main/preload.js        contextBridge 安全桥接
 src/main/ipc-validation.js IPC 入参校验
 src/main/voice-bridge.js   语音侧车守护与 WebSocket 桥（输入 PCM + 输出 TTS 音频）
+src/services/dotenv.js     .env 解析/读写唯一实现
 voice-sidecar/             语音侧车（Python，复用 warashi VAD/ASR + edge-tts / GPT-SoVITS）
 scripts/                  一键安装/启动语音（setup-voice.js、start-voice.js）
 vendor/gpt-sovits/         GPT-SoVITS 引擎本体（由 setup:voice 装入，gitignore，不入库）
