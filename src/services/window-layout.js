@@ -3,6 +3,7 @@ const fs = require('fs');
 
 const DEFAULT_LAYOUT = Object.freeze({
   chatOffset: null,
+  mainPosition: null,
 });
 
 let runtimePath = null;
@@ -27,6 +28,7 @@ function getLayout() {
   const source = runtimePath ? readJson(runtimePath) : null;
   return {
     chatOffset: normalizeOffset(source?.chatOffset),
+    mainPosition: normalizeOffset(source?.mainPosition),
   };
 }
 
@@ -37,6 +39,9 @@ function setLayout(patch) {
     ...getLayout(),
     ...(Object.prototype.hasOwnProperty.call(patch, 'chatOffset')
       ? { chatOffset: normalizeOffset(patch.chatOffset) }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(patch, 'mainPosition')
+      ? { mainPosition: normalizeOffset(patch.mainPosition) }
       : {}),
   };
   fs.mkdirSync(path.dirname(runtimePath), { recursive: true });

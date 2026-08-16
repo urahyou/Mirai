@@ -24,13 +24,36 @@ module.exports = function createWindows({
   WINDOW, CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE,
   CHAT_INPUT_BELLY_CENTER_RATIO, WORK_AREA_MARGIN,
 }) {
-  // 把桌宠定位到光标所在屏幕的右下角
+  // 把桌宠定位到光标所在屏幕的右下角（首次启动/无保存位置时兜底）
   function placeAtBottomRight() {
     if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
     const cursor = screen.getCursorScreenPoint();
     const { workArea } = screen.getDisplayNearestPoint(cursor);
     const [width, height] = state.mainWindow.getSize();
     state.mainWindow.setPosition(workArea.x + workArea.width - width - 20, workArea.y + workArea.height - height - 20);
+  }
+
+  // 从持久化布局恢复角色主窗位置。返回 true 表示已恢复，false 表示无保存位置或已不在任何屏幕内（需回退右下角）。
+  function restoreMainWindowPosition() {
+    if (!state.mainWindow || state.mainWindow.isDestroyed()) return false;
+    const pos = windowLayout.getLayout().mainPosition;
+    if (!pos) return false;
+    const b = state.mainWindow.getBounds();
+    // 屏幕配置可能变化（外接屏拔出/分辨率改变）：仅当保存位置仍与任一工作区有交集才恢复。
+    const valid = screen.getAllDisplays().some((d) => {
+      const a = d.workArea;
+      return pos.x < a.x + a.width && pos.x + b.width > a.x && pos.y < a.y + a.height && pos.y + b.height > a.y;
+    });
+    if (!valid) return false;
+    state.mainWindow.setPosition(pos.x, pos.y);
+    return true;
+  }
+
+  // 把角色主窗当前位置写入持久化布局（跨重启记忆）。
+  function saveMainWindowPosition() {
+    if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+    const b = state.mainWindow.getBounds();
+    windowLayout.setLayout({ mainPosition: { x: b.x, y: b.y } });
   }
 
   // 角色窗口置顶层级策略（macOS 层级从高到低：screen-saver > floating > normal）：
@@ -93,7 +116,8 @@ module.exports = function createWindows({
     });
     setMainWindowAlwaysOnTop(settings.alwaysOnTop);
     state.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-    placeAtBottomRight();
+    // 优先恢复上次保存的位置；首次启动或位置已不在屏幕上时，回退到光标所在屏右下角
+    if (!restoreMainWindowPosition()) placeAtBottomRight();
 
     if (config.dev) {
       state.mainWindow.webContents.on('console-message', (_event, _level, message) => console.log('[renderer]', message));
@@ -125,6 +149,7 @@ module.exports = function createWindows({
   // 未拖离的气泡跟随角色头 + 打开中的聊天窗保持相对位置一起拖动。
   // 不能只依赖系统 'moved' 事件（编程式 setPosition 在部分平台不可靠）。
   function onMainWindowMoved() {
+    saveMainWindowPosition(); // 角色主窗位置跨重启记忆
     balloons.positionBalloon(); // 未拖离的贴头顶、已拖离的按相对偏移跟随
     syncChatInputWithMain();
   }
@@ -229,6 +254,8 @@ module.exports = function createWindows({
   return {
     windowOptions,
     placeAtBottomRight,
+    restoreMainWindowPosition,
+    saveMainWindowPosition,
     setMainWindowAlwaysOnTop,
     applyDisplaySettings,
     createMainWindow,
