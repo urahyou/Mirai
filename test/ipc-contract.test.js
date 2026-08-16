@@ -197,3 +197,18 @@ test('Given transparent space around the character When pointer hit testing runs
   assert.match(renderer, /setMousePassthrough\(!characterHit && !bubbleHit\)/);
   assert.match(renderer, /if \(dragging\)[\s\S]*?setMousePassthrough\(false\)/);
 });
+
+test('Given model max context larger than the 128k soft limit When saving context Then values up to the probe limit are accepted', () => {
+  const ctx = { contextMaxTokens: 393216 }; // 探测到 384K 的模型上限
+  assert.deepEqual(validatePayload('context:set', [{ maxContextTokens: 200000 }], ctx), { ok: true, data: [{ maxContextTokens: 200000 }] });
+  assert.deepEqual(validatePayload('context:set', [{ maxContextTokens: 393216 }], ctx), { ok: true, data: [{ maxContextTokens: 393216 }] });
+  // 超过探测上限仍拒绝
+  assertRejected('context:set', [{ maxContextTokens: 393217 }]);
+  // 不让 ctx 时默认软上限 128k
+  assertRejected('context:set', [{ maxContextTokens: 200000 }]);
+});
+
+test('Given no model context info When saving context Then the soft limit 128k applies', () => {
+  assert.deepEqual(validatePayload('context:set', [{ maxContextTokens: 131072 }]), { ok: true, data: [{ maxContextTokens: 131072 }] });
+  assertRejected('context:set', [{ maxContextTokens: 131073 }]);
+});

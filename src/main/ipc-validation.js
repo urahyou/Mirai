@@ -71,17 +71,18 @@ function validateGraphitiSettingsPatch(args) {
   return args;
 }
 
-function validateContextSettingsPatch(args) {
+function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
   if ('maxContextTokens' in patch) {
     const v = patch.maxContextTokens;
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 1000 || v > 131072) return null;
+    // 上限跟随探测到的模型上下文（默认软上限 128k），不硬编码，否则探测出更大模型时会“拉不动”
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 1000 || v > upper) return null;
   }
   return Object.keys(patch).length ? args : null;
 }
 
-function validatePayload(channel, args) {
+function validatePayload(channel, args, ctx = {}) {
   const values = Array.isArray(args) ? args : [];
   const data = channel === 'personality:set'
     ? validatePersonalityPatch(values)
@@ -92,7 +93,7 @@ function validatePayload(channel, args) {
         : channel === 'chat:setExpanded'
           ? validateChatExpanded(values)
           : channel === 'context:set'
-            ? validateContextSettingsPatch(values)
+            ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
             : channel === 'memory:setSettings'
               ? validateGraphitiSettingsPatch(values)
               : null;
