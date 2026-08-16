@@ -2,37 +2,20 @@ const path = require('path');
 const fs = require('fs');
 const { loadConfig } = require('./rules');
 const prompts = require('../core/prompts');
+const dotenv = require('../services/dotenv');
 
 // 通用 OpenAI 兼容 LLM 调用器
 // 从 src/core/llm-providers.json 读取 provider 配置，
 // 通过标准的 /v1/chat/completions 接口与本地或局域网大模型通信。
 
 const DEFAULT_PROVIDERS_PATH = path.join(__dirname, '..', 'core', 'llm-providers.json');
-const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 let providerCache = null;
 let activeProviderName = null;
 let runtimePath = null;
-let dotenvPath = DOTENV_PATH;
 
 function loadDotEnv() {
-  try {
-    const values = {};
-    for (const rawLine of fs.readFileSync(dotenvPath, 'utf8').split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith('#')) continue;
-      const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-      if (!match) continue;
-      let value = match[2].trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      values[match[1]] = value;
-    }
-    return values;
-  } catch {
-    return {};
-  }
+  return dotenv.readAll();
 }
 
 function defaultApiKeyEnv(name) {
@@ -40,19 +23,7 @@ function defaultApiKeyEnv(name) {
 }
 
 function writeDotEnvValues(values) {
-  if (!values || typeof values !== 'object') return;
-  let raw = '';
-  try { raw = fs.readFileSync(dotenvPath, 'utf8'); } catch { /* create on first save */ }
-  const lines = raw.split(/\r?\n/);
-  for (const [key, value] of Object.entries(values)) {
-    if (!/^[A-Z0-9_]+$/.test(key) || String(value).includes('\n')) continue;
-    const line = `${key}=${String(value)}`;
-    const index = lines.findIndex((entry) => new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`).test(entry));
-    if (index >= 0) lines[index] = line;
-    else lines.push(line);
-  }
-  fs.mkdirSync(path.dirname(dotenvPath), { recursive: true });
-  fs.writeFileSync(dotenvPath, lines.join('\n').replace(/\n{3,}/g, '\n\n'));
+  dotenv.write(values);
 }
 
 // 多轮会话记忆：按 token 预算保留最近的对话（user + assistant 配对）。
@@ -180,7 +151,7 @@ function setRuntimePath(filePath) {
 }
 
 function setDotEnvPath(filePath) {
-  dotenvPath = filePath || DOTENV_PATH;
+  dotenv.setPath(filePath);
 }
 
 /**

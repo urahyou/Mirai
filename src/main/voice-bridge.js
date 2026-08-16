@@ -5,7 +5,6 @@
 //   - 接收侧车的 vad/asr 消息，转发为事件（'vad' / 'asr'）
 const { spawn, execSync } = require('child_process');
 const { EventEmitter } = require('events');
-const fs = require('fs');
 const path = require('path');
 
 const SIDECAR_SCRIPT = path.join(__dirname, '..', '..', 'voice-sidecar', 'sidecar_server.py');
@@ -13,18 +12,16 @@ const WARASHI_ROOT = process.env.MIRAI_WARASHI_ROOT || '/Users/urahyou/Desktop/w
 const PYTHON = process.env.MIRAI_SIDECAR_PYTHON || path.join(WARASHI_ROOT, '.venv', 'bin', 'python3');
 const PORT = Number(process.env.MIRAI_SIDECAR_PORT || 8765);
 
-// 从项目根 .env 读取所有 SIDECAR_* / MIRAI_SIDECAR_* 键，透传给侧车子进程。
+// 从项目根 .env 读取所有 SIDECAR_* / MIRAI_SIDECAR_* / MIRAI_WARASHI_* 键，透传给侧车子进程。
 // 这样用户改 .env 就能切 TTS 引擎/音色/URL，无需手动 export 到 shell。
-const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
+// 解析统一走 services/dotenv.js（单一事实源）。
+const dotenv = require('../services/dotenv');
 function loadSidecarDotEnv() {
   const extra = {};
-  try {
-    const text = fs.readFileSync(DOTENV_PATH, 'utf8');
-    for (const raw of text.split(/\r?\n/)) {
-      const m = raw.match(/^\s*(SIDECAR_[A-Z0-9_]+|MIRAI_SIDECAR_[A-Z0-9_]+|MIRAI_WARASHI_[A-Z0-9_]+)\s*=\s*(.+?)\s*$/);
-      if (m) extra[m[1]] = m[2];
-    }
-  } catch {/* .env 不存在时静默，用默认值 */}
+  const all = dotenv.readAll();
+  for (const [k, v] of Object.entries(all)) {
+    if (/^(SIDECAR_|MIRAI_SIDECAR_|MIRAI_WARASHI_)/.test(k)) extra[k] = v;
+  }
   return extra;
 }
 

@@ -1,7 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const dotenv = require('./dotenv');
 
-const DOTENV_PATH = path.join(__dirname, '..', '..', '.env');
 const DEFAULTS = Object.freeze({
   GRAPHITI_ENABLED: 'false',
   GRAPHITI_BASE_URL: 'http://127.0.0.1:8766',
@@ -33,21 +31,7 @@ function requestTimeoutMs(pathname) {
 }
 
 function loadDotEnv() {
-  try {
-    const values = {};
-    for (const rawLine of fs.readFileSync(DOTENV_PATH, 'utf8').split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith('#')) continue;
-      const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-      if (!match) continue;
-      let value = match[2].trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-      values[match[1]] = value;
-    }
-    return values;
-  } catch {
-    return {};
-  }
+  return dotenv.readAll();
 }
 
 function env(name, values = loadDotEnv()) { return process.env[name] ?? values[name] ?? ''; }
@@ -77,16 +61,7 @@ function writeSettings(patch) {
     allowed[key] = text;
   }
   if (!Object.keys(allowed).length) throw new TypeError('没有可保存的 Graphiti 配置');
-  let raw = '';
-  try { raw = fs.readFileSync(DOTENV_PATH, 'utf8'); } catch { /* create on first save */ }
-  const lines = raw.split(/\r?\n/);
-  for (const [key, value] of Object.entries(allowed)) {
-    const index = lines.findIndex((line) => new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`).test(line));
-    if (index >= 0) lines[index] = `${key}=${value}`;
-    else lines.push(`${key}=${value}`);
-  }
-  fs.mkdirSync(path.dirname(DOTENV_PATH), { recursive: true });
-  fs.writeFileSync(DOTENV_PATH, lines.join('\n').replace(/\n{3,}/g, '\n\n'));
+  dotenv.write(allowed);
   return getSettingsForPanel();
 }
 

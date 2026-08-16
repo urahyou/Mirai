@@ -11,18 +11,13 @@ const path = require('path');
 const APP_ROOT = path.join(__dirname, '..');
 const children = [];
 
+const dotenv = require('../src/services/dotenv');
+
 const log = (...a) => console.log('[start-all]', ...a);
 
-// 从项目根 .env 读取配置（不打印密钥）
-function dotenv(key, fallback = '') {
-  try {
-    const raw = fs.readFileSync(path.join(APP_ROOT, '.env'), 'utf8');
-    for (const line of raw.split(/\r?\n/)) {
-      const m = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-      if (m && m[1] === key) return m[2].trim();
-    }
-  } catch { /* 无 .env */ }
-  return fallback;
+// 从项目根 .env 读取配置（不打印密钥；解析统一走 services/dotenv.js）
+function dotenvVal(key, fallback = '') {
+  return dotenv.read(key, fallback);
 }
 
 // 0) 清理占用指定端口的进程（避免重复一键启动时端口冲突）
@@ -45,7 +40,7 @@ function reclaimPort(port) {
 // 1) 确保 Neo4j 容器运行
 function ensureNeo4j() {
   const name = 'mirai-neo4j';
-  const password = dotenv('GRAPHITI_NEO4J_PASSWORD', 'mirai-dev-password');
+  const password = dotenvVal('GRAPHITI_NEO4J_PASSWORD', 'mirai-dev-password');
   try {
     const exists = execSync(
       `docker ps -a --filter name=${name} --format '{{.Names}}'`,
@@ -96,13 +91,13 @@ function startGraphiti() {
 
 // 3) 若配置了 gpt-sovits 引擎，自动拉起 GPT-SoVITS 服务（9880）
 function startTts() {
-  const engine = dotenv('SIDECAR_TTS_ENGINE', 'edge').toLowerCase();
-  const enabled = dotenv('SIDECAR_TTS_ENABLED', 'true').toLowerCase() !== 'false';
+  const engine = dotenvVal('SIDECAR_TTS_ENGINE', 'edge').toLowerCase();
+  const enabled = dotenvVal('SIDECAR_TTS_ENABLED', 'true').toLowerCase() !== 'false';
   if (engine !== 'gpt-sovits' || !enabled) {
     log(`TTS 引擎=${engine}，无需本地 GPT-SoVITS`);
     return;
   }
-  const port = Number(dotenv('MIRAI_SIDECAR_TTS_PORT', '9880'));
+  const port = Number(dotenvVal('MIRAI_SIDECAR_TTS_PORT', '9880'));
   const candidates = [
     process.env.MIRAI_GPT_SOVITS_ROOT,
     path.join(APP_ROOT, 'vendor', 'gpt-sovits'),
