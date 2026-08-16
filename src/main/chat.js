@@ -9,6 +9,7 @@
 // handleUserUtterance 需要穿搭给语音子系统（语音识别最终结果自动发送时用），
 // 主进程通过惰性引用注入，避免 voice ⇄ chat 循环 require。
 const IPC = require('../contracts/ipc');
+const E = require('../contracts/events');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
   voice, sendToChatInput, petState,
@@ -93,6 +94,8 @@ module.exports = function createChat({
     broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
     // 语音输出：让小未来开口说这句回复
     voice.speak(reply);
+    // 喂养 pet 状态：一次真实对话 → 好感/情绪/养成(e.g. CONVERSATION 事件)
+    try { if (petState) petState.applyEvent(E.PET.CONVERSATION); } catch {}
     return reply;
   }
 
@@ -102,6 +105,8 @@ module.exports = function createChat({
       const message = chatHistory.appendMessage('assistant', reply);
       sendToChatInput(IPC.ChatHistory, { message, source: 'interaction' });
       voice.speak(reply);
+      // 点击互动 → 好感/情绪成长（GREETING 事件，广播给 proactive/日记等）
+      try { if (petState) petState.applyEvent(E.PET.GREETING); } catch {}
     }
     return reply;
   });
