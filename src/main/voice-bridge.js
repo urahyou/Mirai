@@ -48,6 +48,23 @@ function reclaimSidecarPort() {
   } catch {/* 端口空闲，无需回收 */}
 }
 
+// 杀掉 8765 监听者后，轮询等待端口真正释放再让新 sidecar 去 bind，
+// 避免旧进程刚收 SIGTERM 还没关闭 socket（TIME_WAIT）时新进程 bind 报 Errno 48。
+// 返回 true=可 bind；false=超时（仍尝试，靠 scheduleRestart 自动重试兑底）。
+function waitPortFree(timeoutMs = 3000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const out = execSync(`lsof -tiTCP:${PORT} -sTCP:LISTEN`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      if (!String(out).trim()) return true; // 己无监听者 = 端口空闲
+    } catch {
+      return true; // lsof 找不到监听者即视为空闲
+    }
+    try { execSync('sleep 0.2'); } catch {/* noop */}
+  }
+  return false;
+}
+
 class VoiceBridge extends EventEmitter {
   constructor() {
     super();
@@ -70,6 +87,7 @@ class VoiceBridge extends EventEmitter {
 
   spawnSidecar() {
     reclaimSidecarPort(); // 先清掉常驻的孤儿 sidecar，确保能绑定到 8765
+    waitPortFree();       // 再等端口真正释放，避免 bind 竞态（Errno 48）
     this.child = spawn(PYTHON, [SIDECAR_SCRIPT], {
       env: {
         ...process.env,
@@ -206,8 +224,13 @@ class VoiceBridge extends EventEmitter {
   // 重启侧车：让改动后的 .env（如 TTS 引擎/合成语言/参考音频）立即生效。
   restart() {
     const wasRunning = Boolean(this.child);
-    this.stop();
-    if (wasRunning) this.start();
+    this.stop(); // stop() 只发 SIGTERM，旧进程释放 8765 需要一点时间
+    if (!wasRunning) return this;
+    // 延迟再起，避免旧进程端口未释放时新进程 bind 报 Errno 48（address already in use）
+    setTimeout(() => {
+      if (!this.child) this.spawnSidecar();
+      if (!this.ws) this.connect();
+    }, RESTART_DELAY_MS);
     return this;
   }
 

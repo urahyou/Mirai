@@ -1,0 +1,5 @@
+参考音频：anon_zh_qwen.wav
+来源：bandori anon.mp3（日语原音）经 Qwen3TTS 0.6B(CPU) 跨语言克隆成中文。
+用途：作为 GPT-SoVITS (TTS_ENGINE=gpt-sovits) 的中文参考音频，让角色说中文。
+参考文本（prompt_text，须与 wav 内容一致）：
+因为家里的原因，我在很奇怪的时期入学了。不过，如果你愿意的话，请和我好好相处吧！请多关照！

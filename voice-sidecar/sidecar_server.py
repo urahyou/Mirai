@@ -78,10 +78,52 @@ TTS_REF_WAV = os.environ.get("SIDECAR_TTS_REF_WAV", "").strip()
 TTS_PROMPT_TEXT = os.environ.get("SIDECAR_TTS_PROMPT_TEXT", "").strip()
 TTS_PROMPT_LANG = os.environ.get("SIDECAR_TTS_PROMPT_LANG", "zh").strip()
 TTS_TEXT_LANGUAGE = os.environ.get("SIDECAR_TTS_TEXT_LANGUAGE", "zh").strip()
+TTS_SPEAK_LANG = os.environ.get("SIDECAR_TTS_SPEAK_LANG", "").strip()
+# 日语参考（供克隆引擎做“中/日切换”）：朗读语言=ja 且存在该参考时，克隆改用日语参考说话
+TTS_REF_WAV_JA = os.environ.get("SIDECAR_TTS_REF_WAV_JA", "").strip()
+TTS_PROMPT_TEXT_JA = os.environ.get("SIDECAR_TTS_PROMPT_TEXT_JA", "").strip()
 TTS_TEMPERATURE = float(os.environ.get("SIDECAR_TTS_TEMPERATURE", "0.9"))
 TTS_SPEED_FACTOR = os.environ.get("SIDECAR_TTS_SPEED_FACTOR", "").strip()
 
+# Qwen3TTS-Faster 引擎参数（仅 TTS_ENGINE=qwen3 时使用）
+# 默认独立端口 9980，与 gpt-sovits 的 9880 并存，切引擎即切音色、互不冲突。
+TTS_QWEN3_URL = os.environ.get("SIDECAR_QWEN3_URL", "http://127.0.0.1:9980/").strip()
+TTS_QWEN3_LORA_ID = os.environ.get("SIDECAR_QWEN3_LORA_ID", "").strip()
+
 _log = lambda *a: print("[sidecar]", *a, flush=True)  # noqa: E731
+
+
+def build_qwen3_payload(
+    text,
+    *,
+    ref_wav=TTS_REF_WAV,
+    prompt_text=TTS_PROMPT_TEXT,
+    lang=TTS_TEXT_LANGUAGE,
+    temperature=TTS_TEMPERATURE,
+    speed=TTS_SPEED_FACTOR,
+    lora_id=TTS_QWEN3_LORA_ID,
+):
+    """按 Qwen3TTS-Faster 协议构造非流式 /tts 请求体（自配音色 + 多语言中文直读）。"""
+    payload = {
+        "text": text,
+        "text_language": lang or "zh",
+        "temperature": temperature,
+        "stream_mode": "close",
+        "media_type": "wav",
+        "cut_punc": "",
+    }
+    if ref_wav:
+        payload["refer_wav_path"] = ref_wav
+        if prompt_text:
+            payload["prompt_text"] = prompt_text
+    if lora_id:
+        payload["lora_id"] = lora_id
+    if speed:
+        try:
+            payload["speed_factor"] = max(0.75, min(1.25, float(speed)))
+        except ValueError:
+            pass
+    return payload
 
 
 def _build_asr():
@@ -185,17 +227,27 @@ async def handle_connection(websocket):
         return bytes(buf)
 
     def _synth_gpt_sovits(text) -> bytes:
-        """GPT-SoVITS 本地音色克隆 → WAV。请求 JSON 到根路径，非流式取回单个 wav。"""
+        """GPT-SoVITS 本地音色克隆 → WAV。按朗读语言自动切换对应语言的参考音频。"""
         import urllib.request
 
-        if not TTS_REF_WAV:
-            _log("gpt-sovits: SIDECAR_TTS_REF_WAV 未设置，无法合成")
+        # 朗读语言切到外语时，克隆引擎按语言选对应参考（参考决定克隆所能说的语言）。
+        # 主配置 = 中文参考；日语参考（SIDECAR_TTS_REF_WAV_JA）存在时才启用日语，
+        # 否则回退中文直读，避免“中文参考去读外语”的串扰（四不像）。
+        speak = TTS_SPEAK_LANG.strip().lower()
+        use_ja = (speak == "ja") and bool(TTS_REF_WAV_JA)
+        ref_wav = TTS_REF_WAV_JA if use_ja else TTS_REF_WAV
+        prompt_text = TTS_PROMPT_TEXT_JA if use_ja else TTS_PROMPT_TEXT
+        prompt_lang = "ja" if use_ja else TTS_PROMPT_LANG
+        text_lang = "ja" if use_ja else TTS_TEXT_LANGUAGE
+
+        if not ref_wav:
+            _log("gpt-sovits: 参考音频未设置，无法合成")
             return b""
         payload = {
-            "ref_audio_path": TTS_REF_WAV,   # api_v2 字段（旧 api.py 用 refer_wav_path）
+            "ref_audio_path": ref_wav,   # api_v2 字段（旧 api.py 用 refer_wav_path）
             "text": text,
-            "text_lang": TTS_TEXT_LANGUAGE,
-            "prompt_lang": TTS_PROMPT_LANG,
+            "text_lang": text_lang,
+            "prompt_lang": prompt_lang,
             "media_type": "wav",
             "streaming_mode": False,
             "temperature": TTS_TEMPERATURE,
@@ -204,8 +256,8 @@ async def handle_connection(websocket):
             "text_split_method": "cut5",
             "batch_size": 1,
         }
-        if TTS_PROMPT_TEXT:
-            payload["prompt_text"] = TTS_PROMPT_TEXT
+        if prompt_text:
+            payload["prompt_text"] = prompt_text
         if TTS_SPEED_FACTOR:
             try:
                 payload["speed_factor"] = max(0.75, min(1.25, float(TTS_SPEED_FACTOR)))
@@ -220,14 +272,33 @@ async def handle_connection(websocket):
         with urllib.request.urlopen(req, timeout=120) as resp:
             return resp.read()
 
+    def _synth_qwen3(text) -> bytes:
+        """Qwen3TTS-Faster 本地多语言 TTS → WAV（非流式 close + wav）。"""
+        import urllib.request
+
+        payload = build_qwen3_payload(text)
+        req = urllib.request.Request(
+            TTS_QWEN3_URL.rstrip("/") + "/tts",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+
     async def handle_speak(text, req_id):
         """收到 {type:'speak'} → 按 TTS_ENGINE 合成语音，回传 base64 audio。"""
         text = (text or "").strip()
         if not text:
             return
 
-        synth = _synth_gpt_sovits if TTS_ENGINE == "gpt-sovits" else _synth_edge
-        fmt = "wav" if TTS_ENGINE == "gpt-sovits" else "mp3"
+        if TTS_ENGINE == "gpt-sovits":
+            synth, fmt = _synth_gpt_sovits, "wav"
+        elif TTS_ENGINE == "qwen3":
+            synth, fmt = _synth_qwen3, "wav"
+        else:
+            synth, fmt = _synth_edge, "mp3"
+
 
         try:
             audio = await loop.run_in_executor(None, synth, text)

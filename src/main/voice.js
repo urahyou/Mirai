@@ -33,8 +33,15 @@ module.exports = function createVoice({
       state._speakPending = null;
       if (pending) speak(pending);
     }, 20000);
-    const speakLang = String(voiceBridge.getSidecarEnv().SIDECAR_TTS_SPEAK_LANG || '').trim();
-    if (speakLang) {
+    const sidecarEnv = voiceBridge.getSidecarEnv();
+    const engine = String(sidecarEnv.SIDECAR_TTS_ENGINE || '').trim();
+    const speakLang = String(sidecarEnv.SIDECAR_TTS_SPEAK_LANG || '').trim();
+    // “外语朗读”能力：云端 edge 恒支持；克隆引擎(gpt-sovits/qwen3)需要对应语言的参考音频
+    // （如日语 SIDECAR_TTS_REF_WAV_JA）才有该声线，否则强制中文直读，避免串扰（四不像）。
+    const isClone = engine === 'gpt-sovits' || engine === 'qwen3';
+    const hasJaRef = Boolean((sidecarEnv.SIDECAR_TTS_REF_WAV_JA || '').trim());
+    const canSpeakLang = !isClone || (speakLang === 'ja' && hasJaRef);
+    if (speakLang && canSpeakLang) {
       // 先翻译再发音，失败则回退原话，避免没声
       generic.translate(t, speakLang)
         .then((jp) => voiceBridge.speak((jp && jp.trim()) ? jp : t))

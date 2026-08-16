@@ -7,8 +7,15 @@ module.exports = function setup({ ipcMain, voiceEnv, state, voiceBridge, voice, 
   ipcMain.handle(IPC.VoiceSettingsGet, () => voiceEnv.read());
   ipcMain.handle(IPC.VoiceSettingsSet, guarded(IPC.VoiceSettingsSet, (patch) => {
     const p = { ...patch };
-    // 朗读语言改变时，合成语言自动跟随（GPT-SoVITS 按该语言发音）；为空（跟随回复）默认中文。
-    if (typeof p.SIDECAR_TTS_SPEAK_LANG === 'string') {
+    // 合成语言(text_lang)必须与引擎匹配：
+    //  - 克隆引擎(gpt-sovits/qwen3)是单语言参考，中文参考恒中文直读，绝不随 speakLang 联动——
+    //    否则会用中文参考按外语发音规则去读中文，出现“既不像中文也不像外语”的串扰。
+    //  - 仅云端多语言 edge 引擎才允许 speakLang 联动合成语言（外语朗读）。
+    const engine = typeof p.SIDECAR_TTS_ENGINE === 'string' ? p.SIDECAR_TTS_ENGINE : voiceEnv.read().SIDECAR_TTS_ENGINE;
+    const isClone = engine === 'gpt-sovits' || engine === 'qwen3';
+    if (isClone) {
+      p.SIDECAR_TTS_TEXT_LANGUAGE = 'zh';
+    } else if (typeof p.SIDECAR_TTS_SPEAK_LANG === 'string') {
       p.SIDECAR_TTS_TEXT_LANGUAGE = p.SIDECAR_TTS_SPEAK_LANG || 'zh';
     }
     const next = voiceEnv.write(p);

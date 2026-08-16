@@ -42,8 +42,11 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - 主进程 `src/main/voice-bridge.js`：spawn 并守护侧车（崩溃自动重启、连接自愈重连），把 renderer 采集的 int16 PCM 转发给侧车，接收 `vad`/`asr`/`audio` 事件。
 - **VAD/ASR 内核用本地独立包 `voice-sidecar/mirai_voice/`**（`vad.py`+`asr.py`，Silero VAD + Sherpa-ONNX/SenseVoice ASR）：跑在 Mirai 自己的 venv `voice-sidecar/.venv`（py3.13 独立，含 numpy/torch/silero-vad/sherpa-onnx/onnxruntime/edge-tts 等，由 `npm run setup:voice` 安装）；SenseVoice ASR 模型装到 `voice-sidecar/models/`（`fetch_models.py` 从官方 release 下载，全新环境一次配置）。
 - TTS 引擎可切换（`.env` 里 `SIDECAR_TTS_ENGINE`）：`edge`（默认，云合成需联网）或 `gpt-sovits`（本地音色克隆，GPT-SoVITS API —— `SIDECAR_TTS_URL`/`SIDECAR_TTS_REF_WAV`/`SIDECAR_TTS_PROMPT_TEXT`/`SIDECAR_TTS_PROMPT_LANG` 等），后者 POST 到服务端 `/tts`（api_v2 字段 `ref_audio_path`/`text_lang`/`prompt_lang`），输出 wav、完全离线。
+- **qwen3 引擎**（推荐，中文更自然）：`SIDECAR_TTS_ENGINE=qwen3`，对接本地多语言 TTS 后端 **Qwen3TTS-Faster**（独立服务，默认 **9980** 端口，避开 gpt-sovits 的 9880，双引擎可切换）。字段 `refer_wav_path`/`text_language`/`prompt_text`/`lora_id`/`stream_mode=close`/`media_type=wav`。中文直读，`SIDECAR_TTS_TEXT_LANGUAGE=zh` 时不设 `SPEAK_LANG`（省翻译延迟）。侧车 `_synth_qwen3()` + `build_qwen3_payload()` 实现，已在 `voice-sidecar/sidecar_server.py`。
 - **GPT-SoVITS 是独立服务、非 Mirai 进程**：由 `npm run setup:voice` 装入 `vendor/gpt-sovits/`（gitignore；本机已有 `~/GPT-SoVITS` 则软链复用、不重装），`start:voice` 自动拉起 api_v2.py（9880，Mac CPU 配置）等就绪再开小未来，退出时若由它拉起则一并关闭。
+- **Qwen3TTS-Faster 也需独立部署**：整包 7z 分发（约 5GB），入口未随代码内置，用 `node scripts/setup-qwen-tts.js` 下载解压并探测服务启动方式（需装 `unar`）；入口确认前 `start-voice` 暂时不起 qwen（等探测结果补拉起逻辑）。
 - 外语朗读（`SIDECAR_TTS_SPEAK_LANG`，如 `ja`）：发言前先把中文回复用 LLM 翻译成目标语言再合成朗读，屏幕气泡仍显示中文；译文语言要跟 `SIDECAR_TTS_TEXT_LANGUAGE` 一致（`main.js` 的 `speak()` + `engine/generic.js` 的 `translate()`）。
+- **SoVITS 中/日切换（克隆双语）**：克隆引擎的语言由参考音频决定。除中文参考（`SIDECAR_TTS_REF_WAV`）外还可配日语参考（`SIDECAR_TTS_REF_WAV_JA`/`SIDECAR_TTS_PROMPT_TEXT_JA`/`SIDECAR_TTS_PROMPT_LANG_JA`）。面板切「朗读语言=日语」时，侧车 `_synth_gpt_sovits()` 自动改用日语参考+日语标签说话（仍是小未来自己的声音）；未配日语参考则回退中文直读（防“中文参考读外语”串扰）。主进程 `speak()` 仅当克隆有对应外语参考时才翻译成该语言。克隆引擎下 `SIDECAR_TTS_TEXT_LANGUAGE` 恒 zh（以 `SPEAK_LANG` 为准），避免标签错配。
 - 协议：客户端→侧车=二进制 int16 PCM(16k) 或 JSON `{type:'speak',text}`；侧车→客户端=JSON `ready/vad/asr/audio`。
 - 音频只在 `127.0.0.1` 上传输，不上任何云端。
 
