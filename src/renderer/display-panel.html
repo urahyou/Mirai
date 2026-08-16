@@ -65,6 +65,31 @@
         <input id="bubbleRange" class="scale-range" type="range" min="0" max="30" step="1" value="0" />
         <div class="range-labels"><span>自动</span><span>15s</span><span>30s</span></div>
       </section>
+
+      <section class="setting-section">
+        <label class="toggle-row" for="panelAutoHide">
+          <span>
+            <span class="toggle-title">设置面板自动消失</span>
+            <span class="hint">打开设置面板后，闲置一段时间会自动关闭，避免一直挂在桌面上</span>
+          </span>
+          <span class="switch">
+            <input id="panelAutoHide" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          </span>
+        </label>
+      </section>
+
+      <section class="setting-section" id="autoHideSecSection">
+        <div class="setting-heading">
+          <div>
+            <h2 class="section-title">自动消失时长</h2>
+            <p class="hint">面板打开后多少秒自动关闭（仅开启“自动消失”时生效）</p>
+          </div>
+          <strong class="value" id="autoHideValue">8s</strong>
+        </div>
+        <input id="autoHideRange" class="scale-range" type="range" min="3" max="30" step="1" value="8" />
+        <div class="range-labels"><span>3s</span><span>15s</span><span>30s</span></div>
+      </section>
     </main>
 
     <footer class="panel-footer">

@@ -6,12 +6,16 @@ const DEFAULT_SETTINGS = Object.freeze({
   alwaysOnTop: true,
   outlineShadow: false,
   bubbleDuration: 0, // 秒；0=按文字长度自动（2.6~7.6s）
+  panelAutoHide: true, // 设置面板是否开启“自动消失”
+  panelAutoHideSec: 8, // 面板打开后多少秒自动关闭
 });
 
 const SCALE_MIN = 0.7;
 const SCALE_MAX = 1.5;
 const BUBBLE_DURATION_MIN = 0;
 const BUBBLE_DURATION_MAX = 30;
+const PANEL_AUTO_HIDE_MIN = 3;
+const PANEL_AUTO_HIDE_MAX = 30;
 
 let runtimePath = null;
 
@@ -27,6 +31,7 @@ function normalizeSettings(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const scale = Number(source.scale);
   const duration = Number(source.bubbleDuration);
+  const autoHideSec = Number(source.panelAutoHideSec);
   return {
     scale: Number.isFinite(scale) ? Math.max(SCALE_MIN, Math.min(SCALE_MAX, scale)) : DEFAULT_SETTINGS.scale,
     alwaysOnTop: typeof source.alwaysOnTop === 'boolean' ? source.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
@@ -34,6 +39,10 @@ function normalizeSettings(raw) {
     bubbleDuration: Number.isFinite(duration)
       ? Math.max(BUBBLE_DURATION_MIN, Math.min(BUBBLE_DURATION_MAX, Math.round(duration)))
       : DEFAULT_SETTINGS.bubbleDuration,
+    panelAutoHide: typeof source.panelAutoHide === 'boolean' ? source.panelAutoHide : DEFAULT_SETTINGS.panelAutoHide,
+    panelAutoHideSec: Number.isFinite(autoHideSec)
+      ? Math.max(PANEL_AUTO_HIDE_MIN, Math.min(PANEL_AUTO_HIDE_MAX, Math.round(autoHideSec)))
+      : DEFAULT_SETTINGS.panelAutoHideSec,
   };
 }
 
@@ -61,6 +70,8 @@ module.exports = {
   DEFAULT_SETTINGS,
   SCALE_MIN,
   SCALE_MAX,
+  PANEL_AUTO_HIDE_MIN,
+  PANEL_AUTO_HIDE_MAX,
   getSettings,
   setSettings,
   setRuntimePath,
