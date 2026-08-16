@@ -30,7 +30,14 @@ function writeDotEnvValues(values) {
 // 主要限制从“轮数”改为“token 预算”（contextMaxTokens，由上下文设置面板滑条控制）。
 const HISTORY_MAX_TURNS = 256; // 兜底最大轮数，防止 token 估算误差导致历史无限增长
 const DEFAULT_CONTEXT_MAX_TOKENS = 4096; // 默认上下文 token 预算（与 context-budget 一致）
+// ---- 上下文紧凑摘要压缩（AGENTS 工作偏好：约 80% 时自动压缩，勿等到接近上限） ----
+const COMPRESSION_RATIO = 0.8; // 触发阈值：对话历史估算 token 占用预算达 80%
 let history = [];
+
+// 摘要缓存：当被压缩的早期对话内容不变时复用上次摘要，避免每个请求都多调一次 LLM
+let summaryCache = { key: null, value: null };
+
+const COMPRESSION_SYSTEM = '你是一个对话记忆压缩器。请把下面这段「小未来」（桌宠/伴侣）与主人的历史对话，压缩成一段紧凑的中文摘要，保留对后续回答有用的关键信息：人物的身份与关系、主人的重要个人情况、发生过的重要事件、主人的偏好与情绪、已经给过的承诺或约定。用简练的叙述句，不要罗列逐条对话，控制在 150 字以内。只输出摘要正文，不要任何额外前缀或解释。';
 
 /**
  * 粗略估算一段文本的 token 数。无 tiktoken 依赖，用字符数近似：
@@ -68,6 +75,70 @@ function truncateHistory(msgs, budget) {
     if (selected.length >= HISTORY_MAX_TURNS * 2) break;
   }
   return { messages: selected, droppedTurns: (list.length - selected.length) / 2 | 0 };
+}
+
+/**
+ * 估算整段消息历史占用的 token 数（保守近似）。
+ */
+async function buildCompressedHistory(pendingHistory, totalBudget, providerConf) {
+  // 保留最近 recentBudget token 的对话（完整保真），更早的全部压成一条摘要
+  const recentBudget = Math.max(2000, Math.round(totalBudget * 0.35));
+  const kept = [];
+  let used = 0;
+  for (let i = pendingHistory.length - 1; i >= 0; i--) {
+    const m = pendingHistory[i];
+    const t = estimateTokens(String(m.content || ''));
+    if (kept.length > 0 && used + t > recentBudget) break;
+    kept.unshift(m);
+    used += t;
+  }
+  const oldCount = pendingHistory.length - kept.length;
+  const old = pendingHistory.slice(0, oldCount);
+  if (old.length < 2) {
+    // 早期对话太少，没有可摘要的内容，回退为硬截断
+    return { messages: truncateHistory(pendingHistory, totalBudget).messages, summarizedTurns: 0 };
+  }
+  const summary = await summarizeOldMessages(providerConf, old);
+  return {
+    messages: [{ role: 'system', content: `[对话前期摘要] ${summary}` }, ...kept],
+    summarizedTurns: Math.round(old.length / 2),
+  };
+}
+
+/**
+ * 调用当前 provider 把某段早期对话压成紧凑摘要。相同内容命中缓存则跳过 LLM 调用。
+ */
+async function summarizeOldMessages(providerConf, old) {
+  const key = JSON.stringify(old.map((m) => [m.role, m.content]));
+  if (summaryCache.key === key) return summaryCache.value;
+  const base = providerConf.baseUrl.replace(/\/$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  Object.assign(headers, authorizationHeaders(providerConf));
+  const text = old
+    .map((m) => `${m.role === 'user' ? '主人' : '小未来'}：${String(m.content || '')}`)
+    .join('\n');
+  const body = {
+    model: providerConf.defaultModel,
+    messages: [
+      { role: 'system', content: COMPRESSION_SYSTEM },
+      { role: 'user', content: text.slice(0, 20000) },
+    ],
+    temperature: 0.3,
+    top_p: 0.9,
+    stream: false,
+  };
+  const res = await fetch(`${base}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`summary LLM responded ${res.status}`);
+  const data = await res.json();
+  const summary = (data.choices?.[0]?.message?.content || '').trim();
+  if (!summary) throw new Error('empty compression summary');
+  summaryCache = { key, value: summary };
+  return summary;
 }
 
 function resetConversationHistory() {
@@ -244,7 +315,27 @@ async function generateReply(userInput, options = {}) {
   const contextMaxTokens = Number.isFinite(Number(options.contextMaxTokens)) && Number(options.contextMaxTokens) > 0
     ? Math.round(Number(options.contextMaxTokens))
     : DEFAULT_CONTEXT_MAX_TOKENS;
-  const { messages: trimmedHistory } = truncateHistory(pendingHistory, contextMaxTokens);
+  // 上下文压缩（AGENTS 偏好）：历史占用达预算 80% 时，把早期对话压成紧凑摘要注入，
+  // 而不是等到逼近上限才截断丢弃。压缩失败时安全回退到硬截断。
+  const compressThreshold = Math.round(contextMaxTokens * COMPRESSION_RATIO);
+  const estimatedTotal = pendingHistory.reduce((s, m) => s + estimateTokens(String(m.content || '')), 0);
+  let trimmedHistory;
+  let compressed = false;
+  if (pendingHistory.length >= 4 && estimatedTotal > compressThreshold) {
+    try {
+      const result = await buildCompressedHistory(pendingHistory, contextMaxTokens, providerConf);
+      trimmedHistory = result.messages;
+      compressed = result.summarizedTurns > 0;
+    } catch (error) {
+      console.warn(`[LLM] 上下文压缩失败，回退截断: ${error.message}`);
+      trimmedHistory = truncateHistory(pendingHistory, contextMaxTokens).messages;
+    }
+  } else {
+    trimmedHistory = truncateHistory(pendingHistory, contextMaxTokens).messages;
+  }
+  if (compressed) {
+    console.log(`[LLM] ${provider} 上下文压缩: 历史占用 ${Math.round((100 * estimatedTotal) / contextMaxTokens)}%（阈值 ${COMPRESSION_RATIO * 100}%），将早期 ${(trimmedHistory.length - 1) / 2 | 0} 条之前的对话压成摘要，保留最近 ${trimmedHistory.length - 1} 条`);
+  }
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
@@ -427,4 +518,5 @@ module.exports = {
   resetConversationHistory,
   estimateTokens,
   truncateHistory,
+  buildCompressedHistory,
 };
