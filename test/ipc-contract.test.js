@@ -191,11 +191,11 @@ test('Given a repositioned chat or balloon When it closes or hides Then its rela
 });
 
 test('Given transparent space around the character When pointer hit testing runs Then the pet window becomes mouse-transparent', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const win = fs.readFileSync(path.join(__dirname, '..', 'src', 'subsystems', 'window.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
 
-  assert.match(main, /IPC\.WindowSetMousePassthrough/);
-  assert.match(main, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
+  assert.match(win, /IPC\.WindowSetMousePassthrough/);
+  assert.match(win, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
   assert.match(renderer, /setMousePassthrough\(!characterHit && !bubbleHit\)/);
   assert.match(renderer, /if \(dragging\)[\s\S]*?setMousePassthrough\(false\)/);
 });
@@ -216,8 +216,7 @@ test('Given no model context info When saving context Then the soft limit 128k a
 });
 
 test('Given the IPC contract single source When compared to the preload bridge Then every channel matches bidirectionally', () => {
-  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'preload.js'), 'utf8');
-  const ipcValues = Object.values(IPC);
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'preload.js'), 'utf8');  const ipcValues = Object.values(IPC);
 
   // preload 每次出现的 channel 字面量都必须来自契约（无多余/拼写漂移）
   const preloadChannels = [...preload.matchAll(/'([a-zA-Z]+:[a-zA-Z-]+)'/g)].map((m) => m[1]);
@@ -234,4 +233,21 @@ test('Given the IPC contract single source When compared to the preload bridge T
   // 契约常量全部为字符串通道名
   for (const v of ipcValues) assert.equal(typeof v, 'string');
   assert.ok(ipcValues.length >= 60, '契约通道数量应覆盖全部 IPC');
+});
+
+test('Given IPC handlers are decomposed into subsystems, main.js stays a pure assembler', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  // L3：IPC 处理器一律收拢到 src/subsystems/*.js，main.js 只做装配，不再直接注册 IPC。
+  assert.doesNotMatch(main, /ipcMain\.(handle|on)\(/);
+  assert.doesNotMatch(main, /IPC\.[A-Za-z]/);
+
+  // 每个能力子系统都从契约引用通道（无裸字符串/拼写漂移）
+  const ipcKeys = Object.keys(IPC);
+  for (const f of ['personality', 'display', 'voice-settings', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
+    const sub = fs.readFileSync(path.join(__dirname, '..', 'src', 'subsystems', `${f}.js`), 'utf8');
+    for (const m of sub.matchAll(/IPC\.([A-Za-z]+)/g)) {
+      assert.ok(ipcKeys.includes(m[1]), `subsystems/${f}.js 用了契约外的通道: ${m[0]}`);
+    }
+    assert.doesNotMatch(sub, /'(?:[a-zA-Z]+:[a-zA-Z-]+)'/); // 不该出现裸通道字面量
+  }
 });

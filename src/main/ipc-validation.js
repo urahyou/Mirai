@@ -7,6 +7,15 @@ const IPC_ERROR = Object.freeze({
   },
 });
 
+// 把每个 ipcMain.handle 包装成：入参先经 validatePayload（按通道校验白名单/上限），
+// 不合法直接回 IPC_ERROR，合法再交给真实 handler。供各 IPC 子系统复用。
+function guarded(channel, handler) {
+  return (_event, ...args) => {
+    const result = validatePayload(channel, args);
+    return result.ok ? handler(...result.data) : IPC_ERROR;
+  };
+}
+
 function isText(value, max) {
   return typeof value === 'string' && value.length > 0 && value.length <= max;
 }
@@ -100,4 +109,4 @@ function validatePayload(channel, args, ctx = {}) {
   return data ? { ok: true, data } : IPC_ERROR;
 }
 
-module.exports = { validatePayload, IPC_ERROR };
+module.exports = { validatePayload, IPC_ERROR, guarded };

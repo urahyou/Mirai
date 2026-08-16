@@ -19,7 +19,8 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - `src/main/chat.js` 对话调度（handleUserUtterance/generateChat/上下文预算/聊天 IPC）
   - `src/main/balloons.js` 独立气泡窗（创建/定位/渲染/隐藏）
   - `src/main/state.js` 共享状态（mainWindow/chatInputWindow/isVoiceListening 等）
-  - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住
+  - `src/subsystems/*.js` IPC 能力域——personality/display/voice-settings/provider/context/memory/balloon/window/menu 各一个 `setup(api)` 注册自己的 ipcMain；main.js 只 `mountIpc(api)` 装配。**新增能力 = 在 subsystems/ 加一个 setup(api) 并在 index.js 注册即可**
+  - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住（并守卫 main.js 不再直接注册 IPC）
   - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/graphiti-memory/voice-bridge/start-all 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
 - 安全桥接 `src/main/preload.js`：所有 IPC 经 `desktopPet.*` 暴露，渲染进程不直接 require。

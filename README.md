@@ -178,6 +178,7 @@ src/main/voice.js          语音朗读/识别/打断 + 语音 IPC
 src/main/chat.js           对话调度 + 聊天 IPC
 src/main/balloons.js       独立气泡窗
 src/main/state.js          共享状态
+src/subsystems/           IPC 能力域子系统（各 setup(api)，main.js 只 mountIpc 装配）
 src/contracts/ipc.js       IPC 通道常量单一事实源
 src/main/preload.js        contextBridge 安全桥接
 src/main/ipc-validation.js IPC 入参校验
