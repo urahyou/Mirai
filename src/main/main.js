@@ -1,16 +1,16 @@
 /**
  * 主进程入口（唯一 Electron 主进程）。
  *
- * ▸ 职责分区（按文件内顺序）：
- *   1. 依赖与全局状态    —— 窗口引用、配置、共享标志（state.isVoiceListening 等）
- *   2. 窗口辅助          —— windowOptions / placeAtBottomRight / applyDisplaySettings
+ * ▸ 职责分区（按文件内顺序；已拆模块见各 require）
+ *   1. 依赖与全局状态    —— 共享引用/配置/标志（state.isVoiceListening 等），已拆 state.js
+ *   2. 窗口辅助          —— windowOptions / placeAtBottomRight / setMainWindowAlwaysOnTop / applyDisplaySettings
  *   3. 主窗(桌宠)        —— createMainWindow（Live2D 角色、白名单点击）
- *   4. 独立气泡窗        —— createBalloonWindow / positionBalloon / clampToWorkArea
- *   5. 聊天输入窗        —— openChatInputWindow / resizeChatInputWindow / syncChatInputWithMain
- *   6. 菜单窗 + 各设置面板 —— 右键菜单 + personality/provider/display/voice/context/memory 面板
- *   7. 聊天调度          —— handleUserUtterance / enqueueChat / generateChat / broadcastChatDelta
+ *   4. 独立气泡窗        —— 已拆 balloons.js（创建/定位/渲染/隐藏）
+ *   5. 聊天输入窗        —— open/close/resize/syncChatInputWithMain
+ *   6. 菜单窗 + 各设置面板 —— 已拆 panels.js
+ *   7. 聊天调度          —— 已拆 chat.js（handleUserUtterance / generateChat / 单句点击回应 / 聊天 IPC / 上下文预算）
  *   8. 长期记忆          —— Graphiti search(注入)+add(回写)（不可用时降级普通聊天）
- *   9. 语音桥接          —— voiceBridge 事件 / 识别 / TTS 输出 / 打断
+ *   9. 语音桥接          —— 已拆 voice.js（朗读/识别/打断/语音 IPC）
  *   10. IPC 注册         —— 全部 ipcMain.handle/on（与 preload.js 的 desktopPet.* 一一对应）
  *   11. 状态广播         —— state.isVoiceListening 等共享状态的跨窗口同步
  *   12. 应用生命周期     —— app.whenReady / window-all-closed / activate
@@ -20,7 +20,6 @@
  */
 
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
-const crypto = require('crypto');
 const path = require('path');
 const generic = require('../engine/generic');
 const rules = require('../engine/rules');
@@ -38,6 +37,7 @@ const createPanels = require('./panels');
 const state = require('./state');
 const createVoice = require('./voice');
 const createBalloons = require('./balloons');
+const createChat = require('./chat');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
@@ -70,6 +70,8 @@ const panels = createPanels({
 });
 
 // 语音子系统（朗读合成去重 + 语音识别分发 + 语音 IPC）——依赖注入所需能力
+// 注：handleUserUtterance 在 chat 模块创建后才就绪，这里用惰性引用避免 voice ⇄ chat 循环 require。
+const chatRef = {};
 const voice = createVoice({
   voiceBridge,
   generic,
@@ -77,11 +79,33 @@ const voice = createVoice({
   ipcMain,
   state,
   sendToChatInput,
-  handleUserUtterance,
+  handleUserUtterance: (text) => (chatRef.handleUserUtterance ? chatRef.handleUserUtterance(text) : undefined),
 });
 
 // 独立气泡窗口模块（创建/定位/渲染/隐藏）——依赖注入所需能力
 const balloons = createBalloons({ state, windowOptions, config });
+
+// 聊天调度核心模块（多轮对话/单句点击回应/流式广播/上下文压缩预算/聊天 IPC）
+const chat = createChat({
+  ipcMain,
+  state,
+  generic,
+  chatHistory,
+  graphitiMemory,
+  contextSettings,
+  probeMaxContext,
+  voice,
+  sendToChatInput,
+  windowOps: {
+    openChatInputWindow,
+    closeChatInputWindow,
+    resizeChatInputWindow,
+    setMainWindowAlwaysOnTop,
+    displaySettings,
+  },
+  consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
+});
+chatRef.handleUserUtterance = chat.handleUserUtterance;
 
 function placeAtBottomRight() {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
@@ -281,70 +305,6 @@ function sendToChatInput(channel, data) {
     state.chatInputWindow.webContents.send(channel, data);
   }
 }
-
-function broadcastChatDelta(data) {
-  if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('chat:delta', data);
-  sendToChatInput('chat:delta', data);
-}
-
-function enqueueChat(work) {
-  const run = state.chatQueue.then(work, work);
-  state.chatQueue = run.catch(() => {});
-  return run;
-}
-
-async function generatePetLine(purpose) {
-  for (const provider of generic.providerChain()) {
-    try {
-      if (!(await generic.isAvailable(provider))) continue;
-      const line = await generic.generatePetLine({ provider, purpose });
-      if (line.trim()) return line.trim();
-    } catch {
-      // Try the next configured provider.
-    }
-  }
-  return '';
-}
-
-async function generateChat(input, emit) {
-  const graphitiResults = await graphitiMemory.search(input);
-  const memoryContext = graphitiMemory.formatContext(graphitiResults);
-  const contextMaxTokens = contextSettings.getSettings(state.cachedModelMaxTokens).maxContextTokens;
-  for (const provider of generic.providerChain()) {
-    try {
-      if (!(await generic.isAvailable(provider))) continue;
-      return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens });
-    } catch {
-      // Try the next configured provider.
-    }
-  }
-  return '现在没能连上本地模型，稍后再和我聊聊吧。';
-}
-
-// 探测当前 active provider 的模型最大上下文并缓存（失败返回 null，不阻塞）。
-async function refreshModelMaxTokens() {
-  try {
-    const chain = generic.providerChain();
-    if (!chain.length) { state.cachedModelMaxTokens = null; return null; }
-    const config = generic.getProviderConfig();
-    const provider = chain[0] && config.providers[chain[0]];
-    state.cachedModelMaxTokens = provider ? await probeMaxContext(provider, generic.authorizationHeaders) : null;
-  } catch {
-    state.cachedModelMaxTokens = null;
-  }
-  return state.cachedModelMaxTokens;
-}
-
-ipcMain.handle('character:greet', async () => {
-  const reply = await generatePetLine('click');
-  if (reply) {
-    const message = chatHistory.appendMessage('assistant', reply);
-    sendToChatInput('chat:history', { message, source: 'interaction' });
-    voice.speak(reply);
-  }
-  return reply;
-});
-
 ipcMain.handle('personality:get', () => personalityRuntime.getPersonality());
 ipcMain.handle('personality:set', guarded('personality:set', (patch) => {
   const next = personalityRuntime.setPersonality(patch);
@@ -399,7 +359,7 @@ ipcMain.handle('provider:saveConfig', (_event, config) => {
   try {
     const result = { ok: true, config: generic.saveProviderConfig(config) };
     // provider 变化后重新探测模型上下文上限
-    void refreshModelMaxTokens();
+    void chat.refreshModelMaxTokens();
     return result;
   } catch (error) {
     return { ok: false, error: String(error.message || error) };
@@ -418,48 +378,17 @@ ipcMain.handle('context:set', guarded('context:set', (patch) => {
   return contextSettings.setSettings(patch, state.cachedModelMaxTokens);
 }));
 ipcMain.handle('context:probe', async () => {
-  await refreshModelMaxTokens();
+  await chat.refreshModelMaxTokens();
   return state.cachedModelMaxTokens;
 });
 ipcMain.handle('context:openPanel', () => { panels.openContextPanel(); return true; });
 ipcMain.handle('context:closePanel', () => { panels.closeContextPanel(); return true; });
 
-ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
-ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
-ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('memory:getStatus', async () => graphitiMemory.getStatus());
 ipcMain.handle('memory:getSettings', () => graphitiMemory.getSettingsForPanel());
 ipcMain.handle('memory:setSettings', guarded('memory:setSettings', (patch) => graphitiMemory.writeSettings(patch)));
 ipcMain.handle('memory:openPanel', () => { panels.openMemoryPanel(); return true; });
 ipcMain.handle('memory:closePanel', () => { panels.closeMemoryPanel(); return true; });
-ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
-  state.chatInputExpanded = expanded;
-  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
-    if (expanded) {
-      // 展开成普通窗口：聊天窗可被覆盖；人物保持 floating 置顶（不消失）
-      setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-      state.chatInputWindow.setAlwaysOnTop(false);
-    } else {
-      // 收起成悬浮输入框：角色降到 floating（仍高于微信），对话浮动在人物之上
-      setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-      state.chatInputWindow.setAlwaysOnTop(true, 'floating');
-      state.chatInputWindow.moveTop();
-    }
-  }
-  const target = expanded ? CHAT_INPUT_EXPANDED_SIZE : CHAT_INPUT_COMPACT_SIZE;
-  return resizeChatInputWindow(state.chatInputWindow, target.width, target.height);
-}));
-ipcMain.handle('chat:resizeInput', (event, requestedHeight) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed()) return false;
-  if (win !== state.chatInputWindow || state.chatInputExpanded) return true;
-  const height = Math.max(96, Math.min(220, Math.round(Number(requestedHeight) || 96)));
-  const [width] = win.getContentSize();
-  return resizeChatInputWindow(win, width, height);
-});
-ipcMain.handle('chat:submit', async (_event, rawInput) => handleUserUtterance(rawInput));
-
-// 独立气泡窗口指令（宠物窗发显示/隐藏；气泡窗发拖拽/还原）
 ipcMain.handle('balloon:show', (_event, payload) => {
   balloons.balloonRender(Object.assign({ action: 'show' }, payload && typeof payload === 'object' ? payload : {}));
   return true;
@@ -552,30 +481,6 @@ ipcMain.handle('menu:open', (_event, x, y) => {
 ipcMain.handle('menu:ready', () => panels.repositionMenu());
 ipcMain.handle('menu:close', () => { panels.closeMenuWindow(); return true; });
 // 统一处理一条用户发言（文本输入或语音识别结果都走这里）：记录历史→流式生成→写回
-async function handleUserUtterance(rawInput) {
-  const input = String(rawInput || '').trim().slice(0, 4000);
-  if (!input) return '';
-  const turnId = crypto.randomUUID();
-  const userMessage = chatHistory.appendMessage('user', input);
-  sendToChatInput('chat:history', { message: userMessage, turnId });
-  broadcastChatDelta({ started: true, done: false, turnId });
-  const emit = (chunk, full) => {
-    broadcastChatDelta({ chunk, full, done: false, turnId });
-  };
-  const reply = await enqueueChat(() => generateChat(input, emit));
-  const assistantMessage = chatHistory.appendMessage('assistant', reply);
-  const episode = [
-    { role: 'user', content: input },
-    { role: 'assistant', content: reply },
-  ];
-  void graphitiMemory.add(episode, new Date(userMessage.createdAt).toISOString());
-  sendToChatInput('chat:history', { message: assistantMessage, turnId });
-  broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
-  // 语音输出：让小未来开口说这句回复
-  voice.speak(reply);
-  return reply;
-}
-
 ipcMain.handle('menu:quit', () => { app.quit(); return true; });
 
 app.whenReady().then(() => {
@@ -591,7 +496,7 @@ app.whenReady().then(() => {
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
   // 启动后异步探测模型最大上下文（不阻塞启动）
-  void refreshModelMaxTokens();
+  void chat.refreshModelMaxTokens();
   // 启动语音侧车
   voiceBridge.start();
   createMainWindow();
