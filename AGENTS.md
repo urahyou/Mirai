@@ -11,7 +11,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 
 ## 架构（非直觉，务必先读）
 
-- 入口：`src/main/main.js`（主进程**编排**：IPC 注册、生命周期、provider 状态；不保留具体实现）
+- 入口：`src/main/main.js`（主进程**纯装配**：按序创建各模块（窗口/语音/对话/气泡）→ 构造 api 胶囊 → `mountIpc(api)` 注册全部 IPC 能力域 → 应用生命周期；不保留任何具体实现）
 - 主进程按职责拆分，以依赖注入创建（main.js 只做排序与注入）：
   - `src/main/windows.js` 窗口辅助——windowOptions/主窗(桌宠)创建/置顶层级/显示应用/聊天输入窗/发送转发
   - `src/main/panels.js` 菜单窗 + 各设置面板
@@ -25,13 +25,13 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
 - 安全桥接 `src/main/preload.js`：所有 IPC 经 `desktopPet.*` 暴露，渲染进程不直接 require。
 
-对话调度（`main.js` 的 `chat:submit`）：
+对话调度（`src/main/chat.js` 的 `chat:submit`）：
 1. 输入消息写入 `userData/chat-history.json`
 2. 全部走 `src/engine/generic.js` 调 OpenAI 兼容大模型（按 provider 优先级自动回退）
 3. 通过 `chat:delta` 同时推送角色气泡和聊天窗口的流式回复
 4. 回复完成后写入聊天历史
 
-角色交互（`main.js` 的 `character:greet`）是独立的单句点击回应，会写入聊天记录，但不会进入正式多轮 LLM 上下文。
+角色交互（`src/main/chat.js` 的 `character:greet`）是独立的单句点击回应，会写入聊天记录，但不会进入正式多轮 LLM 上下文。
 
 > 本地规则关键词答话已移除（无 `dialogueMode` 概念），对话一律走大模型。
 
@@ -47,7 +47,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
 - 协议：客户端→侧车=二进制 int16 PCM(16k) 或 JSON `{type:'speak',text}`；侧车→客户端=JSON `ready/vad/asr/audio`。
 - 音频只在 `127.0.0.1` 上传输，不上任何云端。
 
-关键链路（都在 `main.js`）：
+关键链路（语音在 `src/main/voice.js`、对话调度在 `src/main/chat.js`、聊天窗跟随在 `src/main/windows.js`）：
 
 1. 语音输入：`voice:pcm` → sidecar `asr-partial`/`asr` → 开着对话窗时填输入框（`chat-input.js` 决定是否自动发送），否则直接 `handleUserUtterance(text)`。
 2. 语音输出：回复生成后自动 `speak(reply)` → sidecar 合成 MP3 → `voice:audio` 推给宠物窗 WebAudio 播放（带说话动画）；`voice:vad` `speech_start` 会打断正在播放的语音。

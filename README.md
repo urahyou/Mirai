@@ -171,7 +171,7 @@ macOS 默认 userData 目录通常是：
 
 ```text
 assets/live2d/             Cubism Core、模型、动作和模型纹理
-src/main/main.js           主进程编排（IPC 注册、生命周期、provider 状态）
+src/main/main.js           主进程纯装配（模块创建排序 + mountIpc(api) + 生命周期）
 src/main/windows.js        窗口辅助（主窗/聊天输入窗/置顶/定位/转发）
 src/main/panels.js         菜单窗 + 各设置面板
 src/main/voice.js          语音朗读/识别/打断 + 语音 IPC
