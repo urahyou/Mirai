@@ -1,0 +1,148 @@
+// 设置面板 / 菜单窗口模块。
+//
+// 所有「独立设置面板窗口」（人格 / Provider / 显示 / 语音设置 / 上下文 / 记忆）
+// 以及右键菜单窗口的创建、定位、关闭都收在这里；主进程其它逻辑不再关心这些窗口细节。
+//
+// 通过依赖注入（createPanels({ getPetWindow, windowOptions })）获得所需能力：
+//   - getPetWindow()：动态返回桌宠主窗口引用，用于「面板定位到主窗口所在显示器」
+//   - windowOptions()：统一定制 BrowserWindow 的 webPreferences
+// 以此让本模块不依赖主进程的全局状态，可独立维护/单测。
+const { BrowserWindow, screen } = require('electron');
+const path = require('path');
+
+const MENU_WINDOW_SIZE = { width: 200, height: 300 };
+
+let menuWindow = null;
+let menuPendingPosition = null;
+
+module.exports = function createPanels({ getPetWindow, windowOptions, getAutoHide }) {
+  // 把窗口定位到桌宠主窗口所在的显示器（多显示器下避免面板跑到主屏）。
+  // 参考点取主窗口中心；主窗口不可用时退回光标所在屏幕。
+  function positionOnMainDisplay(win, width, height) {
+    if (!win || win.isDestroyed()) return;
+    const pet = getPetWindow();
+    const mainBounds = pet && !pet.isDestroyed() ? pet.getBounds() : null;
+    const ref = mainBounds || screen.getCursorScreenPoint();
+    const { workArea } = screen.getDisplayNearestPoint({ x: ref.x, y: ref.y });
+    const x = workArea.x + Math.round((workArea.width - width) / 2);
+    const y = workArea.y + Math.round((workArea.height - height) / 2);
+    win.setPosition(Math.max(workArea.x, x), Math.max(workArea.y, y));
+  }
+
+  // 统一「面板」工厂：一个面板 = 一组窗口选项配置，open/close 配对，close 清空引用。
+  // 原先 6 个面板是各自复制粘贴的 ~20 行样板，这里收敛为一份，改一处全生效。
+  // 支持“自动消失”：若设定开启，面板打开后到达设定秒数即自动关闭。
+  function makePanel(cfg) {
+    let win = null;
+    let autoTimer = null;
+    function close() {
+      clearTimeout(autoTimer);
+      autoTimer = null;
+      if (win && !win.isDestroyed()) win.destroy();
+      win = null;
+    }
+    function open() {
+      close();
+      win = new BrowserWindow({
+        width: cfg.width,
+        height: cfg.height,
+        resizable: Boolean(cfg.resizable),
+        ...(cfg.minWidth ? { minWidth: cfg.minWidth } : {}),
+        ...(cfg.minHeight ? { minHeight: cfg.minHeight } : {}),
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        webPreferences: windowOptions(),
+      });
+      win.setAlwaysOnTop(true, 'screen-saver');
+      positionOnMainDisplay(win, cfg.width, cfg.height);
+      win.loadFile(path.join(__dirname, '..', 'renderer', cfg.file));
+      win.on('closed', () => { win = null; autoTimer = null; });
+      // 自动消失：开启则定时自动关闭（秒数可在显示设置里调整/关闭）
+      const auto = getAutoHide ? getAutoHide() : null;
+      if (auto && auto.enabled && auto.seconds > 0) {
+        autoTimer = setTimeout(close, auto.seconds * 1000);
+      }
+    }
+    return { open, close };
+  }
+
+  const personalityPanel = makePanel({ width: 520, height: 680, file: 'personality-panel.html' });
+  const providerPanel = makePanel({ width: 760, height: 560, resizable: true, minWidth: 640, minHeight: 480, file: 'provider-panel.html' });
+  const displayPanel = makePanel({ width: 460, height: 360, file: 'display-panel.html' });
+  const voiceSettingsPanel = makePanel({ width: 480, height: 360, file: 'voice-settings.html' });
+  const contextPanel = makePanel({ width: 460, height: 380, file: 'context-panel.html' });
+  const memoryPanel = makePanel({ width: 520, height: 560, file: 'memory-panel.html' });
+
+  // ---------- 右键菜单（行为比面板特殊：失焦关闭 + 按点击点定位） ----------
+  function closeMenuWindow() {
+    if (menuWindow && !menuWindow.isDestroyed()) menuWindow.destroy();
+    menuWindow = null;
+    menuPendingPosition = null;
+  }
+
+  function setMenuPosition(point, width = MENU_WINDOW_SIZE.width, height = MENU_WINDOW_SIZE.height) {
+    if (!menuWindow || menuWindow.isDestroyed() || !point) return false;
+    const { workArea } = screen.getDisplayNearestPoint(point);
+    const x = Math.max(workArea.x, Math.min(point.x, workArea.x + workArea.width - width - 8));
+    const y = Math.max(workArea.y, Math.min(point.y, workArea.y + workArea.height - height - 8));
+    menuWindow.setPosition(Math.round(x), Math.round(y));
+    return true;
+  }
+
+  function openMenuWindow(point) {
+    closeMenuWindow();
+    menuPendingPosition = point;
+    menuWindow = new BrowserWindow({
+      width: MENU_WINDOW_SIZE.width,
+      height: MENU_WINDOW_SIZE.height,
+      transparent: true,
+      frame: false,
+      resizable: false,
+      show: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: true,
+      // 菜单需要通过失焦检测空白点击；不可聚焦窗口不会触发 blur。
+      focusable: true,
+      webPreferences: windowOptions(),
+    });
+    menuWindow.setAlwaysOnTop(true, 'screen-saver');
+    menuWindow.on('blur', () => {
+      if (menuWindow && !menuWindow.isDestroyed()) closeMenuWindow();
+    });
+    setMenuPosition(point);
+    menuWindow.once('ready-to-show', () => {
+      if (menuWindow && !menuWindow.isDestroyed()) {
+        menuWindow.show();
+        menuWindow.focus();
+      }
+    });
+    menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
+    menuWindow.on('closed', () => { menuWindow = null; });
+  }
+
+  // 菜单渲染就绪后按待显示位置重新定位（页面尺寸可能已变化）
+  function repositionMenu() {
+    if (!menuWindow || menuWindow.isDestroyed() || !menuPendingPosition) return false;
+    const [width, height] = menuWindow.getContentSize();
+    return setMenuPosition(menuPendingPosition, width, height);
+  }
+
+  return {
+    openMenuWindow,
+    closeMenuWindow,
+    repositionMenu,
+    openPersonalityPanel: personalityPanel.open,
+    closePersonalityPanel: personalityPanel.close,
+    openProviderPanel: providerPanel.open,
+    closeProviderPanel: providerPanel.close,
+    openDisplayPanel: displayPanel.open,
+    closeDisplayPanel: displayPanel.close,
+    openVoiceSettingsPanel: voiceSettingsPanel.open,
+    closeVoiceSettingsPanel: voiceSettingsPanel.close,
+    openContextPanel: contextPanel.open,
+    closeContextPanel: contextPanel.close,
+    openMemoryPanel: memoryPanel.open,
+    closeMemoryPanel: memoryPanel.close,
+  };
+};

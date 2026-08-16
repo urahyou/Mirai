@@ -166,11 +166,11 @@ test('Given always-on-top display settings When the main window is updated Then 
 });
 
 test('Given a context menu opens When its content loads Then it is positioned before becoming visible', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
-  const menuSection = main.slice(main.indexOf('function openMenuWindow'), main.indexOf('function closePersonalityPanel'));
+  const panels = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'panels.js'), 'utf8');
+  const menuSection = panels.slice(panels.indexOf('function openMenuWindow'), panels.indexOf('function repositionMenu'));
 
   assert.match(menuSection, /show:\s*false/);
-  assert.match(menuSection, /positionMenuWindow\(point\)/);
+  assert.match(menuSection, /setMenuPosition\(point\)/);
   assert.match(menuSection, /once\('ready-to-show',[\s\S]*?menuWindow\.show\(\)/);
 });
 

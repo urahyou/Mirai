@@ -34,19 +34,12 @@ const graphitiMemory = require('../services/graphiti-memory');
 const { probeMaxContext } = require('../services/probe-context');
 const voiceBridge = require('./voice-bridge');
 const { validatePayload, IPC_ERROR } = require('./ipc-validation');
+const createPanels = require('./panels');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
 
 let mainWindow = null;
-let menuWindow = null;
-let menuPendingPosition = null;
-let personalityPanelWindow = null;
-let providerPanelWindow = null;
-let displayPanelWindow = null;
-let voiceSettingsPanelWindow = null;
-let contextPanelWindow = null;
-let memoryPanelWindow = null;
 let chatInputWindow = null;
 let chatInputExpanded = false;
 let chatInputOpen = false;
@@ -63,7 +56,6 @@ let cachedModelMaxTokens = null; // 探测到的当前 active provider 模型上
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
-const MENU_WINDOW_SIZE = { width: 200, height: 300 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
 
@@ -87,6 +79,16 @@ function windowOptions(overrides = {}) {
     ...overrides,
   };
 }
+
+// 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗引用 + 统一 webPreferences + 自动隐藏配置）
+const panels = createPanels({
+  getPetWindow: () => mainWindow,
+  windowOptions,
+  getAutoHide: () => {
+    const s = displaySettings.getSettings();
+    return { enabled: s.panelAutoHide, seconds: s.panelAutoHideSec };
+  },
+});
 
 function placeAtBottomRight() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -265,194 +267,6 @@ function balloonHide() {
   }, 320); // 等淡出动画结束再真正隐藏窗口，避免闪烁
 }
 
-// 把设置面板定位到桌宠主窗口所在的显示器（多显示器下避免面板跑到主屏）。
-// 参考点取主窗口中心；主窗口不可用时退回光标所在屏幕。
-function positionPanelOnMainDisplay(win, width, height) {
-  if (!win || win.isDestroyed()) return;
-  const mainBounds = mainWindow && !mainWindow.isDestroyed()
-    ? mainWindow.getBounds()
-    : null;
-  const ref = mainBounds || screen.getCursorScreenPoint();
-  const { workArea } = screen.getDisplayNearestPoint({ x: ref.x, y: ref.y });
-  const x = workArea.x + Math.round((workArea.width - width) / 2);
-  const y = workArea.y + Math.round((workArea.height - height) / 2);
-  win.setPosition(Math.max(workArea.x, x), Math.max(workArea.y, y));
-}
-
-function closeMenuWindow() {
-  if (menuWindow && !menuWindow.isDestroyed()) menuWindow.destroy();
-  menuWindow = null;
-  menuPendingPosition = null;
-}
-
-function positionMenuWindow(point, width = MENU_WINDOW_SIZE.width, height = MENU_WINDOW_SIZE.height) {
-  if (!menuWindow || menuWindow.isDestroyed() || !point) return false;
-  const { workArea } = screen.getDisplayNearestPoint(point);
-  const x = Math.max(workArea.x, Math.min(point.x, workArea.x + workArea.width - width - 8));
-  const y = Math.max(workArea.y, Math.min(point.y, workArea.y + workArea.height - height - 8));
-  menuWindow.setPosition(Math.round(x), Math.round(y));
-  return true;
-}
-
-function openMenuWindow(point) {
-  closeMenuWindow();
-  menuPendingPosition = point;
-  menuWindow = new BrowserWindow({
-    width: MENU_WINDOW_SIZE.width,
-    height: MENU_WINDOW_SIZE.height,
-    transparent: true,
-    frame: false,
-    resizable: false,
-    show: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: true,
-    // 菜单需要通过失焦检测空白点击；不可聚焦窗口不会触发 blur。
-    focusable: true,
-    webPreferences: windowOptions(),
-  });
-  menuWindow.setAlwaysOnTop(true, 'screen-saver');
-  menuWindow.on('blur', () => {
-    if (menuWindow && !menuWindow.isDestroyed()) closeMenuWindow();
-  });
-  positionMenuWindow(point);
-  menuWindow.once('ready-to-show', () => {
-    if (menuWindow && !menuWindow.isDestroyed()) {
-      menuWindow.show();
-      menuWindow.focus();
-    }
-  });
-  menuWindow.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html'));
-  menuWindow.on('closed', () => { menuWindow = null; });
-}
-
-function closePersonalityPanel() {
-  if (personalityPanelWindow && !personalityPanelWindow.isDestroyed()) personalityPanelWindow.destroy();
-  personalityPanelWindow = null;
-}
-
-function openPersonalityPanel() {
-  closePersonalityPanel();
-  personalityPanelWindow = new BrowserWindow({
-    width: 520,
-    height: 680,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  personalityPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(personalityPanelWindow, 520, 680);
-  personalityPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'personality-panel.html'));
-  personalityPanelWindow.on('closed', () => { personalityPanelWindow = null; });
-}
-
-function closeProviderPanel() {
-  if (providerPanelWindow && !providerPanelWindow.isDestroyed()) providerPanelWindow.destroy();
-  providerPanelWindow = null;
-}
-
-function openProviderPanel() {
-  closeProviderPanel();
-  providerPanelWindow = new BrowserWindow({
-    width: 760,
-    height: 560,
-    resizable: true,
-    minWidth: 640,
-    minHeight: 480,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  providerPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(providerPanelWindow, 760, 560);
-  providerPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'provider-panel.html'));
-  providerPanelWindow.on('closed', () => { providerPanelWindow = null; });
-}
-
-function closeDisplayPanel() {
-  if (displayPanelWindow && !displayPanelWindow.isDestroyed()) displayPanelWindow.destroy();
-  displayPanelWindow = null;
-}
-
-function openDisplayPanel() {
-  closeDisplayPanel();
-  displayPanelWindow = new BrowserWindow({
-    width: 460,
-    height: 360,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  displayPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(displayPanelWindow, 460, 360);
-  displayPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'display-panel.html'));
-  displayPanelWindow.on('closed', () => { displayPanelWindow = null; });
-}
-
-function closeVoiceSettingsPanel() {
-  if (voiceSettingsPanelWindow && !voiceSettingsPanelWindow.isDestroyed()) voiceSettingsPanelWindow.destroy();
-  voiceSettingsPanelWindow = null;
-}
-
-function openVoiceSettingsPanel() {
-  closeVoiceSettingsPanel();
-  voiceSettingsPanelWindow = new BrowserWindow({
-    width: 480,
-    height: 360,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  voiceSettingsPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(voiceSettingsPanelWindow, 480, 360);
-  voiceSettingsPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'voice-settings.html'));
-  voiceSettingsPanelWindow.on('closed', () => { voiceSettingsPanelWindow = null; });
-}
-
-function closeContextPanel() {
-  if (contextPanelWindow && !contextPanelWindow.isDestroyed()) contextPanelWindow.destroy();
-  contextPanelWindow = null;
-}
-
-function openContextPanel() {
-  closeContextPanel();
-  contextPanelWindow = new BrowserWindow({
-    width: 460,
-    height: 380,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  contextPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(contextPanelWindow, 460, 380);
-  contextPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'context-panel.html'));
-  contextPanelWindow.on('closed', () => { contextPanelWindow = null; });
-}
-
-function closeMemoryPanel() {
-  if (memoryPanelWindow && !memoryPanelWindow.isDestroyed()) memoryPanelWindow.destroy();
-  memoryPanelWindow = null;
-}
-
-function openMemoryPanel() {
-  closeMemoryPanel();
-  memoryPanelWindow = new BrowserWindow({
-    width: 520,
-    height: 560,
-    resizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  memoryPanelWindow.setAlwaysOnTop(true, 'screen-saver');
-  positionPanelOnMainDisplay(memoryPanelWindow, 520, 560);
-  memoryPanelWindow.loadFile(path.join(__dirname, '..', 'renderer', 'memory-panel.html'));
-  memoryPanelWindow.on('closed', () => { memoryPanelWindow = null; });
-}
 
 // 主窗移动时，让打开中的聊天输入窗保持相对位置一起移动（“随人物拖动”）。
 // 展开成普通窗口（chatInputExpanded）时不跟随，避免与独立使用冲突。
@@ -654,8 +468,8 @@ ipcMain.handle('personality:reset', () => {
   generic.resetConversationHistory();
   return next;
 });
-ipcMain.handle('personality:openPanel', () => { openPersonalityPanel(); return true; });
-ipcMain.handle('personality:closePanel', () => { closePersonalityPanel(); return true; });
+ipcMain.handle('personality:openPanel', () => { panels.openPersonalityPanel(); return true; });
+ipcMain.handle('personality:closePanel', () => { panels.closePersonalityPanel(); return true; });
 
 ipcMain.handle('display:get', () => displaySettings.getSettings());
 ipcMain.handle('display:set', guarded('display:set', (patch) => {
@@ -668,8 +482,8 @@ ipcMain.handle('display:preview', guarded('display:preview', (patch) => {
   applyDisplaySettings(next);
   return next;
 }));
-ipcMain.handle('display:openPanel', () => { openDisplayPanel(); return true; });
-ipcMain.handle('display:closePanel', () => { closeDisplayPanel(); return true; });
+ipcMain.handle('display:openPanel', () => { panels.openDisplayPanel(); return true; });
+ipcMain.handle('display:closePanel', () => { panels.closeDisplayPanel(); return true; });
 
 // 语音设置面板：读写 .env 的 SIDECAR_TTS_*（单一事实源 = .env，与侧车读到的一致）
 ipcMain.handle('voiceSettings:get', () => sidecarEnv.read());
@@ -687,8 +501,8 @@ ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
   else if (!needsRestart) broadcastVoiceStatus(); // 开关变化也要让 🔊 图标同步
   return next;
 }));
-ipcMain.handle('voiceSettings:openPanel', () => { openVoiceSettingsPanel(); return true; });
-ipcMain.handle('voiceSettings:closePanel', () => { closeVoiceSettingsPanel(); return true; });
+ipcMain.handle('voiceSettings:openPanel', () => { panels.openVoiceSettingsPanel(); return true; });
+ipcMain.handle('voiceSettings:closePanel', () => { panels.closeVoiceSettingsPanel(); return true; });
 
 ipcMain.handle('provider:getConfig', () => generic.getProviderConfig());
 ipcMain.handle('provider:saveConfig', (_event, config) => {
@@ -702,8 +516,8 @@ ipcMain.handle('provider:saveConfig', (_event, config) => {
   }
 });
 ipcMain.handle('provider:check', (_event, provider) => generic.checkProvider(provider));
-ipcMain.handle('provider:openPanel', () => { openProviderPanel(); return true; });
-ipcMain.handle('provider:closePanel', () => { closeProviderPanel(); return true; });
+ipcMain.handle('provider:openPanel', () => { panels.openProviderPanel(); return true; });
+ipcMain.handle('provider:closePanel', () => { panels.closeProviderPanel(); return true; });
 
 // 上下文设置：探测模型最大上下文 + 滑条控制发送给模型的 token 预算
 ipcMain.handle('context:get', async () => {
@@ -717,8 +531,8 @@ ipcMain.handle('context:probe', async () => {
   await refreshModelMaxTokens();
   return cachedModelMaxTokens;
 });
-ipcMain.handle('context:openPanel', () => { openContextPanel(); return true; });
-ipcMain.handle('context:closePanel', () => { closeContextPanel(); return true; });
+ipcMain.handle('context:openPanel', () => { panels.openContextPanel(); return true; });
+ipcMain.handle('context:closePanel', () => { panels.closeContextPanel(); return true; });
 
 ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
 ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
@@ -726,8 +540,8 @@ ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
 ipcMain.handle('memory:getStatus', async () => graphitiMemory.getStatus());
 ipcMain.handle('memory:getSettings', () => graphitiMemory.getSettingsForPanel());
 ipcMain.handle('memory:setSettings', guarded('memory:setSettings', (patch) => graphitiMemory.writeSettings(patch)));
-ipcMain.handle('memory:openPanel', () => { openMemoryPanel(); return true; });
-ipcMain.handle('memory:closePanel', () => { closeMemoryPanel(); return true; });
+ipcMain.handle('memory:openPanel', () => { panels.openMemoryPanel(); return true; });
+ipcMain.handle('memory:closePanel', () => { panels.closeMemoryPanel(); return true; });
 ipcMain.handle('chat:setExpanded', guarded('chat:setExpanded', (expanded) => {
   chatInputExpanded = expanded;
   if (chatInputWindow && !chatInputWindow.isDestroyed()) {
@@ -842,15 +656,11 @@ ipcMain.on('window:setMousePassthrough', (event, passthrough) => {
 });
 
 ipcMain.handle('menu:open', (_event, x, y) => {
-  openMenuWindow({ x: Number(x) || 0, y: Number(y) || 0 });
+  panels.openMenuWindow({ x: Number(x) || 0, y: Number(y) || 0 });
   return true;
 });
-ipcMain.handle('menu:ready', () => {
-  if (!menuWindow || menuWindow.isDestroyed() || !menuPendingPosition) return false;
-  const [width, height] = menuWindow.getContentSize();
-  return positionMenuWindow(menuPendingPosition, width, height);
-});
-ipcMain.handle('menu:close', () => { closeMenuWindow(); return true; });
+ipcMain.handle('menu:ready', () => panels.repositionMenu());
+ipcMain.handle('menu:close', () => { panels.closeMenuWindow(); return true; });
 // 统一处理一条用户发言（文本输入或语音识别结果都走这里）：记录历史→流式生成→写回
 async function handleUserUtterance(rawInput) {
   const input = String(rawInput || '').trim().slice(0, 4000);
