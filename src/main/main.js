@@ -38,6 +38,7 @@ const state = require('./state');
 const createVoice = require('./voice');
 const createBalloons = require('./balloons');
 const createChat = require('./chat');
+const IPC = require('../contracts/ipc');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
@@ -156,7 +157,7 @@ function applyDisplaySettings(settings, preserveCenter = true) {
   }
   setMainWindowAlwaysOnTop(settings.alwaysOnTop);
   if (state.mainWindow.webContents && !state.mainWindow.isDestroyed()) {
-    state.mainWindow.webContents.send('display:changed', settings);
+    state.mainWindow.webContents.send(IPC.DisplayChanged, settings);
   }
 }
 
@@ -305,39 +306,39 @@ function sendToChatInput(channel, data) {
     state.chatInputWindow.webContents.send(channel, data);
   }
 }
-ipcMain.handle('personality:get', () => personalityRuntime.getPersonality());
-ipcMain.handle('personality:set', guarded('personality:set', (patch) => {
+ipcMain.handle(IPC.PersonalityGet, () => personalityRuntime.getPersonality());
+ipcMain.handle(IPC.PersonalitySet, guarded(IPC.PersonalitySet, (patch) => {
   const next = personalityRuntime.setPersonality(patch);
   rules.resetConfig();
   generic.resetConversationHistory();
   return next;
 }));
-ipcMain.handle('personality:reset', () => {
+ipcMain.handle(IPC.PersonalityReset, () => {
   const next = personalityRuntime.resetPersonality();
   rules.resetConfig();
   generic.resetConversationHistory();
   return next;
 });
-ipcMain.handle('personality:openPanel', () => { panels.openPersonalityPanel(); return true; });
-ipcMain.handle('personality:closePanel', () => { panels.closePersonalityPanel(); return true; });
+ipcMain.handle(IPC.PersonalityOpenPanel, () => { panels.openPersonalityPanel(); return true; });
+ipcMain.handle(IPC.PersonalityClosePanel, () => { panels.closePersonalityPanel(); return true; });
 
-ipcMain.handle('display:get', () => displaySettings.getSettings());
-ipcMain.handle('display:set', guarded('display:set', (patch) => {
+ipcMain.handle(IPC.DisplayGet, () => displaySettings.getSettings());
+ipcMain.handle(IPC.DisplaySet, guarded(IPC.DisplaySet, (patch) => {
   const next = displaySettings.setSettings(patch);
   applyDisplaySettings(next);
   return next;
 }));
-ipcMain.handle('display:preview', guarded('display:preview', (patch) => {
+ipcMain.handle(IPC.DisplayPreview, guarded(IPC.DisplayPreview, (patch) => {
   const next = { ...displaySettings.getSettings(), ...patch };
   applyDisplaySettings(next);
   return next;
 }));
-ipcMain.handle('display:openPanel', () => { panels.openDisplayPanel(); return true; });
-ipcMain.handle('display:closePanel', () => { panels.closeDisplayPanel(); return true; });
+ipcMain.handle(IPC.DisplayOpenPanel, () => { panels.openDisplayPanel(); return true; });
+ipcMain.handle(IPC.DisplayClosePanel, () => { panels.closeDisplayPanel(); return true; });
 
 // 语音设置面板：读写 .env 的 SIDECAR_TTS_*（单一事实源 = .env，与侧车读到的一致）
-ipcMain.handle('voiceSettings:get', () => sidecarEnv.read());
-ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
+ipcMain.handle(IPC.VoiceSettingsGet, () => sidecarEnv.read());
+ipcMain.handle(IPC.VoiceSettingsSet, guarded(IPC.VoiceSettingsSet, (patch) => {
   const p = { ...patch };
   // 朗读语言改变时，合成语言自动跟随（GPT-SoVITS 按该语言发音）；为空（跟随回复）默认中文。
   if (typeof p.SIDECAR_TTS_SPEAK_LANG === 'string') {
@@ -351,11 +352,11 @@ ipcMain.handle('voiceSettings:set', guarded('voiceSettings:set', (patch) => {
   else if (!needsRestart) voice.broadcastVoiceStatus(); // 开关变化也要让 🔊 图标同步
   return next;
 }));
-ipcMain.handle('voiceSettings:openPanel', () => { panels.openVoiceSettingsPanel(); return true; });
-ipcMain.handle('voiceSettings:closePanel', () => { panels.closeVoiceSettingsPanel(); return true; });
+ipcMain.handle(IPC.VoiceSettingsOpenPanel, () => { panels.openVoiceSettingsPanel(); return true; });
+ipcMain.handle(IPC.VoiceSettingsClosePanel, () => { panels.closeVoiceSettingsPanel(); return true; });
 
-ipcMain.handle('provider:getConfig', () => generic.getProviderConfig());
-ipcMain.handle('provider:saveConfig', (_event, config) => {
+ipcMain.handle(IPC.ProviderGetConfig, () => generic.getProviderConfig());
+ipcMain.handle(IPC.ProviderSaveConfig, (_event, config) => {
   try {
     const result = { ok: true, config: generic.saveProviderConfig(config) };
     // provider 变化后重新探测模型上下文上限
@@ -365,59 +366,59 @@ ipcMain.handle('provider:saveConfig', (_event, config) => {
     return { ok: false, error: String(error.message || error) };
   }
 });
-ipcMain.handle('provider:check', (_event, provider) => generic.checkProvider(provider));
-ipcMain.handle('provider:openPanel', () => { panels.openProviderPanel(); return true; });
-ipcMain.handle('provider:closePanel', () => { panels.closeProviderPanel(); return true; });
+ipcMain.handle(IPC.ProviderCheck, (_event, provider) => generic.checkProvider(provider));
+ipcMain.handle(IPC.ProviderOpenPanel, () => { panels.openProviderPanel(); return true; });
+ipcMain.handle(IPC.ProviderClosePanel, () => { panels.closeProviderPanel(); return true; });
 
 // 上下文设置：探测模型最大上下文 + 滑条控制发送给模型的 token 预算
-ipcMain.handle('context:get', async () => {
+ipcMain.handle(IPC.ContextGet, async () => {
   const settings = contextSettings.getSettings(state.cachedModelMaxTokens);
   return { ...settings, modelMaxTokens: state.cachedModelMaxTokens };
 });
-ipcMain.handle('context:set', (event, ...args) => {
+ipcMain.handle(IPC.ContextSet, (event, ...args) => {
   // guard 上限跟随探测到的模型上下文（而不是硬编码 128k），否则探测出更大模型时拉不动滑条
-  const result = validatePayload('context:set', args, { contextMaxTokens: contextSettings.getUpperBound(state.cachedModelMaxTokens) });
+  const result = validatePayload(IPC.ContextSet, args, { contextMaxTokens: contextSettings.getUpperBound(state.cachedModelMaxTokens) });
   return result.ok ? contextSettings.setSettings(result.data[0], state.cachedModelMaxTokens) : IPC_ERROR;
 });
-ipcMain.handle('context:probe', async () => {
+ipcMain.handle(IPC.ContextProbe, async () => {
   await chat.refreshModelMaxTokens();
   return state.cachedModelMaxTokens;
 });
-ipcMain.handle('context:openPanel', () => { panels.openContextPanel(); return true; });
-ipcMain.handle('context:closePanel', () => { panels.closeContextPanel(); return true; });
+ipcMain.handle(IPC.ContextOpenPanel, () => { panels.openContextPanel(); return true; });
+ipcMain.handle(IPC.ContextClosePanel, () => { panels.closeContextPanel(); return true; });
 
-ipcMain.handle('memory:getStatus', async () => graphitiMemory.getStatus());
-ipcMain.handle('memory:getSettings', () => graphitiMemory.getSettingsForPanel());
-ipcMain.handle('memory:setSettings', guarded('memory:setSettings', (patch) => graphitiMemory.writeSettings(patch)));
-ipcMain.handle('memory:openPanel', () => { panels.openMemoryPanel(); return true; });
-ipcMain.handle('memory:closePanel', () => { panels.closeMemoryPanel(); return true; });
-ipcMain.handle('balloon:show', (_event, payload) => {
+ipcMain.handle(IPC.MemoryGetStatus, async () => graphitiMemory.getStatus());
+ipcMain.handle(IPC.MemoryGetSettings, () => graphitiMemory.getSettingsForPanel());
+ipcMain.handle(IPC.MemorySetSettings, guarded(IPC.MemorySetSettings, (patch) => graphitiMemory.writeSettings(patch)));
+ipcMain.handle(IPC.MemoryOpenPanel, () => { panels.openMemoryPanel(); return true; });
+ipcMain.handle(IPC.MemoryClosePanel, () => { panels.closeMemoryPanel(); return true; });
+ipcMain.handle(IPC.BalloonShow, (_event, payload) => {
   balloons.balloonRender(Object.assign({ action: 'show' }, payload && typeof payload === 'object' ? payload : {}));
   return true;
 });
-ipcMain.handle('balloon:update', (_event, full) => {
+ipcMain.handle(IPC.BalloonUpdate, (_event, full) => {
   if (state.balloonWindow && !state.balloonWindow.isDestroyed()) balloons.dispatchBalloonRender({ action: 'update', full: String(full || '') });
   return true;
 });
-ipcMain.handle('balloon:finish', (_event, payload) => {
+ipcMain.handle(IPC.BalloonFinish, (_event, payload) => {
   if (state.balloonWindow && !state.balloonWindow.isDestroyed()) {
     const p = payload && typeof payload === 'object' ? payload : {};
     balloons.dispatchBalloonRender({ action: 'finish', text: String(p.text || ''), face: String(p.face || 'idle') });
   }
   return true;
 });
-ipcMain.handle('balloon:hide', () => { balloons.balloonHide(); return true; });
+ipcMain.handle(IPC.BalloonHide, () => { balloons.balloonHide(); return true; });
 
 // renderer 端 onRender 监听注册完成后上报，此时才 flush 加载阶段积压的首条渲染消息
-ipcMain.handle('balloon:ready', () => {
+ipcMain.handle(IPC.BalloonReady, () => {
   if (state.pendingBalloonRender && state.balloonWindow && !state.balloonWindow.isDestroyed()) {
-    state.balloonWindow.webContents.send('balloon:render', state.pendingBalloonRender);
+    state.balloonWindow.webContents.send(IPC.BalloonRender, state.pendingBalloonRender);
   }
   state.pendingBalloonRender = null;
   return true;
 });
 
-ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
+ipcMain.handle(IPC.BalloonDragMove, (_event, x, y) => {
   if (!state.balloonWindow || state.balloonWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
   const [width, height] = state.balloonWindow.getSize();
   const pos = balloons.clampToWorkArea({ x, y }, width, height);
@@ -429,8 +430,8 @@ ipcMain.handle('balloonWindow:dragMove', (_event, x, y) => {
   state.balloonWindow.setPosition(Math.round(pos.x), Math.round(pos.y));
   return true;
 });
-ipcMain.handle('balloonWindow:release', () => { state.balloonFreed = true; return true; });
-ipcMain.handle('balloonWindow:reanchor', () => {
+ipcMain.handle(IPC.BalloonRelease, () => { state.balloonFreed = true; return true; });
+ipcMain.handle(IPC.BalloonReanchor, () => {
   state.balloonFreed = false;
   state.balloonFreedPos = null;
   state.balloonRelToMain = null;
@@ -438,7 +439,7 @@ ipcMain.handle('balloonWindow:reanchor', () => {
   return true;
 });
 
-ipcMain.on('window:moveBy', (event, dx, dy) => {
+ipcMain.on(IPC.WindowMoveBy, (event, dx, dy) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [x, y] = win.getPosition();
@@ -447,7 +448,7 @@ ipcMain.on('window:moveBy', (event, dx, dy) => {
 });
 
 // 绝对定位：拖拽用屏幕坐标直接 setPosition，避免增量模式下 getPosition 读到陈旧窗口位置导致滞后
-ipcMain.on('window:moveTo', (event, x, y) => {
+ipcMain.on(IPC.WindowMoveTo, (event, x, y) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
   win.setPosition(Math.round(x), Math.round(y));
@@ -455,7 +456,7 @@ ipcMain.on('window:moveTo', (event, x, y) => {
 });
 
 // 拖拽期间把置顶层级从 screen-saver 降为 floating，避免 macOS 逐帧合成导致闪烁
-ipcMain.on('window:setDragState', (event, dragging) => {
+ipcMain.on(IPC.WindowSetDragState, (event, dragging) => {
   if (typeof dragging !== 'boolean') return;
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win !== state.mainWindow) return;
@@ -469,21 +470,21 @@ ipcMain.on('window:setDragState', (event, dragging) => {
   }
 });
 
-ipcMain.on('window:setMousePassthrough', (event, passthrough) => {
+ipcMain.on(IPC.WindowSetMousePassthrough, (event, passthrough) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win !== state.mainWindow || typeof passthrough !== 'boolean') return;
   if (passthrough) win.setIgnoreMouseEvents(true, { forward: true });
   else win.setIgnoreMouseEvents(false);
 });
 
-ipcMain.handle('menu:open', (_event, x, y) => {
+ipcMain.handle(IPC.MenuOpen, (_event, x, y) => {
   panels.openMenuWindow({ x: Number(x) || 0, y: Number(y) || 0 });
   return true;
 });
-ipcMain.handle('menu:ready', () => panels.repositionMenu());
-ipcMain.handle('menu:close', () => { panels.closeMenuWindow(); return true; });
+ipcMain.handle(IPC.MenuReady, () => panels.repositionMenu());
+ipcMain.handle(IPC.MenuClose, () => { panels.closeMenuWindow(); return true; });
 // 统一处理一条用户发言（文本输入或语音识别结果都走这里）：记录历史→流式生成→写回
-ipcMain.handle('menu:quit', () => { app.quit(); return true; });
+ipcMain.handle(IPC.MenuQuit, () => { app.quit(); return true; });
 
 app.whenReady().then(() => {
   // macOS：隐藏 Dock（ActivationPolicyAccessory / UIElementApplication）后，

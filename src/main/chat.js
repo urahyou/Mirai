@@ -8,6 +8,7 @@
 //   - consts：聊天气泡输入框的紧凑/展开尺寸
 // handleUserUtterance 需要穿搭给语音子系统（语音识别最终结果自动发送时用），
 // 主进程通过惰性引用注入，避免 voice ⇄ chat 循环 require。
+const IPC = require('../contracts/ipc');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
   voice, sendToChatInput,
@@ -18,8 +19,8 @@ module.exports = function createChat({
   const { BrowserWindow } = require('electron');
 
   function broadcastChatDelta(data) {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('chat:delta', data);
-    sendToChatInput('chat:delta', data);
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send(IPC.ChatDelta, data);
+    sendToChatInput(IPC.ChatDelta, data);
   }
 
   function enqueueChat(work) {
@@ -75,7 +76,7 @@ module.exports = function createChat({
     if (!input) return '';
     const turnId = crypto.randomUUID();
     const userMessage = chatHistory.appendMessage('user', input);
-    sendToChatInput('chat:history', { message: userMessage, turnId });
+    sendToChatInput(IPC.ChatHistory, { message: userMessage, turnId });
     broadcastChatDelta({ started: true, done: false, turnId });
     const emit = (chunk, full) => {
       broadcastChatDelta({ chunk, full, done: false, turnId });
@@ -87,28 +88,28 @@ module.exports = function createChat({
       { role: 'assistant', content: reply },
     ];
     void graphitiMemory.add(episode, new Date(userMessage.createdAt).toISOString());
-    sendToChatInput('chat:history', { message: assistantMessage, turnId });
+    sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
     broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
     // 语音输出：让小未来开口说这句回复
     voice.speak(reply);
     return reply;
   }
 
-  ipcMain.handle('character:greet', async () => {
+  ipcMain.handle(IPC.CharacterGreet, async () => {
     const reply = await generatePetLine('click');
     if (reply) {
       const message = chatHistory.appendMessage('assistant', reply);
-      sendToChatInput('chat:history', { message, source: 'interaction' });
+      sendToChatInput(IPC.ChatHistory, { message, source: 'interaction' });
       voice.speak(reply);
     }
     return reply;
   });
 
-  ipcMain.handle('chat:openInput', () => { openChatInputWindow(); return true; });
-  ipcMain.handle('chat:closeInput', () => { closeChatInputWindow(); return true; });
-  ipcMain.handle('chat:getHistory', () => chatHistory.getMessages());
+  ipcMain.handle(IPC.ChatOpenInput, () => { openChatInputWindow(); return true; });
+  ipcMain.handle(IPC.ChatCloseInput, () => { closeChatInputWindow(); return true; });
+  ipcMain.handle(IPC.ChatGetHistory, () => chatHistory.getMessages());
 
-  ipcMain.handle('chat:setExpanded', (_event, expanded) => {
+  ipcMain.handle(IPC.ChatSetExpanded, (_event, expanded) => {
     state.chatInputExpanded = expanded;
     if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
       if (expanded) {
@@ -126,7 +127,7 @@ module.exports = function createChat({
     return resizeChatInputWindow(state.chatInputWindow, target.width, target.height);
   });
 
-  ipcMain.handle('chat:resizeInput', (event, requestedHeight) => {
+  ipcMain.handle(IPC.ChatResizeInput, (event, requestedHeight) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return false;
     if (win !== state.chatInputWindow || state.chatInputExpanded) return true;
@@ -135,7 +136,7 @@ module.exports = function createChat({
     return resizeChatInputWindow(win, width, height);
   });
 
-  ipcMain.handle('chat:submit', async (_event, rawInput) => handleUserUtterance(rawInput));
+  ipcMain.handle(IPC.ChatSubmit, async (_event, rawInput) => handleUserUtterance(rawInput));
 
   return { handleUserUtterance, refreshModelMaxTokens };
 };

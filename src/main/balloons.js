@@ -8,6 +8,7 @@
 // 仍由主进程注册，这里只提供这些指令背后的实现函数。
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
+const IPC = require('../contracts/ipc');
 
 const BALLOON_WINDOW_SIZE = { width: 320, height: 200 };
 const BALLOON_HEAD_ANCHOR_RATIO = 0.24; // 头顶锚点：主窗顶部向下的比例
@@ -41,7 +42,7 @@ module.exports = function createBalloons({ state, windowOptions, config }) {
     }
     // 注意：首条渲染指令不在此处（did-finish-load）发送——此时 renderer 的 onRender
     // 可能还没注册好（balloon.js 用轮询等 DOM），did-finish-load 就发会导致丢失。
-    // 改为由 renderer 上报 balloon:ready 后再 flush（见 ipcMain.handle('balloon:ready')）。
+    // 改为由 renderer 上报 balloon:ready 后再 flush（见 ipcMain.handle(IPC.BalloonReady)）。
     state.balloonWindow.on('closed', () => { state.balloonWindow = null; state.pendingBalloonRender = null; });
   }
 
@@ -88,7 +89,7 @@ module.exports = function createBalloons({ state, windowOptions, config }) {
       state.pendingBalloonRender = payload;
       return;
     }
-    state.balloonWindow.webContents.send('balloon:render', payload);
+    state.balloonWindow.webContents.send(IPC.BalloonRender, payload);
     state.pendingBalloonRender = null;
   }
 

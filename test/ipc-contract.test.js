@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { IPC_ERROR, validatePayload } = require('../src/main/ipc-validation');
+const IPC = require('../src/contracts/ipc');
 
 function assertRejected(channel, args) {
   assert.deepEqual(validatePayload(channel, args), IPC_ERROR);
@@ -192,7 +193,7 @@ test('Given transparent space around the character When pointer hit testing runs
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
 
-  assert.match(main, /window:setMousePassthrough/);
+  assert.match(main, /IPC\.WindowSetMousePassthrough/);
   assert.match(main, /setIgnoreMouseEvents\(true, \{ forward: true \}\)/);
   assert.match(renderer, /setMousePassthrough\(!characterHit && !bubbleHit\)/);
   assert.match(renderer, /if \(dragging\)[\s\S]*?setMousePassthrough\(false\)/);
@@ -211,4 +212,25 @@ test('Given model max context larger than the 128k soft limit When saving contex
 test('Given no model context info When saving context Then the soft limit 128k applies', () => {
   assert.deepEqual(validatePayload('context:set', [{ maxContextTokens: 131072 }]), { ok: true, data: [{ maxContextTokens: 131072 }] });
   assertRejected('context:set', [{ maxContextTokens: 131073 }]);
+});
+
+test('Given the IPC contract single source When compared to the preload bridge Then every channel matches bidirectionally', () => {
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'preload.js'), 'utf8');
+  const ipcValues = Object.values(IPC);
+
+  // preload 每次出现的 channel 字面量都必须来自契约（无多余/拼写漂移）
+  const preloadChannels = [...preload.matchAll(/'([a-zA-Z]+:[a-zA-Z-]+)'/g)].map((m) => m[1]);
+  for (const ch of preloadChannels) {
+    assert.ok(ipcValues.includes(ch), `preload 用了契约外的通道: ${ch}`);
+  }
+
+  // 契约里每个 channel 都必须被 preload 桥显式引用（无遗漏）
+  const unique = new Set(preloadChannels);
+  for (const v of ipcValues) {
+    assert.ok(unique.has(v), `契约通道未被 preload 桥引用: ${v}`);
+  }
+
+  // 契约常量全部为字符串通道名
+  for (const v of ipcValues) assert.equal(typeof v, 'string');
+  assert.ok(ipcValues.length >= 60, '契约通道数量应覆盖全部 IPC');
 });

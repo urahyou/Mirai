@@ -4,6 +4,7 @@
 //   - voiceBridge / generic / sidecarEnv / ipcMain / state
 //   - sendToChatInput / handleUserUtterance（由主进程提供，避免互相 require 造成循环）
 // 共享可变状态（state.isVoiceListening / state._speakBusy 等）统一读写 state。
+const IPC = require('../contracts/ipc');
 module.exports = function createVoice({
   voiceBridge, generic, sidecarEnv, ipcMain, state,
   sendToChatInput, handleUserUtterance,
@@ -56,14 +57,14 @@ module.exports = function createVoice({
   // 向两个窗口广播语音状态（聆听开关 + 侧车就绪度 + 语音输出开关），供 🎤/🔊 图标显示状态
   function broadcastVoiceStatus() {
     const status = { ...voiceBridge.getStatus(), listening: state.isVoiceListening.value, ttsEnabled: voiceOutputEnabled() };
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('voice:status', status);
-    sendToChatInput('voice:status', status);
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send(IPC.VoiceStatus, status);
+    sendToChatInput(IPC.VoiceStatus, status);
   }
 
   // 向两个窗口广播聆听开关状态（宠物窗 + 对话窗）
   function broadcastVoiceListening() {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('voice:listening-changed', state.isVoiceListening.value);
-    sendToChatInput('voice:listening-changed', state.isVoiceListening.value);
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send(IPC.VoiceListeningChanged, state.isVoiceListening.value);
+    sendToChatInput(IPC.VoiceListeningChanged, state.isVoiceListening.value);
   }
 
   function setVoiceListening(on) {
@@ -91,7 +92,7 @@ module.exports = function createVoice({
   // 飘字：实时部分识别 → 填进对话窗输入框（说话文字显示在“输入对话框”）
   voiceBridge.on('asr-partial', (text) => {
     if (!state.isVoiceListening.value) return;
-    sendToChatInput('voice:asr-partial', text);
+    sendToChatInput(IPC.VoiceAsrPartial, text);
   });
 
   // 最终识别：对话窗开着→填输入框（是否自动发送由对话窗决定）；对话窗关着→直接自动发送（回复走气泡）
@@ -99,7 +100,7 @@ module.exports = function createVoice({
     if (!state.isVoiceListening.value) return;
     const t = String(text || '').trim();
     if (!t) return;
-    if (state.chatInputOpen) sendToChatInput('voice:asr-final', t);
+    if (state.chatInputOpen) sendToChatInput(IPC.VoiceAsrFinal, t);
     else void handleUserUtterance(t);
   });
 
@@ -114,7 +115,7 @@ module.exports = function createVoice({
       if (pending) speak(pending);
     }
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send('voice:audio', {
+      state.mainWindow.webContents.send(IPC.VoiceAudio, {
         id: audio.id,
         format: audio.format || 'mp3',
         data: audio.data, // Buffer → 序列化为 Uint8Array，renderer 端解码播放
@@ -126,28 +127,28 @@ module.exports = function createVoice({
   // 注意：回调参数用 vadState 而非 state，避免遮蔽模块级 state 对象。
   voiceBridge.on('vad', (vadState) => {
     if (vadState === 'speech_start' && state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send('voice:speak-interrupt');
+      state.mainWindow.webContents.send(IPC.VoiceSpeakInterrupt);
     }
   });
 
-  ipcMain.handle('voice:start', () => {
+  ipcMain.handle(IPC.VoiceStart, () => {
     voiceBridge.start();
     return voiceBridge.getStatus();
   });
-  ipcMain.handle('voice:stop', () => {
+  ipcMain.handle(IPC.VoiceStop, () => {
     voiceBridge.stop();
     return true;
   });
-  ipcMain.handle('voice:getStatus', () => ({ ...voiceBridge.getStatus(), listening: state.isVoiceListening.value, ttsEnabled: voiceOutputEnabled() }));
-  ipcMain.handle('voice:setListening', (_event, on) => {
+  ipcMain.handle(IPC.VoiceGetStatus, () => ({ ...voiceBridge.getStatus(), listening: state.isVoiceListening.value, ttsEnabled: voiceOutputEnabled() }));
+  ipcMain.handle(IPC.VoiceSetListening, (_event, on) => {
     setVoiceListening(on);
     return state.isVoiceListening.value;
   });
-  ipcMain.handle('voice:setTtsEnabled', (_event, on) => {
+  ipcMain.handle(IPC.VoiceSetTtsEnabled, (_event, on) => {
     setVoiceTtsEnabled(on);
     return voiceOutputEnabled();
   });
-  ipcMain.on('voice:pcm', (_event, buffer) => voiceBridge.sendPcm(buffer));
+  ipcMain.on(IPC.VoicePcm, (_event, buffer) => voiceBridge.sendPcm(buffer));
 
   return {
     speak,
