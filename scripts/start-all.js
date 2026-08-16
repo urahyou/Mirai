@@ -23,6 +23,23 @@ function dotenv(key, fallback = '') {
   return fallback;
 }
 
+// 0) 清理占用指定端口的进程（避免重复一键启动时端口冲突）
+function reclaimPort(port) {
+  try {
+    const out = execSync(`lsof -tiTCP:${port} -sTCP:LISTEN`, {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const pids = out.split(/\s+/).filter(Boolean);
+    for (const pid of pids) {
+      log(`端口 ${port} 已被 PID ${pid} 占用，清理后重新拉起`);
+      try { process.kill(Number(pid), 'SIGTERM'); } catch { /* 忽略 */ }
+    }
+    return pids.length > 0;
+  } catch {
+    return false; // 无占用
+  }
+}
+
 // 1) 确保 Neo4j 容器运行
 function ensureNeo4j() {
   const name = 'mirai-neo4j';
@@ -50,6 +67,7 @@ function ensureNeo4j() {
 
 // 2) 启动 Graphiti 记忆侧车（8766）
 function startGraphiti() {
+  reclaimPort(8766); // 先清掉可能残留的旧 sidecar，避免 Address already in use
   const venvPy = path.join(APP_ROOT, 'graphiti-sidecar', '.venv', 'bin', 'python');
   const script = path.join(APP_ROOT, 'graphiti-sidecar', 'server.py');
   const child = spawn(venvPy, [script], { stdio: 'inherit', env: process.env });
