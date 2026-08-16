@@ -30,10 +30,14 @@ const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
+const storage = require('../services/storage');
+const { createEventBus } = require('../services/event-bus');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
 const state = require('./shared-state');
+// 单例事件总线：感知源 emit、领域系统 on（事件类型见 contracts/events.js）
+const eventBus = createEventBus();
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
 const createChat = require('./chat');
@@ -109,7 +113,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge,
+  contextSettings, graphitiMemory, voiceBridge, eventBus, storage,
 });
 
 app.whenReady().then(() => {
@@ -124,6 +128,8 @@ app.whenReady().then(() => {
   contextSettings.setRuntimePath(path.join(app.getPath('userData'), 'context-settings.json'));
   chatHistory.setRuntimePath(path.join(app.getPath('userData'), 'chat-history.json'));
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
+  // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
+  storage.setRuntimeDir(app.getPath('userData'));
   // 启动后异步探测模型最大上下文（不阻塞启动）
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
