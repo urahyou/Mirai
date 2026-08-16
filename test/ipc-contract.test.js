@@ -251,3 +251,18 @@ test('Given IPC handlers are decomposed into subsystems, main.js stays a pure as
     assert.doesNotMatch(sub, /'(?:[a-zA-Z]+:[a-zA-Z-]+)'/); // 不该出现裸通道字面量
   }
 });
+
+test('Given IPC subsystems use actual module paths, they can all be required', () => {
+  // 回归守卫：require 路径错误（如 './subsystems' vs '../subsystems'）只能靠运行或本测试暴露。
+  const mountIpc = require('../src/subsystems');
+  assert.equal(typeof mountIpc, 'function');
+  for (const f of ['personality', 'display', 'voice-settings', 'provider', 'context', 'memory', 'balloon', 'window', 'menu']) {
+    assert.equal(typeof require(`../src/subsystems/${f}`), 'function', `${f} 子系统应导出 setup(api)`);
+  }
+  // main.js 引用的子系统路径必须真实存在（避免 './subsystems' 这类相对路径错误）
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const m = main.match(/const mountIpc = require\(['"]([^'"]+)['"]\)/);
+  assert.ok(m, 'main.js 应 require subsystems');
+  const resolved = require.resolve(path.join(__dirname, '..', 'src', 'main', m[1]));
+  assert.ok(fs.existsSync(resolved), `main.js 引用的子系统模块不存在: ${m[1]}`);
+});

@@ -38,7 +38,7 @@ const createVoice = require('./voice');
 const createBalloons = require('./balloons');
 const createChat = require('./chat');
 const createWindows = require('./windows');
-const mountIpc = require('./subsystems');
+const mountIpc = require('../subsystems');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
