@@ -3,8 +3,8 @@
  *
  * ▸ 职责分区（按文件内顺序；已拆模块见各 require）
  *   1. 依赖与全局状态    —— 共享引用/配置/标志（state.isVoiceListening 等），已拆 state.js
- *   2. 窗口辅助          —— windowOptions / placeAtBottomRight / setMainWindowAlwaysOnTop / applyDisplaySettings
- *   3. 主窗(桌宠)        —— createMainWindow（Live2D 角色、白名单点击）
+ *   2. 窗口辅助          —— 已拆 windows.js（windowOptions / 主窗创建 / 置顶 / 显示应用 / 聊天输入窗 / 转发）
+ *   3. 主窗(桌宠)        —— createMainWindow 已随 windows.js 拆出（Live2D 角色、白名单点击）
  *   4. 独立气泡窗        —— 已拆 balloons.js（创建/定位/渲染/隐藏）
  *   5. 聊天输入窗        —— open/close/resize/syncChatInputWithMain
  *   6. 菜单窗 + 各设置面板 —— 已拆 panels.js
@@ -19,7 +19,7 @@
  * Provider/记忆/外部能力均通过 src/engine 与 src/services 注入，本文件不做具体实现。
  */
 
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const generic = require('../engine/generic');
 const rules = require('../engine/rules');
@@ -38,10 +38,13 @@ const state = require('./state');
 const createVoice = require('./voice');
 const createBalloons = require('./balloons');
 const createChat = require('./chat');
+const createWindows = require('./windows');
 const IPC = require('../contracts/ipc');
 
 const WINDOW = { width: 320, height: 600 };
 const config = { dev: process.argv.includes('--dev') };
+// 统一定制 webPreferences（windows.js 模块级导出，供 panels/balloons 复用）
+const windowOptions = createWindows.windowOptions;
 
 const CHAT_INPUT_COMPACT_SIZE = { width: 380, height: 112 };
 const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
@@ -55,19 +58,22 @@ function guarded(channel, handler) {
   };
 }
 
-function windowOptions(overrides = {}) {
-  return {
-    contextIsolation: true,
-    nodeIntegration: false,
-    preload: path.join(__dirname, 'preload.js'),
-    ...overrides,
-  };
-}
-
 // 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗引用 + 统一 webPreferences）
 const panels = createPanels({
   getPetWindow: () => state.mainWindow,
   windowOptions,
+});
+
+// 独立气泡窗口模块（创建/定位/渲染/隐藏）——依赖注入所需能力
+const balloons = createBalloons({ state, windowOptions, config });
+
+// 窗口辅助模块（主窗/聊天输入窗的创建、定位、置顶、显示应用、转发）
+// ——依赖注入：state(共享窗口引用)、balloons(主窗移动/缩放时气泡跟随)、
+//   displaySettings/windowLayout、尺寸常量。
+const windows = createWindows({
+  state, balloons, displaySettings, windowLayout, config,
+  WINDOW, CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE,
+  CHAT_INPUT_BELLY_CENTER_RATIO, WORK_AREA_MARGIN,
 });
 
 // 语音子系统（朗读合成去重 + 语音识别分发 + 语音 IPC）——依赖注入所需能力
@@ -79,12 +85,9 @@ const voice = createVoice({
   sidecarEnv,
   ipcMain,
   state,
-  sendToChatInput,
+  sendToChatInput: windows.sendToChatInput,
   handleUserUtterance: (text) => (chatRef.handleUserUtterance ? chatRef.handleUserUtterance(text) : undefined),
 });
-
-// 独立气泡窗口模块（创建/定位/渲染/隐藏）——依赖注入所需能力
-const balloons = createBalloons({ state, windowOptions, config });
 
 // 聊天调度核心模块（多轮对话/单句点击回应/流式广播/上下文压缩预算/聊天 IPC）
 const chat = createChat({
@@ -96,216 +99,18 @@ const chat = createChat({
   contextSettings,
   probeMaxContext,
   voice,
-  sendToChatInput,
+  sendToChatInput: windows.sendToChatInput,
   windowOps: {
-    openChatInputWindow,
-    closeChatInputWindow,
-    resizeChatInputWindow,
-    setMainWindowAlwaysOnTop,
+    openChatInputWindow: windows.openChatInputWindow,
+    closeChatInputWindow: windows.closeChatInputWindow,
+    resizeChatInputWindow: windows.resizeChatInputWindow,
+    setMainWindowAlwaysOnTop: windows.setMainWindowAlwaysOnTop,
     displaySettings,
   },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
 });
 chatRef.handleUserUtterance = chat.handleUserUtterance;
 
-function placeAtBottomRight() {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const cursor = screen.getCursorScreenPoint();
-  const { workArea } = screen.getDisplayNearestPoint(cursor);
-  const [width, height] = state.mainWindow.getSize();
-  state.mainWindow.setPosition(workArea.x + workArea.width - width - 20, workArea.y + workArea.height - height - 20);
-}
-
-function setMainWindowAlwaysOnTop(enabled) {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  // 层级策略（macOS 层级从高到低：screen-saver > floating > normal）：
-  //  - 无对话框：置顶配置开 → screen-saver（高于一切）；关 → normal。
-  //  - 紧凑对话框开启：置顶配置开 → floating（仍高于普通应用如微信，但低于对话框），
-  //    关 → normal。这样达成“输入框 > 人物 > 微信”。
-  //  - 展开对话框开启：人物保持 floating（始终置顶于普通应用），
-  //    聊天窗本身转 normal（可被其他应用覆盖、当普通窗口用）。
-  let level;
-  if (!state.chatInputOpen) {
-    level = Boolean(enabled) ? 'screen-saver' : false;
-  } else {
-    level = Boolean(enabled) ? 'floating' : false;
-  }
-  const shouldStayVisible = Boolean(level);
-  if (shouldStayVisible) state.mainWindow.setAlwaysOnTop(true, level);
-  else state.mainWindow.setAlwaysOnTop(false);
-  if (typeof state.mainWindow.setVisibleOnAllWorkspaces === 'function') {
-    state.mainWindow.setVisibleOnAllWorkspaces(shouldStayVisible, {
-      visibleOnFullScreen: shouldStayVisible,
-      // 已隐藏 Dock（accessory 辅助应用），跳过默认的进程类型转换，
-      // 避免每次调用短暂隐藏窗口/Dock，并确保能加入全屏 Space。
-      skipTransformProcessType: true,
-    });
-  }
-}
-
-function applyDisplaySettings(settings, preserveCenter = true) {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const nextWidth = Math.round(WINDOW.width * settings.scale);
-  const nextHeight = Math.round(WINDOW.height * settings.scale);
-  const bounds = state.mainWindow.getBounds();
-  state.mainWindow.setSize(nextWidth, nextHeight);
-  if (preserveCenter) {
-    state.mainWindow.setPosition(
-      Math.round(bounds.x + (bounds.width - nextWidth) / 2),
-      Math.round(bounds.y + (bounds.height - nextHeight) / 2),
-    );
-  }
-  setMainWindowAlwaysOnTop(settings.alwaysOnTop);
-  if (state.mainWindow.webContents && !state.mainWindow.isDestroyed()) {
-    state.mainWindow.webContents.send(IPC.DisplayChanged, settings);
-  }
-}
-
-function createMainWindow() {
-  const settings = displaySettings.getSettings();
-  state.mainWindow = new BrowserWindow({
-    width: Math.round(WINDOW.width * settings.scale),
-    height: Math.round(WINDOW.height * settings.scale),
-    transparent: true,
-    frame: false,
-    resizable: false,
-    alwaysOnTop: settings.alwaysOnTop,
-    hasShadow: false,
-    skipTaskbar: true,
-    webPreferences: windowOptions(),
-  });
-  setMainWindowAlwaysOnTop(settings.alwaysOnTop);
-  state.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  placeAtBottomRight();
-
-  if (config.dev) {
-    state.mainWindow.webContents.on('console-message', (_event, _level, message) => console.log('[renderer]', message));
-    state.mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-}
-// 主窗移动时，让打开中的聊天输入窗保持相对位置一起移动（“随人物拖动”）。
-// 展开成普通窗口（state.chatInputExpanded）时不跟随，避免与独立使用冲突。
-function syncChatInputWithMain() {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const mainBounds = state.mainWindow.getBounds();
-  if (!state.lastMainWindowPos) { // 首次：只记录基准，不移动
-    state.lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
-    return;
-  }
-  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed() && !state.chatInputExpanded) {
-    const dx = mainBounds.x - state.lastMainWindowPos.x;
-    const dy = mainBounds.y - state.lastMainWindowPos.y;
-    if (dx || dy) {
-      const [cx, cy] = state.chatInputWindow.getPosition();
-      state.chatInputWindow.setPosition(cx + dx, cy + dy);
-    }
-  }
-  state.lastMainWindowPos = { x: mainBounds.x, y: mainBounds.y };
-}
-
-// 主窗被移动（系统 moved 事件 或 拖拽 moveTo/moveBy）后统一调用：
-// 未拖离的气泡跟随角色头 + 打开中的聊天窗保持相对位置一起拖动。
-// 不能只依赖系统 'moved' 事件（编程式 setPosition 在部分平台不可靠）。
-function onMainWindowMoved() {
-  balloons.positionBalloon(); // 未拖离的贴头顶、已拖离的按相对偏移跟随
-  syncChatInputWithMain();
-}
-
-function closeChatInputWindow() {
-  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
-    saveChatInputPosition(state.chatInputWindow);
-    state.chatInputWindow.destroy();
-  }
-  state.chatInputWindow = null;
-  state.chatInputExpanded = false;
-  state.chatInputOpen = false;
-  // 先置空聊天窗口，再恢复角色置顶，否则会被上面的 state.chatInputOpen 守卫挡住。
-  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-}
-
-function saveChatInputPosition(window) {
-  if (!window || window.isDestroyed() || !state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const chatBounds = window.getBounds();
-  const mainBounds = state.mainWindow.getBounds();
-  windowLayout.setLayout({
-    chatOffset: { x: chatBounds.x - mainBounds.x, y: chatBounds.y - mainBounds.y },
-  });
-}
-
-function openChatInputWindow() {
-  closeChatInputWindow();
-  state.chatInputExpanded = false;
-  state.chatInputOpen = true;
-  // 角色从 screen-saver 降到 floating：仍高于普通应用（如微信），但低于对话框。
-  setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-  state.chatInputWindow = new BrowserWindow({
-    width: CHAT_INPUT_COMPACT_SIZE.width,
-    height: CHAT_INPUT_COMPACT_SIZE.height,
-    transparent: true,
-    frame: false,
-    resizable: false,
-    movable: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: true,
-    webPreferences: windowOptions(),
-  });
-  // floating 高于普通应用窗口但低于系统输入法候选窗；输入期间不再改变层级。
-  state.chatInputWindow.setAlwaysOnTop(true, 'floating');
-  state.chatInputWindow.moveTop();
-  state.chatInputWindow.loadFile(path.join(__dirname, '..', 'renderer', 'chat-input.html'));
-  state.chatInputWindow.webContents.once('did-finish-load', () => {
-    if (!state.chatInputWindow || state.chatInputWindow.isDestroyed()) return;
-    state.chatInputWindow.focus();
-    state.chatInputWindow.webContents.focus();
-  });
-
-  const mainBounds = state.mainWindow && !state.mainWindow.isDestroyed()
-    ? state.mainWindow.getBounds()
-    : { x: screen.getCursorScreenPoint().x, y: screen.getCursorScreenPoint().y, ...WINDOW };
-  const { workArea } = screen.getDisplayNearestPoint({ x: mainBounds.x, y: mainBounds.y });
-  const [width, height] = state.chatInputWindow.getSize();
-  const savedOffset = windowLayout.getLayout().chatOffset;
-  const bellyCenterX = mainBounds.x + mainBounds.width / 2;
-  const bellyCenterY = mainBounds.y + mainBounds.height * CHAT_INPUT_BELLY_CENTER_RATIO;
-  const preferredX = savedOffset ? mainBounds.x + savedOffset.x : bellyCenterX - width / 2;
-  const preferredY = savedOffset ? mainBounds.y + savedOffset.y : bellyCenterY - height / 2;
-  const x = Math.max(workArea.x + WORK_AREA_MARGIN, Math.min(Math.round(preferredX), workArea.x + workArea.width - width - WORK_AREA_MARGIN));
-  const y = Math.max(workArea.y + WORK_AREA_MARGIN, Math.min(Math.round(preferredY), workArea.y + workArea.height - height - WORK_AREA_MARGIN));
-  state.chatInputWindow.setPosition(x, y);
-  state.chatInputWindow.on('close', () => {
-    // 兜底：无论以何种方式关闭对话框，都恢复角色窗口的置顶状态，
-    // 避免绕开 closeChatInputWindow() 时角色永久失去 always-on-top。
-    const win = state.chatInputWindow;
-    state.chatInputWindow = null; // 先置空，让角色层级恢复不被 state.chatInputOpen 守卫挡住
-    state.chatInputExpanded = false;
-    state.chatInputOpen = false;
-    if (win && !win.isDestroyed()) saveChatInputPosition(win);
-    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
-  });
-}
-
-function resizeChatInputWindow(win, width, height) {
-  if (!win || win.isDestroyed()) return false;
-  const [x, y] = win.getPosition();
-  const [, currentHeight] = win.getContentSize();
-  const bottom = y + currentHeight;
-  const { workArea } = screen.getDisplayNearestPoint({ x, y });
-  const nextX = Math.max(workArea.x + 8, Math.min(x, workArea.x + workArea.width - width - 8));
-  const nextY = Math.max(
-    workArea.y + 8,
-    Math.min(bottom - height, workArea.y + workArea.height - height - 8),
-  );
-  win.setContentSize(width, height);
-  win.setPosition(nextX, nextY);
-  return true;
-}
-
-function sendToChatInput(channel, data) {
-  if (state.chatInputWindow && !state.chatInputWindow.isDestroyed()) {
-    state.chatInputWindow.webContents.send(channel, data);
-  }
-}
 ipcMain.handle(IPC.PersonalityGet, () => personalityRuntime.getPersonality());
 ipcMain.handle(IPC.PersonalitySet, guarded(IPC.PersonalitySet, (patch) => {
   const next = personalityRuntime.setPersonality(patch);
@@ -325,12 +130,12 @@ ipcMain.handle(IPC.PersonalityClosePanel, () => { panels.closePersonalityPanel()
 ipcMain.handle(IPC.DisplayGet, () => displaySettings.getSettings());
 ipcMain.handle(IPC.DisplaySet, guarded(IPC.DisplaySet, (patch) => {
   const next = displaySettings.setSettings(patch);
-  applyDisplaySettings(next);
+  windows.applyDisplaySettings(next);
   return next;
 }));
 ipcMain.handle(IPC.DisplayPreview, guarded(IPC.DisplayPreview, (patch) => {
   const next = { ...displaySettings.getSettings(), ...patch };
-  applyDisplaySettings(next);
+  windows.applyDisplaySettings(next);
   return next;
 }));
 ipcMain.handle(IPC.DisplayOpenPanel, () => { panels.openDisplayPanel(); return true; });
@@ -444,7 +249,7 @@ ipcMain.on(IPC.WindowMoveBy, (event, dx, dy) => {
   if (!win || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
-  if (win === state.mainWindow) onMainWindowMoved();
+  if (win === state.mainWindow) windows.onMainWindowMoved();
 });
 
 // 绝对定位：拖拽用屏幕坐标直接 setPosition，避免增量模式下 getPosition 读到陈旧窗口位置导致滞后
@@ -452,7 +257,7 @@ ipcMain.on(IPC.WindowMoveTo, (event, x, y) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
   win.setPosition(Math.round(x), Math.round(y));
-  if (win === state.mainWindow) onMainWindowMoved();
+  if (win === state.mainWindow) windows.onMainWindowMoved();
 });
 
 // 拖拽期间把置顶层级从 screen-saver 降为 floating，避免 macOS 逐帧合成导致闪烁
@@ -466,7 +271,7 @@ ipcMain.on(IPC.WindowSetDragState, (event, dragging) => {
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, skipTransformProcessType: true });
     }
   } else {
-    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+    windows.setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   }
 });
 
@@ -502,16 +307,16 @@ app.whenReady().then(() => {
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
   voiceBridge.start();
-  createMainWindow();
+  windows.createMainWindow();
   if (state.mainWindow) {
     // 宠物窗移动时：未拖离的气泡跟随角色头 + 打开中的聊天窗也保持相对位置一起拖动
-    state.mainWindow.on('moved', onMainWindowMoved);
+    state.mainWindow.on('moved', windows.onMainWindowMoved);
     // 首次建立聊天窗跟随基准；之后每次主窗移动由 moved 事件同步
     state.lastMainWindowPos = { x: state.mainWindow.getBounds().x, y: state.mainWindow.getBounds().y };
     state.mainWindow.on('resize', () => balloons.positionBalloon());
   }
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (BrowserWindow.getAllWindows().length === 0) windows.createMainWindow();
   });
 });
 
