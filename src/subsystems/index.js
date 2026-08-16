@@ -14,6 +14,7 @@ const memory = require('./memory');
 const balloon = require('./balloon');
 const windowCtl = require('./window');
 const menu = require('./menu');
+const petState = require('./pet-state');
 
 module.exports = function mountAll(api) {
   personality(api);
@@ -25,4 +26,5 @@ module.exports = function mountAll(api) {
   balloon(api);
   windowCtl(api);
   menu(api);
+  petState(api);
 };

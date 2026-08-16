@@ -64,6 +64,7 @@ module.exports = {
   DisplayChanged: 'display:changed',
   DisplayOpenPanel: 'display:openPanel',
   DisplayClosePanel: 'display:closePanel',
+  PetStateGet: 'petState:get',
 
   // 语音设置 .env（main.js）
   VoiceSettingsGet: 'voiceSettings:get',

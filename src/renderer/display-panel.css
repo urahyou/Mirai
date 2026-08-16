@@ -63,3 +63,37 @@
 @media (prefers-reduced-motion: reduce) {
   .switch-track, .switch-thumb, .save-status { transition: none; }
 }
+
+/* —— P0-5：小未来的状态卡片 —— */
+.chip {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pink), #d24f9c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.stat {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(255, 79, 158, .18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.stat-label { font-size: 11px; color: var(--muted); }
+.stat-value { font-size: 16px; color: #41343c; line-height: 1.2; }
+.exp-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.exp-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.exp-track { flex: 1; height: 8px; border-radius: 4px; background: #f0e3e9; overflow: hidden; }
+.exp-fill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--pink), #ff9cc7); transition: width .4s; }
+.exp-num { font-size: 12px; color: var(--pink); font-weight: 600; min-width: 42px; text-align: right; }

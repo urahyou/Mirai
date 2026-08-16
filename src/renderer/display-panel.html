@@ -16,6 +16,29 @@
     </header>
 
     <main class="settings-content">
+      <section class="setting-section" id="petStateSection" style="display:block">
+        <div class="setting-heading">
+          <div>
+            <h2 class="section-title">小未来的状态</h2>
+            <p class="hint">随互动与真实时间的流逝而变化</p>
+          </div>
+          <span class="chip" id="stageChip">幼年</span>
+        </div>
+        <div class="stat-grid" id="statGrid">
+          <div class="stat" title="心情"><span class="stat-label">心情</span><strong class="stat-value" id="sMood">—</strong></div>
+          <div class="stat" title="好感"><span class="stat-label">好感</span><strong class="stat-value" id="sAffection">—</strong></div>
+          <div class="stat" title="体力"><span class="stat-label">体力</span><strong class="stat-value" id="sEnergy">—</strong></div>
+          <div class="stat" title="压力"><span class="stat-label">压力</span><strong class="stat-value" id="sStress">—</strong></div>
+          <div class="stat" title="孤独"><span class="stat-label">孤独</span><strong class="stat-value" id="sLoneliness">—</strong></div>
+          <div class="stat" title="健康"><span class="stat-label">健康</span><strong class="stat-value" id="sHealth">—</strong></div>
+        </div>
+        <div class="exp-row">
+          <span class="exp-label" id="stageLabel">成长经验</span>
+          <div class="exp-track"><div class="exp-fill" id="expFill"></div></div>
+          <span class="exp-num" id="stageExp">0</span>
+        </div>
+      </section>
+
       <section class="setting-section">
         <div class="setting-heading">
           <div>
