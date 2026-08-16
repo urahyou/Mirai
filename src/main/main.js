@@ -34,6 +34,7 @@ const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const petState = require('../systems/pet-state');
 const sensing = require('../systems/sensing');
+const journalSys = require('../systems/journal');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
@@ -138,6 +139,10 @@ app.whenReady().then(() => {
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
   sensing.init({ eventBus });
   sensing.start();
+  // 自写日记（P1）：订阅互动事件，按自然日落盘；dir 指向 userData，可注入时钟
+  journalSys.init({ eventBus, petState, dir: app.getPath('userData') });
+  // 每 6h 检查一次日期切换，跨天后 close 昨日并开新页
+  const journalTimer = setInterval(() => { try { journalSys.reconcile(Date.now()); } catch {} }, 6 * 3600 * 1000);
   // 启动后异步探测模型最大上下文（不阻塞启动）
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
@@ -161,5 +166,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   sensing.stop(); // 停止感知心跳
+  try { clearInterval(journalTimer); } catch {} // 停日切换检查
+  try { journalSys.flush(); } catch {} // 退出时把进行中的当天日记落盘
   voiceBridge.stop(); // 退出时回收侧车子进程
 });
