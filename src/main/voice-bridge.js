@@ -79,6 +79,11 @@ class VoiceBridge extends EventEmitter {
   }
 
   start() {
+    // 禁用语音：MIRAI_VOICE_DISABLE=1 时不拉起侧车（测试/CI 用，加快进场、省 CPU）
+    if (['1', 'true', 'yes', 'on'].includes(String(process.env.MIRAI_VOICE_DISABLE || '').toLowerCase())) {
+      console.log('[voice] MIRAI_VOICE_DISABLE=1，跳过语音侧车启动');
+      return this;
+    }
     if (this.child || this.connecting) return this;
     this.spawnSidecar();
     this.connect();
