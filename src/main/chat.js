@@ -11,7 +11,7 @@
 const IPC = require('../contracts/ipc');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
-  voice, sendToChatInput,
+  voice, sendToChatInput, petState,
   windowOps: { openChatInputWindow, closeChatInputWindow, resizeChatInputWindow, setMainWindowAlwaysOnTop, displaySettings },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
 }) {
@@ -30,10 +30,11 @@ module.exports = function createChat({
   }
 
   async function generatePetLine(purpose) {
+    const stateText = petState ? petState.describe() : '';
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        const line = await generic.generatePetLine({ provider, purpose });
+        const line = await generic.generatePetLine({ provider, purpose, state: stateText });
         if (line.trim()) return line.trim();
       } catch {
         // Try the next configured provider.
@@ -49,7 +50,7 @@ module.exports = function createChat({
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens });
+        return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens, state: petState ? petState.describe() : '' });
       } catch {
         // Try the next configured provider.
       }

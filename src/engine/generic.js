@@ -305,7 +305,8 @@ async function generateReply(userInput, options = {}) {
   if (!providerConf) throw new Error(`未找到 Provider: ${provider}`);
   const personalityConfig = loadConfig();
   const memoryContext = typeof options.memoryContext === 'string' ? options.memoryContext.trim() : '';
-  const sys = prompts.buildChatSystemPrompt(personalityConfig, memoryContext);
+  const stateText = typeof options.state === 'string' ? options.state : '';
+  const sys = prompts.buildChatSystemPrompt(personalityConfig, memoryContext, stateText);
 
   // 追加当前用户输入到记忆（仅作为请求的一部分，不在请求成功前改动持久 history，
   // 避免请求失败时留下未配对的 user 消息，导致后续对话乱序/重复）。
@@ -390,7 +391,7 @@ async function generatePetLine({ provider, purpose = 'click' } = {}) {
   const name = provider || activeProviderName;
   const providerConf = providerCache.providers[name];
   if (!providerConf) throw new Error(`未找到 Provider: ${name}`);
-  const sys = prompts.buildPetLineSystemPrompt(loadConfig(), purpose);
+  const sys = prompts.buildPetLineSystemPrompt(loadConfig(), purpose, typeof options.state === 'string' ? options.state : '');
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };

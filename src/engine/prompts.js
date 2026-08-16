@@ -19,16 +19,17 @@ function personalityText(config) {
   return JSON.stringify(config, null, 0);
 }
 
-function buildChatSystemPrompt(config, memoryContext = '') {
+function buildChatSystemPrompt(config, memoryContext = '', stateText = '') {
   return render(readPrompt('chat'), {
     personality: personalityText(config),
     memory_context: memoryContext,
+    state: stateText,
   });
 }
 
-function buildPetLineSystemPrompt(config, purpose = 'click') {
+function buildPetLineSystemPrompt(config, purpose = 'click', stateText = '') {
   const promptName = purpose === 'click' ? 'pet-line-click' : 'pet-line-click';
-  return render(readPrompt(promptName), { personality: personalityText(config) });
+  return render(readPrompt(promptName), { personality: personalityText(config), state: stateText });
 }
 
 function buildTranslationSystemPrompt(targetLang = 'ja') {

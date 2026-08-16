@@ -239,3 +239,17 @@ test('pet: 未知事件类型仅记录不改变状态（留位语义）', () => 
     teardown();
   }
 });
+
+test('pet: describe() 生成可读状态描述且含关系提示', () => {
+  setup();
+  try {
+    petState.applyEvent(E.PET.CONVERSATION);
+    const d = petState.describe();
+    assert.ok(d.includes('心情'), '包含心情');
+    assert.ok(d.includes('好感'), '包含好感');
+    assert.ok(d.includes('成长阶段'), '包含成长阶段');
+    assert.ok(/心情：/.test(d) && /荣阶段：/.test(d) || /成长阶段：/.test(d));
+  } finally {
+    teardown();
+  }
+});

@@ -97,6 +97,7 @@ const chat = createChat({
   contextSettings,
   probeMaxContext,
   voice,
+  petState,
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
     openChatInputWindow: windows.openChatInputWindow,

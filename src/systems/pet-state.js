@@ -217,6 +217,24 @@ function getState() {
   return evolve(readRaw(), nowFn());
 }
 
+// 自然语言状态描述（供对话 system prompt / 面板展示）。已在内部惰性演化。
+function describe() {
+  const s = getState();
+  const e = s.emotion;
+  const a = s.affection.value;
+  // 好感→关系亲密度提示（影响人格画像/口吻的软信号）
+  let relation;
+  if (a < 25) relation = '你们还比较生疏，她对你礼貌但略显拘谨';
+  else if (a < 60) relation = '你们正在慢慢熟络，她开始愿意亲近你';
+  else relation = '她对你非常亲近，会撒娇、很依赖你';
+  const parts = [
+    `心情：${e.mood}(${Math.round(e.moodScore)}/100)；体力 ${Math.round(e.energy)}/100；压力 ${Math.round(e.stress)}/100；孤独 ${Math.round(e.loneliness)}/100；健康 ${Math.round(e.health)}/100`,
+    `对主人好感：${Math.round(a)}/100。${relation}。`,
+    `成长阶段：${s.nurture.stage}（经验 ${s.nurture.experience}）`,
+  ];
+  return parts.join('\n');
+}
+
 // 好感增量：基础值 * 情绪调制（心情好加成多），受每日上限约束
 function affectionGain(type, emotion, affection, now) {
   const base = AFFECTION_BASE[type];
@@ -305,4 +323,4 @@ function _reset() {
   nowFn = () => Date.now();
 }
 
-module.exports = { init, getState, applyEvent, getStage, evolve, _setNow, _reset };
+module.exports = { init, getState, applyEvent, getStage, evolve, describe, _setNow, _reset };
