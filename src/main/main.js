@@ -33,6 +33,7 @@ const graphitiMemory = require('../services/graphiti-memory');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const petState = require('../systems/pet-state');
+const sensing = require('../systems/sensing');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
@@ -114,7 +115,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState,
+  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState, sensing,
 });
 
 app.whenReady().then(() => {
@@ -133,6 +134,9 @@ app.whenReady().then(() => {
   storage.setRuntimeDir(app.getPath('userData'));
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });
+  // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
+  sensing.init({ eventBus });
+  sensing.start();
   // 启动后异步探测模型最大上下文（不阻塞启动）
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
@@ -155,5 +159,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  sensing.stop(); // 停止感知心跳
   voiceBridge.stop(); // 退出时回收侧车子进程
 });
