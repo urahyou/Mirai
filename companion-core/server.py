@@ -42,12 +42,30 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.pet_apply_event(params.get("eventType"), params.get("now"))
         elif method == "pet.seed_if_empty":
             result = core.pet_seed_if_empty(params.get("state"))
+        elif method == "life.get_state":
+            result = core.life_get_state(params.get("now"))
+        elif method == "life.advance":
+            result = core.life_advance(params.get("now"))
+        elif method == "life.perform_activity":
+            result = core.life_perform_activity(params.get("activityId"), params.get("now"))
         elif method == "memory.add_episode":
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
         elif method == "memory.forget_source":
             result = {"deleted": core.memory_forget_source(params.get("sourceId"))}
+        elif method == "memory.upsert_fact":
+            result = core.memory_upsert_fact(params.get("fact"))
+        elif method == "memory.find_facts":
+            result = {"results": core.memory_find_facts(params.get("query", ""), params.get("subjectId"), params.get("limit", 8))}
+        elif method == "memory.upsert_profile":
+            result = core.memory_upsert_profile(params.get("profile"))
+        elif method == "memory.get_profile":
+            result = {"profile": core.memory_get_profile(params.get("profileId"))}
+        elif method == "memory.upsert_edge":
+            result = core.memory_upsert_edge(params.get("edge"))
+        elif method == "memory.neighbors":
+            result = {"results": core.memory_neighbors(params.get("entityId"), params.get("limit", 8))}
         elif method == "event.ingest":
             result = core.ingest(params.get("event"))
         elif method == "core.shutdown":

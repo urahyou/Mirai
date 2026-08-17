@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import pet_state
+import life_state
 from memory_store import MemoryStore
 
 SCHEMA_VERSION = 1
@@ -61,6 +63,7 @@ class CompanionCore:
             "recentEvents": [],
             "petState": pet_state.default(),
             "petStateImported": False,
+            "lifeState": life_state.default(),
         }
 
     def bootstrap(self, data_dir: str) -> dict[str, Any]:
@@ -113,6 +116,23 @@ class CompanionCore:
             return {"seeded": True, "state": self.state["petState"]}
         return {"seeded": False, "state": self.state["petState"]}
 
+    def life_get_state(self, now: Any) -> dict[str, Any]:
+        self._validate_now(now)
+        next_state = life_state.advance(self.state.get("lifeState"), int(now))
+        self.state["lifeState"] = next_state; self._write_state()
+        return next_state
+
+    def life_advance(self, now: Any) -> dict[str, Any]:
+        return self.life_get_state(now)
+
+    def life_perform_activity(self, activity_id: Any, now: Any) -> dict[str, Any]:
+        self._validate_now(now)
+        if not isinstance(activity_id, str) or not activity_id: raise CoreError("activityId 不合法")
+        try: next_state = life_state.perform(self.state.get("lifeState"), activity_id, int(now))
+        except ValueError as error: raise CoreError(str(error)) from error
+        self.state["lifeState"] = next_state; self._write_state()
+        return next_state
+
     def memory_add_episode(self, messages: Any, created_at: Any) -> bool:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         if not isinstance(messages, list) or not isinstance(created_at, str): raise CoreError("episode 参数不合法")
@@ -126,6 +146,35 @@ class CompanionCore:
     def memory_forget_source(self, source_id: Any) -> int:
         if not self.memory or not isinstance(source_id, str) or not source_id: raise CoreError("sourceId 不合法")
         return self.memory.delete_by_source(source_id)
+
+    def memory_upsert_fact(self, fact: Any) -> dict[str, Any]:
+        if not self.memory or not isinstance(fact, dict): raise CoreError("fact 必须是对象")
+        try: return self.memory.upsert_fact(fact)
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def memory_find_facts(self, query: Any = "", subject_id: Any = None, limit: Any = 8) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(query, str) or (subject_id is not None and not isinstance(subject_id, str)): raise CoreError("事实查询参数不合法")
+        try: return self.memory.find_facts(query, subject_id, limit)
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def memory_upsert_profile(self, profile: Any) -> dict[str, Any]:
+        if not self.memory or not isinstance(profile, dict): raise CoreError("profile 必须是对象")
+        try: return self.memory.upsert_profile(profile, datetime.now(timezone.utc).isoformat())
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def memory_get_profile(self, profile_id: Any) -> dict[str, Any] | None:
+        if not self.memory or not isinstance(profile_id, str) or not profile_id: raise CoreError("profileId 不合法")
+        return self.memory.get_profile(profile_id)
+
+    def memory_upsert_edge(self, edge: Any) -> dict[str, Any]:
+        if not self.memory or not isinstance(edge, dict): raise CoreError("edge 必须是对象")
+        try: return self.memory.upsert_edge(edge)
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def memory_neighbors(self, entity_id: Any, limit: Any = 8) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(entity_id, str): raise CoreError("entityId 不合法")
+        try: return self.memory.neighbors(entity_id, limit)
+        except ValueError as error: raise CoreError(str(error)) from error
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -158,3 +207,7 @@ class CompanionCore:
         temp_file = state_file.with_suffix(".tmp")
         temp_file.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
         temp_file.replace(state_file)
+
+    @staticmethod
+    def _validate_now(now: Any) -> None:
+        if not isinstance(now, (int, float)) or isinstance(now, bool): raise CoreError("now 必须是时间戳")

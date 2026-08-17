@@ -68,6 +68,48 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory_forget_source(rows[0]["id"]), 1)
             self.assertEqual(core.memory_search("Mirai"), [])
 
+    def test_memory_fact_profile_and_graph_are_source_aware(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "主人喜欢像素风界面"}], "2026-08-17T00:00:00Z")
+            source_id = core.memory_search("像素风")[0]["id"]
+            fact = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "像素风界面",
+                "importance": .9, "sourceId": source_id,
+            })
+            self.assertEqual(core.memory_find_facts("像素风")[0]["id"], fact["id"])
+            profile = core.memory_upsert_profile({"id": "character:mirai", "role": "character", "core": {"style": "温柔"}, "learned": {"goal": "学习"}})
+            self.assertEqual(profile["core"]["style"], "温柔")
+            edge = core.memory_upsert_edge({"fromId": "character:mirai", "predicate": "cares_for", "toId": "owner:default", "sourceId": source_id})
+            self.assertEqual(core.memory_neighbors("owner:default")[0]["id"], edge["id"])
+            self.assertEqual(core.memory_forget_source(source_id), 3)
+            self.assertEqual(core.memory_find_facts("像素风"), [])
+            self.assertEqual(core.memory_neighbors("owner:default"), [])
+
+    def test_memory_rejects_unproven_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            with self.assertRaisesRegex(CoreError, "sourceId 不存在"):
+                core.memory_upsert_fact({"subjectId": "owner:default", "predicate": "likes", "objectText": "未验证", "sourceId": "episode:missing"})
+
+    def test_life_state_advances_offline_and_performs_virtual_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            initial = core.life_get_state(1_000_000)
+            later = core.life_advance(1_000_000 + 6 * 60 * 60 * 1000)
+            self.assertGreater(later["hunger"], initial["hunger"])
+            self.assertLess(later["energy"], initial["energy"])
+            played = core.life_perform_activity("play", 1_000_000 + 6 * 60 * 60 * 1000)
+            self.assertLess(played["boredom"], later["boredom"])
+            self.assertEqual(played["recentActivities"][-1]["activityId"], "play")
+
+    def test_life_shopping_is_virtual_and_has_no_external_side_effect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            state = core.life_perform_activity("shopping", 2_000_000)
+            self.assertIn("item:小礼物", state["inventory"])
+            self.assertEqual(state["money"], 1100)
+
 
 if __name__ == "__main__":
     unittest.main()
