@@ -152,6 +152,13 @@ class CompanionCoreTest(unittest.TestCase):
             saved = core.journal_get_daily_material("2026-08-17")
             self.assertEqual(saved["material"]["date"], "2026-08-17")
 
+            with self.assertRaisesRegex(CoreError, "不能为空"):
+                core.journal_save_daily_prose("2026-08-17", "")
+            written = core.journal_save_daily_prose("2026-08-17", "今天和主人一起整理了好多东西，心里暖暖的。")
+            self.assertEqual(written["prose"], "今天和主人一起整理了好多东西，心里暖暖的。")
+            self.assertEqual(written["sourceIds"], saved["sourceIds"])
+            self.assertEqual(core.journal_get_daily_material("2026-08-17")["prose"], written["prose"])
+
             weekly = core.journal_build_weekly_material("2026-08-17", 0)
             self.assertEqual(weekly["weekStart"], "2026-08-17")
             self.assertEqual(weekly["facts"]["chatCount"], 1)

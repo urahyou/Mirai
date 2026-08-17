@@ -130,6 +130,7 @@
   margin-top: 4px;
 }
 .diary-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.diary-actions { display: flex; align-items: center; gap: 6px; }
 .diary-date { font-size: 13px; color: #41343c; }
 .diary-text {
   margin: 0;

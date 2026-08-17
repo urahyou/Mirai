@@ -45,7 +45,6 @@ const createPythonBackend = require('../services/python-backend');
 const E = require('../contracts/events');
 const petState = require('../systems/pet-state');
 const sensing = require('../systems/sensing');
-const journalSys = require('../systems/journal');
 const systemSense = require('../systems/system-sense');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
@@ -238,10 +237,6 @@ app.whenReady().then(() => {
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
   sensing.init({ eventBus, petState: companionPetState });
   sensing.start();
-  // 自写日记（P1）：订阅互动事件，按自然日落盘；dir 指向 userData，可注入时钟
-  journalSys.init({ eventBus, petState: companionPetState, dir: app.getPath('userData') });
-  // 每 6h 检查一次日期切换，跨天后 close 昨日并开新页
-  const journalTimer = setInterval(() => { try { journalSys.reconcile(Date.now()); } catch {} }, 6 * 3600 * 1000);
   // 系统状态感知（P1）：电池/联网/时刻 → 注入对话意识
   systemSense.init();
   systemSense.start();
@@ -270,8 +265,6 @@ app.on('will-quit', () => {
   try { stopPythonEventMirror?.(); } catch {}
   sensing.stop(); // 停止感知心跳
   try { systemSense.stop(); } catch {} // 停系统状态轮询
-  try { clearInterval(journalTimer); } catch {} // 停日切换检查
-  try { journalSys.flush(); } catch {} // 退出时把进行中的当天日记落盘
   voiceBridge.stop(); // 退出时回收侧车子进程
   void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程
 });

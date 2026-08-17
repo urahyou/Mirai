@@ -69,6 +69,7 @@ module.exports = {
 
   // 日记 & 系统感知（P1，面板可见入口）
   DiaryGetToday: 'diary:getToday',
+  DiaryGenerateToday: 'diary:generateToday',
   DiaryOpenFolder: 'diary:openFolder',
   SystemSenseGet: 'systemSense:get',
   InitiativeGet: 'initiative:get',

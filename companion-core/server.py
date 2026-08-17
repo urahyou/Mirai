@@ -74,10 +74,14 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.journal_build_daily_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
         elif method == "journal.get_daily_material":
             result = {"journal": core.journal_get_daily_material(params.get("day"))}
+        elif method == "journal.save_daily_prose":
+            result = {"journal": core.journal_save_daily_prose(params.get("day"), params.get("prose"), params.get("reflection"))}
         elif method == "journal.build_weekly_material":
             result = core.journal_build_weekly_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
         elif method == "journal.get_weekly_material":
             result = {"journal": core.journal_get_weekly_material(params.get("day"))}
+        elif method == "journal.save_weekly_prose":
+            result = {"journal": core.journal_save_weekly_prose(params.get("day"), params.get("prose"), params.get("reflection"))}
         elif method == "event.ingest":
             result = core.ingest(params.get("event"))
         elif method == "core.shutdown":

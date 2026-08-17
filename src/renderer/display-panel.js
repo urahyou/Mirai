@@ -148,9 +148,27 @@ async function renderDiary() {
     if (d.exists && d.content) {
       $('diaryText').textContent = d.content.trim();
     } else {
-      $('diaryText').textContent = '（今天还没有日记，试着和她说说话吧）';
+      $('diaryText').textContent = '（今天还没有日记）';
     }
   } catch { /* 保持占位 */ }
+}
+
+async function generateDiary() {
+  const button = $('diaryGenerateBtn');
+  button.disabled = true;
+  button.textContent = '写着…';
+  try {
+    const result = await window.desktopPet.diary.generateToday();
+    if (!result?.ok) throw new Error(result?.error || 'failed');
+    $('diaryDate').textContent = `${result.date} 的日记`;
+    $('diaryText').textContent = result.content;
+    showFeedback('日记写好了', `基于 ${result.sourceCount || 0} 条已保存记录`);
+  } catch {
+    showFeedback('暂时写不出来', '检查模型连接后再试一次', true);
+  } finally {
+    button.disabled = false;
+    button.textContent = '写一页';
+  }
 }
 
 function startLifePolling() {
@@ -166,6 +184,7 @@ function stopLifePolling() {
 async function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeDisplayPanel());
   $('resetBtn').addEventListener('click', reset);
+  $('diaryGenerateBtn').addEventListener('click', generateDiary);
   $('scaleRange').addEventListener('input', () => {
     const scale = Number($('scaleRange').value) / 100;
     $('scaleValue').textContent = `${$('scaleRange').value}%`;

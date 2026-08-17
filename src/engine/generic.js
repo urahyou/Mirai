@@ -424,6 +424,40 @@ async function generatePetLine({ provider, purpose = 'click' } = {}) {
   return reply;
 }
 
+// 生成与聊天历史隔离的日记正文。调用者只传 Core 已保存的事实素材，避免将未经验证的推断写回长期记忆。
+async function generateDiary(material, { provider } = {}) {
+  loadProviders();
+  const name = provider || activeProviderName;
+  const providerConf = providerCache.providers[name];
+  if (!providerConf) throw new Error(`未找到 Provider: ${name}`);
+  const base = providerConf.baseUrl.replace(/\/$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  Object.assign(headers, authorizationHeaders(providerConf));
+  const source = JSON.stringify(material || {}, null, 0).slice(0, 18000);
+  const res = await fetch(`${base}/chat/completions`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      model: providerConf.defaultModel,
+      messages: [
+        { role: 'system', content: prompts.buildDiarySystemPrompt(loadConfig()) },
+        { role: 'user', content: `日记事实素材：\n${source}` },
+      ],
+      temperature: providerConf.temperature ?? 0.8,
+      top_p: providerConf.topP ?? 0.9,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`LLM responded ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const prose = (data.choices?.[0]?.message?.content || '').trim().slice(0, 6000);
+  if (!prose) throw new Error('日记生成结果为空');
+  return prose;
+}
+
 /**
  * 读取 SSE 流，逐个 delta 回调，返回完整文本
  */
@@ -515,6 +549,7 @@ module.exports = {
   authorizationHeaders,
   generateReply,
   generatePetLine,
+  generateDiary,
   translate,
   resetConversationHistory,
   estimateTokens,

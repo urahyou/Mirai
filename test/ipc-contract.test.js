@@ -89,6 +89,14 @@ test('Given the chat window When its markup is inspected Then compact and expand
   assert.match(chatScript, /expanded \? '−' : '⤢'/);
 });
 
+test('Given the diary panel When generation is requested Then it uses an explicit action', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'display-panel.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'display-panel.js'), 'utf8');
+  assert.match(html, /id="diaryGenerateBtn"/);
+  assert.match(script, /diary\.generateToday\(\)/);
+  assert.match(script, /diaryGenerateBtn.*addEventListener\('click'/s);
+});
+
 test('Given a long reply When the balloon is inspected Then its text area can receive scroll input', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.css'), 'utf8');
 

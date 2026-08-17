@@ -37,10 +37,15 @@ function buildTranslationSystemPrompt(targetLang = 'ja') {
   });
 }
 
+function buildDiarySystemPrompt(config) {
+  return render(readPrompt('diary'), { personality: personalityText(config) });
+}
+
 module.exports = Object.freeze({
   LANGUAGE_NAMES,
   buildChatSystemPrompt,
   buildPetLineSystemPrompt,
   buildTranslationSystemPrompt,
+  buildDiarySystemPrompt,
   readPrompt,
 });

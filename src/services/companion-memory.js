@@ -49,10 +49,24 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       return { ok: true, state: 'ready', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true, ...result };
     } catch { return { ok: false, state: 'error', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true }; }
   }
+  async function buildDailyJournal(day, timezoneOffsetMinutes) {
+    if (!pythonBackend.getStatus().ready) return null;
+    return pythonBackend.request('journal.build_daily_material', { day, timezoneOffsetMinutes });
+  }
+  async function getDailyJournal(day) {
+    if (!pythonBackend.getStatus().ready) return null;
+    const result = await pythonBackend.request('journal.get_daily_material', { day });
+    return result?.journal || null;
+  }
+  async function saveDailyJournal(day, prose, reflection = null) {
+    if (!pythonBackend.getStatus().ready) return null;
+    const result = await pythonBackend.request('journal.save_daily_prose', { day, prose, reflection });
+    return result?.journal || null;
+  }
   function formatContext(results) {
     const rows = Array.isArray(results) ? results.filter((r) => r?.content || r?.fact).slice(0, 5) : [];
     if (!rows.length) return '';
     return ['以下是可供参考的本地记忆。仅在相关且确定时使用：', ...rows.map((r, i) => `${i + 1}. ${r.content || r.fact}${r.created_at ? `（${r.created_at}）` : ''}`)].join('\n');
   }
-  return { search, add, upsertFact, findFacts, saveProfile, getProfile, upsertEdge, neighbors, getStatus, formatContext };
+  return { search, add, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, saveDailyJournal, getStatus, formatContext };
 };

@@ -209,6 +209,11 @@ class CompanionCore:
         try: return self.memory.get_daily_material(day)
         except ValueError as error: raise CoreError(str(error)) from error
 
+    def journal_save_daily_prose(self, day: Any, prose: Any, reflection: Any = None) -> dict[str, Any]:
+        if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")
+        try: return self.memory.save_daily_prose(day, prose, reflection)
+        except ValueError as error: raise CoreError(str(error)) from error
+
     def journal_build_weekly_material(self, day: Any, timezone_offset_minutes: Any = 0) -> dict[str, Any]:
         if not self.memory or not isinstance(day, str): raise CoreError("周记日期不合法")
         try: return self.memory.build_weekly_material(day, timezone_offset_minutes, self.state.get("lifeState", {}).get("recentActivities", []), datetime.now(timezone.utc).isoformat())
@@ -217,6 +222,11 @@ class CompanionCore:
     def journal_get_weekly_material(self, day: Any) -> dict[str, Any] | None:
         if not self.memory or not isinstance(day, str): raise CoreError("周记日期不合法")
         try: return self.memory.get_weekly_material(day)
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def journal_save_weekly_prose(self, day: Any, prose: Any, reflection: Any = None) -> dict[str, Any]:
+        if not self.memory or not isinstance(day, str): raise CoreError("周记日期不合法")
+        try: return self.memory.save_weekly_prose(day, prose, reflection)
         except ValueError as error: raise CoreError(str(error)) from error
 
     def snapshot(self) -> dict[str, Any]:

@@ -158,6 +158,9 @@ class MemoryStore:
     def get_daily_material(self, day_text: str) -> dict[str, Any] | None:
         return self._get_journal("daily_journals", "date", self._parse_day(day_text).isoformat())
 
+    def save_daily_prose(self, day_text: str, prose: Any, reflection: Any = None) -> dict[str, Any]:
+        return self._save_journal_prose("daily_journals", "date", self._parse_day(day_text).isoformat(), prose, reflection)
+
     def build_weekly_material(self, day_text: str, timezone_offset_minutes: Any, activities: Any, built_at: str) -> dict[str, Any]:
         day = self._parse_day(day_text)
         week_start = day - timedelta(days=day.weekday())
@@ -182,6 +185,10 @@ class MemoryStore:
     def get_weekly_material(self, day_text: str) -> dict[str, Any] | None:
         day = self._parse_day(day_text)
         return self._get_journal("weekly_journals", "week_start", (day - timedelta(days=day.weekday())).isoformat())
+
+    def save_weekly_prose(self, day_text: str, prose: Any, reflection: Any = None) -> dict[str, Any]:
+        day = self._parse_day(day_text)
+        return self._save_journal_prose("weekly_journals", "week_start", (day - timedelta(days=day.weekday())).isoformat(), prose, reflection)
 
     def stats(self) -> dict[str, int]:
         def count(table: str) -> int:
@@ -233,6 +240,15 @@ class MemoryStore:
         if not row: return None
         material = json.loads(row["material_json"])
         return {"material": material, "sourceIds": json.loads(row["source_ids_json"]), "prose": row["prose"], "reflection": row["reflection"], "builtAt": row["built_at"]}
+
+    def _save_journal_prose(self, table: str, key: str, value: str, prose: Any, reflection: Any) -> dict[str, Any]:
+        body = self._required_text(prose, "日记正文不能为空", 6000)
+        note = self._optional_text(reflection, 1500)
+        if not self.db.execute(f"SELECT 1 FROM {table} WHERE {key}=?", (value,)).fetchone():
+            raise ValueError("请先构建日记事实素材")
+        self.db.execute(f"UPDATE {table} SET prose=?, reflection=? WHERE {key}=?", (body, note, value))
+        self.db.commit()
+        return self._get_journal(table, key, value) or {}
 
     @staticmethod
     def _counts(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
