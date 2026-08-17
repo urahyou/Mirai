@@ -12,7 +12,7 @@ const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
-  voice, sendToChatInput, petState, lifeState, systemSense,
+  voice, sendToChatInput, petState, lifeState, emotionState, systemSense,
   windowOps: { openChatInputWindow, closeChatInputWindow, resizeChatInputWindow, setMainWindowAlwaysOnTop, displaySettings },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
 }) {
@@ -23,9 +23,10 @@ module.exports = function createChat({
   function buildState() {
     const pet = petState ? petState.describe() : '';
     const life = lifeState ? lifeState.describe() : '';
+    const emotion = emotionState ? emotionState.describe() : '';
     let aw = '';
     try { if (systemSense && typeof systemSense.getAwareness === 'function') aw = systemSense.getAwareness(); } catch {}
-    return [pet, life, aw ? `环境：${aw}` : ''].filter(Boolean).join('\n');
+    return [pet, life, emotion, aw ? `环境：${aw}` : ''].filter(Boolean).join('\n');
   }
 
   function broadcastChatDelta(data) {

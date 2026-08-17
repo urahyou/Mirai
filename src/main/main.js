@@ -38,6 +38,7 @@ const graphitiMemory = require('../services/graphiti-memory');
 const createCompanionMemory = require('../services/companion-memory');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
+const createCompanionEmotion = require('../services/companion-emotion');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -57,6 +58,7 @@ const pythonBackend = createPythonBackend();
 const companionMemory = createCompanionMemory({ pythonBackend, fallback: graphitiMemory });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
+const companionEmotion = createCompanionEmotion({ pythonBackend });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -118,6 +120,7 @@ const chat = createChat({
   voice,
   petState: companionPetState,
   lifeState: companionLife,
+  emotionState: companionEmotion,
   systemSense,
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
@@ -208,6 +211,7 @@ app.whenReady().then(() => {
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
     await companionPetState.seedFromLegacy();
     await companionLife.advance(Date.now());
+    await companionEmotion.refresh(Date.now());
   })
     .catch((error) => console.warn('[companion-core] 未启动，暂以 Node 兼容路径运行：', error.message));
   // 感知源继续在 Node 侧采集；只镜像低敏感标准化事件给 Python，不发送原始屏幕/音频数据。
@@ -226,6 +230,9 @@ app.whenReady().then(() => {
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });
   companionPetState.init({ eventBus });
+  for (const eventType of Object.values(E.PET)) {
+    if (eventType !== E.PET.STAGE_UP) eventBus.on(eventType, () => void companionEmotion.refresh(Date.now()));
+  }
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
   sensing.init({ eventBus, petState: companionPetState });
   sensing.start();

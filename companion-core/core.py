@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 import pet_state
 import life_state
+import emotion_state
 from memory_store import MemoryStore
 
 SCHEMA_VERSION = 1
@@ -64,6 +65,7 @@ class CompanionCore:
             "petState": pet_state.default(),
             "petStateImported": False,
             "lifeState": life_state.default(),
+            "emotionState": emotion_state.default(),
         }
 
     def bootstrap(self, data_dir: str) -> dict[str, Any]:
@@ -104,7 +106,9 @@ class CompanionCore:
         if not isinstance(event_type, str) or not event_type: raise CoreError("eventType 不合法")
         if not isinstance(now, (int, float)) or isinstance(now, bool): raise CoreError("now 必须是时间戳")
         next_state, upgrade = pet_state.apply(self.state.get("petState"), event_type, int(now))
-        self.state["petState"] = next_state; self._write_state()
+        self.state["petState"] = next_state
+        self.state["emotionState"] = emotion_state.apply(self.state.get("emotionState"), event_type, int(now))
+        self._write_state()
         return {"state": next_state, "stageUp": upgrade}
 
     def pet_seed_if_empty(self, state: Any) -> dict[str, Any]:
@@ -130,8 +134,16 @@ class CompanionCore:
         if not isinstance(activity_id, str) or not activity_id: raise CoreError("activityId 不合法")
         try: next_state = life_state.perform(self.state.get("lifeState"), activity_id, int(now))
         except ValueError as error: raise CoreError(str(error)) from error
-        self.state["lifeState"] = next_state; self._write_state()
+        self.state["lifeState"] = next_state
+        self.state["emotionState"] = emotion_state.apply(self.state.get("emotionState"), f"life:activity:{activity_id}", int(now))
+        self._write_state()
         return next_state
+
+    def emotion_get_state(self, now: Any) -> dict[str, Any]:
+        self._validate_now(now)
+        self.state["emotionState"] = emotion_state.evolve(self.state.get("emotionState"), int(now))
+        self._write_state()
+        return self.state["emotionState"]
 
     def memory_add_episode(self, messages: Any, created_at: Any) -> bool:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")

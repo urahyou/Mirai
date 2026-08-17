@@ -48,6 +48,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.life_advance(params.get("now"))
         elif method == "life.perform_activity":
             result = core.life_perform_activity(params.get("activityId"), params.get("now"))
+        elif method == "emotion.get_state":
+            result = core.emotion_get_state(params.get("now"))
         elif method == "memory.add_episode":
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.search":

@@ -110,6 +110,21 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertIn("item:小礼物", state["inventory"])
             self.assertEqual(state["money"], 1100)
 
+    def test_multidimensional_emotion_changes_with_events_and_decays(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            base = core.emotion_get_state(1_000_000)
+            core.pet_apply_event("pet:praise", 1_000_000)
+            praised = core.emotion_get_state(1_000_000)
+            self.assertGreater(praised["valence"], base["valence"])
+            self.assertGreater(praised["security"], base["security"])
+            after_study = core.life_perform_activity("study", 1_100_000)
+            self.assertEqual(after_study["currentActivityId"], "study")
+            emotional = core.emotion_get_state(1_100_000)
+            self.assertGreater(emotional["focus"], praised["focus"])
+            decayed = core.emotion_get_state(1_100_000 + 24 * 60 * 60 * 1000)
+            self.assertLess(decayed["focus"], emotional["focus"])
+
 
 if __name__ == "__main__":
     unittest.main()
