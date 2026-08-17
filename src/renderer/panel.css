@@ -1,58 +1,76 @@
-:root { --pink: #ff4f9e; --pink-soft: rgba(255, 79, 158, 0.12); --text: #333; --muted: #999; --danger: #e5484d; --bg: #fff; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
-#app { display: flex; flex-direction: column; height: 100%; padding: 14px 16px; overflow: hidden; }
-.panel-header { padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,.06); }
-.panel-title { margin: 0; font-size: 17px; color: var(--pink); }
-.panel-desc { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
-.section { margin-top: 12px; }
-.section-title { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.hint { font-size: 11px; color: var(--muted); }
-.panel-footer { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.spacer { flex: 1; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
 
-/* 自定义可拖动顶栏：无边框面板用于移动窗口的抓手条（见 makePanel frame:false） */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 13px 15px;
+  background-color: var(--mint);
+  background-image: var(--site-stripes);
+}
+
+.panel-header { flex: 0 0 auto; padding: 8px 10px 9px; border: 1px solid var(--line-strong); border-bottom: 3px solid var(--butter); background: var(--paper); }
+.panel-title { margin: 0; color: var(--pink-deep); font-size: 17px; font-weight: 750; letter-spacing: 0; }
+.panel-title::before { content: "★ "; color: #ec8d27; font-size: 13px; }
+.panel-desc { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.section { margin-top: 12px; }
+.section-title { margin: 0 0 7px; color: var(--pink-deep); font-size: 12px; font-weight: 750; }
+.hint { color: var(--muted); font-size: 11px; }
+.panel-footer { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-top: 10px; padding: 8px 9px; border: 1px solid var(--line-strong); background: var(--paper); }
+.spacer { flex: 1; min-width: 0; }
+
 .drag-bar {
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  height: 28px;
-  margin: -14px -16px 12px; /* 抵消 #app 内边距，让条顶到窗口上缘并左右全宽 */
-  padding: 0 12px;
-  background: linear-gradient(90deg, #ffe3ef, #fff0f6);
-  border-bottom: 1px solid rgba(255, 79, 158, 0.16);
-  border-radius: 8px 8px 0 0;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  margin: -13px -15px 12px;
+  padding: 0 11px;
+  border-bottom: 3px solid var(--butter);
+  border-radius: 0;
+  color: #fff;
+  background: var(--pink);
   cursor: grab;
-  -webkit-user-select: none;
-  user-select: none;
-  color: #b0456e;
   font-size: 11px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .drag-bar:active { cursor: grabbing; }
-.drag-bar .drag-grip {
-  letter-spacing: -2px;
-  opacity: 0.75;
-  font-size: 12px;
-  margin-right: 2px;
-}
-.drag-bar .drag-title { font-weight: 600; }
-.drag-bar .drag-tip { color: #c98aa6; margin-left: 2px; }
+.drag-bar .drag-grip { color: var(--butter); font-size: 12px; letter-spacing: 0; }
+.drag-bar .drag-title { font-weight: 750; }
+.drag-bar .drag-tip { min-width: 0; overflow: hidden; color: #f8e8ff; text-overflow: ellipsis; white-space: nowrap; }
 .drag-bar .drag-close {
-  -webkit-app-region: no-drag; /* 按钮需可点击 */
+  -webkit-app-region: no-drag;
+  width: 25px;
+  height: 23px;
   margin-left: auto;
-  border: none;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #fff;
   background: transparent;
-  color: #b0456e;
-  cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  padding: 3px 7px;
-  border-radius: 6px;
 }
-.drag-bar .drag-close:hover { background: rgba(255, 79, 158, 0.14); }
-.btn { border: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; background: var(--pink-soft); color: var(--pink); }
-.btn.primary { background: var(--pink); color: #fff; }
-.btn.ghost { background: transparent; border: 1px solid rgba(0,0,0,.12); color: var(--text); }
-.btn.small { padding: 3px 10px; font-size: 12px; }
+.drag-bar .drag-close:hover { border-color: var(--butter); background: rgba(255, 255, 255, .18); }
+
+.btn {
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 2px outset #f0c18c;
+  border-radius: 2px;
+  color: #9f4c28;
+  background: #fff4d5;
+  font-size: 12px;
+  font-weight: 650;
+}
+.btn:hover { border-color: #b36631; color: var(--pink-deep); background: var(--butter); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { color: #fff; background: var(--pink); border-color: #8b308f; }
+.btn.primary:hover { background: var(--pink-deep); }
+.btn.ghost { border-color: #8eb2bd; color: var(--ink); background: #f4fdff; }
+.btn.small { min-height: 26px; padding: 3px 9px; font-size: 11px; }

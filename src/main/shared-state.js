@@ -16,6 +16,7 @@ module.exports = {
   // ---- 聊天输入窗状态 ----
   chatInputExpanded: false,  // 是否已展开成普通窗口
   chatInputOpen: false,      // 是否处于打开状态
+  interactionWindowCount: 0, // 菜单/设置等临时操作窗口数量；用于让桌宠不遮挡当前操作
 
   // ---- 聊天队列（enqueueChat 借此串行化；保存的是一个 Promise 引用）----
   chatQueue: Promise.resolve(),

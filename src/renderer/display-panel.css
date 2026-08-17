@@ -135,3 +135,22 @@
 .help-list { margin: 4px 0 0; padding: 0; list-style: none; }
 .help-list li { font-size: 13px; color: #5a4d55; line-height: 1.7; padding: 2px 0; }
 .help-list strong { color: var(--pink); font-weight: 600; }
+
+/* Shared paper-window treatment for all setting pages using this layout. */
+.setting-section {
+  margin-top: 9px;
+  padding: 10px;
+  border: 2px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 253, 242, .95);
+}
+.setting-section:first-child { margin-top: 6px; }
+.setting-section::before { color: var(--mint-deep); }
+.value { color: var(--pink-deep); }
+.scale-range::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--pink) 0 var(--progress), var(--mint-pale) var(--progress) 100%); }
+.scale-range::-webkit-slider-thumb { border-color: var(--paper); background: var(--pink); box-shadow: 0 2px 6px rgba(233, 111, 159, .28); }
+.switch-track { border: 1px solid var(--line); background: #d7dad3; }
+.switch input:checked + .switch-track { background: var(--mint-deep); }
+.stat, .diary-box { border-color: var(--line); border-radius: 0; background: rgba(255, 255, 255, .9); }
+.chip { border-radius: 0; background: var(--pink); }
+.sensing-row { border-color: var(--mint-deep); border-radius: 0; background: var(--mint-pale); }

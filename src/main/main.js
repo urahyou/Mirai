@@ -37,6 +37,8 @@ const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
+const createPythonBackend = require('../services/python-backend');
+const E = require('../contracts/events');
 const petState = require('../systems/pet-state');
 const sensing = require('../systems/sensing');
 const journalSys = require('../systems/journal');
@@ -47,6 +49,9 @@ const createPanels = require('./panel');
 const state = require('./shared-state');
 // 单例事件总线：感知源 emit、领域系统 on（事件类型见 contracts/events.js）
 const eventBus = createEventBus();
+// Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
+const pythonBackend = createPythonBackend();
+let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
 const createChat = require('./chat');
@@ -63,12 +68,6 @@ const CHAT_INPUT_EXPANDED_SIZE = { width: 460, height: 560 };
 const CHAT_INPUT_BELLY_CENTER_RATIO = 0.68;
 const WORK_AREA_MARGIN = 8;
 
-// 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗引用 + 统一 webPreferences）
-const panels = createPanels({
-  getPetWindow: () => state.mainWindow,
-  windowOptions,
-});
-
 // 独立气泡窗口模块（创建/定位/渲染/隐藏）——依赖注入所需能力
 const balloons = createBalloons({ state, windowOptions, config });
 
@@ -79,6 +78,13 @@ const windows = createWindows({
   state, balloons, displaySettings, windowLayout, config,
   WINDOW, CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE,
   CHAT_INPUT_BELLY_CENTER_RATIO, WORK_AREA_MARGIN,
+});
+
+// 设置面板 / 菜单窗口模块（依赖注入：动态获取主窗、统一 webPreferences、临时交互层级）
+const panels = createPanels({
+  getPetWindow: () => state.mainWindow,
+  windowOptions,
+  setInteractionWindowActive: windows.setInteractionWindowActive,
 });
 
 // 语音子系统（朗读合成去重 + 语音识别分发 + 语音 IPC）——依赖注入所需能力
@@ -191,6 +197,21 @@ app.whenReady().then(() => {
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
+  // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
+  void pythonBackend.start({ dataDir: app.getPath('userData') })
+    .catch((error) => console.warn('[companion-core] 未启动，暂以 Node 兼容路径运行：', error.message));
+  // 感知源继续在 Node 侧采集；只镜像低敏感标准化事件给 Python，不发送原始屏幕/音频数据。
+  stopPythonEventMirror = eventBus.on(E.SENSING_TICK, ({ now }) => {
+    const timestamp = Number(now);
+    if (!Number.isFinite(timestamp)) return;
+    void pythonBackend.ingest({
+      type: E.SENSING_TICK,
+      occurredAt: new Date(timestamp).toISOString(),
+      source: 'node.sensing',
+      privacy: 'local-only',
+      payload: { now: timestamp },
+    }).catch((error) => console.warn('[companion-core] 感知事件未送达：', error.message));
+  });
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
@@ -225,9 +246,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  try { stopPythonEventMirror?.(); } catch {}
   sensing.stop(); // 停止感知心跳
   try { systemSense.stop(); } catch {} // 停系统状态轮询
   try { clearInterval(journalTimer); } catch {} // 停日切换检查
   try { journalSys.flush(); } catch {} // 退出时把进行中的当天日记落盘
   voiceBridge.stop(); // 退出时回收侧车子进程
+  void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程
 });

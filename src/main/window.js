@@ -58,14 +58,14 @@ module.exports = function createWindows({
 
   // 角色窗口置顶层级策略（macOS 层级从高到低：screen-saver > floating > normal）：
   //  - 无对话框：置顶配置开 → screen-saver（高于一切）；关 → normal。
-  //  - 紧凑对话框开启：置顶配置开 → floating（仍高于普通应用如微信，但低于对话框），
-  //    关 → normal。这样达成“输入框 > 人物 > 微信”。
+  //  - 任一临时交互窗口（菜单/设置/紧凑对话）开启：置顶配置开 → floating，
+  //    关 → normal。这样达成“当前操作 > 人物 > 普通应用”，关闭后恢复原层级。
   //  - 展开对话框开启：人物保持 floating（始终置顶于普通应用），
   //    聊天窗本身转 normal（可被其他应用覆盖、当普通窗口用）。
   function setMainWindowAlwaysOnTop(enabled) {
     if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
     let level;
-    if (!state.chatInputOpen) {
+    if (!state.chatInputOpen && state.interactionWindowCount === 0) {
       level = Boolean(enabled) ? 'screen-saver' : false;
     } else {
       level = Boolean(enabled) ? 'floating' : false;
@@ -175,6 +175,12 @@ module.exports = function createWindows({
     setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
   }
 
+  function setInteractionWindowActive(active) {
+    const delta = active ? 1 : -1;
+    state.interactionWindowCount = Math.max(0, state.interactionWindowCount + delta);
+    setMainWindowAlwaysOnTop(displaySettings.getSettings().alwaysOnTop);
+  }
+
   function openChatInputWindow() {
     closeChatInputWindow();
     state.chatInputExpanded = false;
@@ -262,6 +268,7 @@ module.exports = function createWindows({
     syncChatInputWithMain,
     onMainWindowMoved,
     closeChatInputWindow,
+    setInteractionWindowActive,
     saveChatInputPosition,
     openChatInputWindow,
     resizeChatInputWindow,

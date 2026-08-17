@@ -1,0 +1,132 @@
+"""小未来 Python 自主后端的最小领域内核。
+
+本阶段只持久化低敏感的时钟投影，验证 Electron <-> Python 协议和数据目录。
+生活、记忆、情绪等领域将在后续版本迁入同一 Core。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+import pet_state
+
+SCHEMA_VERSION = 1
+STATE_FILE = "companion-core-state.json"
+MAX_RECENT_EVENTS = 64
+
+
+class CoreError(ValueError):
+    """协议请求或领域数据不符合约束。"""
+
+
+def _is_object(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def _validate_event(event: Any) -> dict[str, Any]:
+    if not _is_object(event):
+        raise CoreError("event 必须是对象")
+    event_type = event.get("type")
+    if not isinstance(event_type, str) or not event_type or len(event_type) > 120:
+        raise CoreError("event.type 必须是长度受限的字符串")
+    payload = event.get("payload", {})
+    if not _is_object(payload):
+        raise CoreError("event.payload 必须是对象")
+    occurred_at = event.get("occurredAt")
+    if occurred_at is not None and (not isinstance(occurred_at, str) or len(occurred_at) > 64):
+        raise CoreError("event.occurredAt 不合法")
+    return {
+        "type": event_type,
+        "occurredAt": occurred_at,
+        "source": str(event.get("source", "unknown"))[:80],
+        "privacy": str(event.get("privacy", "local-only"))[:40],
+        "payload": payload,
+    }
+
+
+class CompanionCore:
+    def __init__(self) -> None:
+        self.data_dir: Path | None = None
+        self.state: dict[str, Any] = self._default_state()
+
+    @staticmethod
+    def _default_state() -> dict[str, Any]:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "tickCount": 0,
+            "lastTickAt": None,
+            "recentEvents": [],
+            "petState": pet_state.default(),
+        }
+
+    def bootstrap(self, data_dir: str) -> dict[str, Any]:
+        if not isinstance(data_dir, str) or not data_dir.strip():
+            raise CoreError("dataDir 必须是非空字符串")
+        self.data_dir = Path(data_dir).resolve()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.state = self._read_state()
+        return self.snapshot()
+
+    def ingest(self, event: Any) -> dict[str, Any]:
+        if self.data_dir is None:
+            raise CoreError("Core 尚未 bootstrap")
+        normalized = _validate_event(event)
+        recent = list(self.state.get("recentEvents", []))
+        recent.append({
+            "type": normalized["type"],
+            "occurredAt": normalized["occurredAt"],
+            "source": normalized["source"],
+        })
+        self.state["recentEvents"] = recent[-MAX_RECENT_EVENTS:]
+        if normalized["type"] == "sensing:tick":
+            now = normalized["payload"].get("now")
+            if not isinstance(now, (int, float)) or isinstance(now, bool):
+                raise CoreError("sensing:tick payload.now 必须是时间戳")
+            self.state["tickCount"] = int(self.state.get("tickCount", 0)) + 1
+            self.state["lastTickAt"] = int(now)
+        self._write_state()
+        return {"accepted": True, "state": self.snapshot()}
+
+    def pet_get_state(self, now: int) -> dict[str, Any]:
+        return pet_state.evolve(self.state.get("petState"), now)
+
+    def pet_apply_event(self, event_type: str, now: int) -> dict[str, Any]:
+        if self.data_dir is None: raise CoreError("Core 尚未 bootstrap")
+        if not isinstance(event_type, str) or not event_type: raise CoreError("eventType 不合法")
+        if not isinstance(now, (int, float)) or isinstance(now, bool): raise CoreError("now 必须是时间戳")
+        next_state, upgrade = pet_state.apply(self.state.get("petState"), event_type, int(now))
+        self.state["petState"] = next_state; self._write_state()
+        return {"state": next_state, "stageUp": upgrade}
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "schemaVersion": self.state.get("schemaVersion", SCHEMA_VERSION),
+            "tickCount": self.state.get("tickCount", 0),
+            "lastTickAt": self.state.get("lastTickAt"),
+            "recentEventCount": len(self.state.get("recentEvents", [])),
+        }
+
+    def _read_state(self) -> dict[str, Any]:
+        if self.data_dir is None:
+            return self._default_state()
+        state_file = self.data_dir / STATE_FILE
+        try:
+            parsed = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return self._default_state()
+        if not _is_object(parsed) or parsed.get("schemaVersion") != SCHEMA_VERSION:
+            return self._default_state()
+        merged = self._default_state()
+        merged.update(parsed)
+        if not isinstance(merged.get("recentEvents"), list):
+            merged["recentEvents"] = []
+        return merged
+
+    def _write_state(self) -> None:
+        if self.data_dir is None:
+            raise CoreError("Core 尚未 bootstrap")
+        state_file = self.data_dir / STATE_FILE
+        temp_file = state_file.with_suffix(".tmp")
+        temp_file.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_file.replace(state_file)

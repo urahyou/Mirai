@@ -1,41 +1,64 @@
-.center-content {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 6px 6px 12px 2px;
-  scrollbar-color: rgba(255, 79, 158, .35) transparent;
-  scrollbar-width: thin;
+.panel-header { position: relative; padding-right: 74px; }
+.panel-header::after {
+  position: absolute;
+  right: 0;
+  bottom: 9px;
+  padding: 3px 7px;
+  border: 1px solid #d68f22;
+  border-radius: 0;
+  color: #925019;
+  background: var(--butter);
+  content: "小未来的房间";
+  font-size: 10px;
+  font-weight: 700;
 }
-.center-content::-webkit-scrollbar { width: 8px; }
-.center-content::-webkit-scrollbar-thumb { background: rgba(255, 79, 158, .35); border-radius: 4px; }
-.center-content::-webkit-scrollbar-track { background: transparent; }
 
 .card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 12px 14px;
+  min-height: 58px;
   margin: 6px 0;
-  border: 1px solid rgba(255, 79, 158, .16);
-  border-radius: 14px;
-  background: #fff;
-  cursor: pointer;
+  padding: 9px 11px;
+  border: 2px outset #e7be8a;
+  border-radius: 0;
+  color: var(--ink);
+  background: rgba(255, 255, 255, .84);
   text-align: left;
-  transition: transform .08s ease, box-shadow .12s ease;
+  transition: background .14s ease, transform .12s ease;
 }
-.card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255, 79, 158, .14); }
-.card:active { transform: scale(.98); }
-
+.card:hover { border-color: #c96a34; background: var(--butter); transform: translateY(-1px); }
+.card:active { transform: translateY(1px); }
 .card-featured {
-  background: linear-gradient(135deg, #fff0f6, #ffe6f0);
-  border-color: rgba(255, 79, 158, .35);
+  min-height: 66px;
+  border-color: #8b3192;
+  background-color: #ffe8f5;
+  background-image: var(--paper-dot);
+  background-size: 12px 12px;
 }
+.card-featured:hover { background-color: #fff0b7; }
 
-.card-emoji { font-size: 22px; flex: 0 0 auto; }
-.card-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.card-title { font-size: 14px; color: #41343c; }
-.card-desc { font-size: 11.5px; color: var(--muted); }
-.card-arrow { color: var(--pink); font-size: 20px; flex: 0 0 auto; }
+.card-emoji {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e0a065;
+  border-radius: 0;
+  background: #fff7dd;
+  font-size: 17px;
+}
+.card-featured .card-emoji { border-color: var(--pink); background: #fff8fb; }
+.card-body { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.card-title { overflow: hidden; color: var(--pink-deep); font-size: 13px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.card-desc { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.card-arrow { flex: 0 0 auto; color: var(--mint-deep); font-size: 19px; line-height: 1; }
 
-.card-grid { margin-top: 4px; }
+.card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.card-grid .card { min-height: 72px; margin: 0; padding: 8px; align-items: flex-start; }
+.card-grid .card-emoji { flex-basis: 28px; width: 28px; height: 28px; font-size: 15px; }
+.card-grid .card-arrow { display: none; }
+.card-grid .card-title { white-space: normal; }
+.card-grid .card-desc { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

@@ -73,3 +73,12 @@
 @media (prefers-reduced-motion: reduce) {
   .text-input, .save-status { transition: none; }
 }
+
+.section {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .78);
+}
+.text-input { border-color: var(--line); border-radius: 5px; background: rgba(255, 255, 255, .94); }
+.text-input:focus { border-color: var(--pink-deep); box-shadow: var(--focus-ring); }

@@ -10,11 +10,12 @@ const status = document.createElement('div');
 status.className = 'menu-status';
 menu.appendChild(status);
 
-function addItem(label, action) {
+function addItem(label, symbol, action) {
   const item = document.createElement('button');
   item.className = 'menu-item';
   item.type = 'button';
   item.textContent = label;
+  item.dataset.symbol = symbol;
   item.addEventListener('click', () => {
     action();
     window.desktopPet.closeMenu();
@@ -42,16 +43,16 @@ window.desktopPet.petState.get().then((s) => {
 
 // —— 分组菜单（A）：按功能分类，视觉充实但不冗长 ——
 addGroupLabel('互动');
-addItem('开始聊天', () => window.desktopPet.openChatInput());
-addItem('与小未来相处', () => window.desktopPet.openCompanionPanel());
+addItem('开始聊天', '✉', () => window.desktopPet.openChatInput());
+addItem('与小未来相处', '♥', () => window.desktopPet.openCompanionPanel());
 
 addGroupLabel('外观与表现');
-addItem('外观', () => window.desktopPet.openAppearancePanel());
-addItem('桌面行为', () => window.desktopPet.openBehaviorPanel());
+addItem('外观', '✦', () => window.desktopPet.openAppearancePanel());
+addItem('桌面行为', '⌘', () => window.desktopPet.openBehaviorPanel());
 
 addGroupLabel('系统');
-addItem('设置中心', () => window.desktopPet.openSettingsCenter());
-addItem('退出', () => window.desktopPet.quit());
+addItem('设置中心', '⚙', () => window.desktopPet.openSettingsCenter());
+addItem('退出', '×', () => window.desktopPet.quit());
 
 let dragging = false;
 let lastMouse = null;
@@ -70,4 +71,7 @@ window.addEventListener('mousemove', (event) => {
 });
 window.addEventListener('mouseup', () => { dragging = false; lastMouse = null; });
 window.addEventListener('blur', () => window.desktopPet.closeMenu());
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') window.desktopPet.closeMenu();
+});
 window.desktopPet.menuReady();

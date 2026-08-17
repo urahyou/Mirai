@@ -6,7 +6,7 @@ html, body {
   margin: 0;
   overflow: hidden;
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
 #pet { position: relative; width: 100%; height: 100%; }
@@ -20,9 +20,9 @@ html, body {
 #character-live2d, #character-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #character-live2d { pointer-events: none; }
 #character[data-outline-shadow="true"] #character-canvas {
-  filter: drop-shadow(0 0 5px rgba(255, 105, 170, .48)) drop-shadow(0 4px 8px rgba(83, 49, 74, .28));
+  filter: drop-shadow(0 0 5px rgba(233, 111, 159, .5)) drop-shadow(0 4px 8px rgba(72, 57, 67, .26));
 }
-#character-shadow { position: absolute; z-index: -1; bottom: 6px; left: 50%; width: 138px; height: 18px; border-radius: 50%; background: rgba(66, 41, 63, .2); filter: blur(8px); transform: translateX(-50%); }
+#character-shadow { position: absolute; z-index: -1; bottom: 6px; left: 50%; width: 138px; height: 18px; border-radius: 50%; background: rgba(72, 57, 67, .2); filter: blur(8px); transform: translateX(-50%); }
 body.speaking #character { animation: talk .32s ease-in-out infinite alternate; }
 
 @keyframes talk { from { transform: translateY(0); } to { transform: translateY(-2px); } }
@@ -33,22 +33,17 @@ body.speaking #character { animation: talk .32s ease-in-out infinite alternate; 
   position: absolute; top: 50%; z-index: 5;
   transform: translateY(-50%);
   display: flex; flex-direction: column; gap: 8px;
-  padding: 26px 20px;
-  /* 半透明扇面：径向渐变从贴近角色处(收窄)向窗外展开(宽弧) */
-  background:
-    radial-gradient(120% 56% at 0% 50%, rgba(255,255,255,.9), rgba(255,214,229,.42)),
-    radial-gradient(120% 56% at 100% 50%, rgba(255,214,229,.36), transparent 70%);
+  padding: 16px 13px;
+  background-color: rgba(255, 253, 248, .93);
+  background-image: var(--paper-grid);
+  background-size: 14px 14px;
   backdrop-filter: blur(7px);
-  border: 1px solid rgba(233,180,203,.55);
-  box-shadow: 0 8px 22px rgba(81,51,70,.18);
-  /* 靠角色侧收窄成尖角，向外呈圆弧展开的扇形 */
-  border-radius: 40px 10px 10px 40px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+  border-radius: 7px 16px 16px 7px;
 }
 #voice-dock.right {
-  background:
-    radial-gradient(120% 56% at 100% 50%, rgba(255,255,255,.9), rgba(255,214,229,.42)),
-    radial-gradient(120% 56% at 0% 50%, rgba(255,214,229,.36), transparent 70%);
-  border-radius: 10px 40px 40px 10px;
+  border-radius: 16px 7px 7px 16px;
 }
 #voice-dock.hidden { display: none; }
 /* 每个开关：左侧图标 + 右侧拨动轨道 */
@@ -58,15 +53,15 @@ body.speaking #character { animation: talk .32s ease-in-out infinite alternate; 
 }
 .dock-icon {
   width: 30px; height: 30px; display: grid; place-items: center;
-  border-radius: 50%; background: rgba(255,255,255,.85); color: #a86482;
-  font-size: 16px; box-shadow: 0 2px 5px rgba(81,51,70,.14);
-  border: 1px solid rgba(233,180,203,.6);
+  border-radius: 5px; background: var(--paper); color: var(--pink-deep);
+  font-size: 16px; box-shadow: 0 2px 5px rgba(72,57,67,.14);
+  border: 1px solid var(--line);
   transition: background .2s ease, transform .1s ease;
 }
 .dock-switch:hover .dock-icon { transform: scale(1.06); }
 .dock-track {
   position: relative; flex: 0 0 auto; width: 38px; height: 22px;
-  border-radius: 11px; background: #d4d0d3; transition: background .16s ease;
+  border-radius: 11px; background: #c8c8c2; transition: background .16s ease;
   border: 1px solid rgba(0,0,0,.08);
 }
 .dock-track input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -77,14 +72,14 @@ body.speaking #character { animation: talk .32s ease-in-out infinite alternate; 
 }
 /* 语音输入：聆听中（绿） */
 .dock-switch[for="dock-voice-input"] input:checked ~ .dock-thumb { transform: translateX(16px); }
-.dock-switch[for="dock-voice-input"] input:checked ~ .dock-track { background: #3fbf6f; }
+.dock-switch[for="dock-voice-input"] input:checked ~ .dock-track { background: var(--success); }
 .dock-switch[for="dock-voice-input"] input:checked ~ .dock-thumb { background: #fff; }
-.dock-switch[for="dock-voice-input"]:has(input:checked) .dock-icon { background: #3fbf6f; color: #fff; border-color: #2f9d57; }
+.dock-switch[for="dock-voice-input"]:has(input:checked) .dock-icon { background: var(--success); color: #fff; border-color: var(--mint-deep); }
 /* 语音输出：开启（粉） / 关闭（灰） */
 .dock-switch[for="dock-voice-output"] input:checked ~ .dock-thumb { transform: translateX(16px); }
-.dock-switch[for="dock-voice-output"] input:checked ~ .dock-track { background: #ff6aa8; }
+.dock-switch[for="dock-voice-output"] input:checked ~ .dock-track { background: var(--pink); }
 .dock-switch[for="dock-voice-output"] input:checked ~ .dock-thumb { background: #fff; }
-.dock-switch[for="dock-voice-output"]:has(input:checked) .dock-icon { background: #ff6aa8; color: #fff; border-color: #e84d8e; }
+.dock-switch[for="dock-voice-output"]:has(input:checked) .dock-icon { background: var(--pink); color: #fff; border-color: var(--pink-deep); }
 /* 加载中（侧车未就绪）：输入开关橙色脉冲 */
 .dock-switch[for="dock-voice-input"].dock-loading:has(input:checked) .dock-icon {
   background: #f5a623; color: #fff; border-color: #d9880f;

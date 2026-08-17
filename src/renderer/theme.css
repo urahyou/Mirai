@@ -1,0 +1,52 @@
+:root {
+  --paper: #fffdf2;
+  --paper-strong: #fff7d2;
+  --pink: #bb4dca;
+  --pink-deep: #762683;
+  --pink-pale: #f4cef1;
+  --mint: #45c6e3;
+  --mint-deep: #147b9d;
+  --mint-pale: #dff6fb;
+  --butter: #fff268;
+  --ink: #30385d;
+  --muted: #756e84;
+  --line: #dea66e;
+  --line-strong: #835f9c;
+  --danger: #b83a4b;
+  --success: #148d68;
+  --shadow: 3px 4px 0 rgba(70, 54, 102, .22);
+  --focus-ring: 0 0 0 3px rgba(69, 198, 227, .42);
+  --paper-grid:
+    repeating-linear-gradient(0deg, rgba(87, 102, 156, .05) 0 1px, transparent 1px 4px);
+  --paper-dot: radial-gradient(rgba(187, 77, 202, .15) 1px, transparent 1.2px);
+  --site-stripes: repeating-linear-gradient(-45deg, #3ec4e4 0 6px, #52cde9 6px 12px);
+  /* Compatibility aliases while legacy panel-specific rules are migrated. */
+  --text: var(--ink);
+  --bg: var(--paper);
+  --pink-soft: rgba(187, 77, 202, .15);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  color: var(--ink);
+  background: var(--paper);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+::selection { background: var(--pink-pale); color: var(--ink); }
+
+/* The pattern is deliberately low-contrast and only used on framing surfaces. */
+.paper-pattern { background-color: var(--paper-strong); background-image: var(--paper-grid); background-size: 16px 16px; }
+.dot-pattern { background-color: var(--paper-strong); background-image: var(--paper-dot); background-size: 12px 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
