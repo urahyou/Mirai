@@ -109,3 +109,13 @@
   - IPC diary:getToday / diary:openFolder / systemSense:get（contracts+preload+subsystems/diary.js 纯读取）
   - main.js api 胶囊注入 systemSense，保持纯装配
 - **喂养说明**：非按钮，= 跟它说话(对话→CONVERSATION) / 点它(GREETING) 自动增加好感/经验，无需手动喂。
+
+## 设置体系重构（用户反馈：不要全塞显示设置，要良好体验）
+- **`908e551`** 设置中心枢纽 + 分类子面板：
+  - 新增「设置中心」首页 settings-center（卡片导航，专题卡+网格）
+  - 原显示设置拆成三面板：外观(大小/阴影/气泡)、桌面行为(置顶/扇形)、
+    与小未来相处(心情/成长/喂养说明/感知/日记)
+  - 右键菜单精简：开始聊天/设置中心/退出；子面板可"←返回设置中心"
+  - IPC settings:openCenter / appearance / behavior / companion（settings-nav.js）
+  - 面板统一 panel.js makePanel 注册；main.js 保持纯装配
+- 真机：设置中心→相处/上下文面板导航成功；mock 验证三面板渲染正确。
