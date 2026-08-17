@@ -3,40 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>小未来 · 本地记忆</title>
+  <title>小未来 · 日记与记忆</title>
   <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="panel.css" />
-  <style>
-    .memory-content { display: grid; gap: 10px; overflow-y: auto; padding: 16px 0; }
-    .memory-section { display: grid; gap: 8px; padding: 13px; border: 1px solid var(--line); background: var(--paper); }
-    .memory-section h2 { margin: 0; color: var(--pink-deep); font-size: 13px; }
-    .memory-section p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-    .status { padding: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); font-size: 12px; line-height: 1.6; }
-    .status.ok { color: var(--success); }
-    .status.bad { color: var(--danger); }
-  </style>
+  <link rel="stylesheet" href="memory-panel.css" />
 </head>
 <body>
   <div id="app">
     <header class="panel-header">
-      <h1 class="panel-title">本地记忆库</h1>
-      <p class="panel-desc">记忆保存在本机 SQLite，支持聊天情景、事实、关系图和日记来源追踪。</p>
+      <div class="title-line">
+        <div>
+          <h1 class="panel-title">日记与记忆</h1>
+          <p class="panel-desc">留在这台电脑里的相处片段，以及小未来写下的每一天。</p>
+        </div>
+        <span class="core-status" id="statusBox">正在连接…</span>
+      </div>
+      <nav class="main-tabs" aria-label="阅读内容">
+        <button class="main-tab active" data-view="diary" type="button">日记册</button>
+        <button class="main-tab" data-view="memory" type="button">记忆库</button>
+      </nav>
     </header>
-    <main class="memory-content">
-      <div class="status" id="statusBox">正在检查本地记忆库…</div>
-      <section class="memory-section">
-        <h2>当前能力</h2>
-        <p>SQLite 本地存储 · 关键词检索 · 关系图检索 · 来源级遗忘</p>
-        <p id="statsLine">正在读取数据统计…</p>
+
+    <main class="reader-shell">
+      <section class="reader-view" id="diaryView">
+        <aside class="entry-list" aria-label="日记日期">
+          <div class="list-heading"><span>Diary Pages</span><strong id="diaryCount">0 页</strong></div>
+          <div class="entry-scroll" id="diaryList"></div>
+        </aside>
+        <article class="diary-page" aria-live="polite">
+          <div class="tape tape-left"></div><div class="tape tape-right"></div>
+          <div class="page-stamp" id="diaryStamp">MY DIARY</div>
+          <p class="page-date" id="diaryDate">今天</p>
+          <p class="page-weekday" id="diaryWeekday">小未来的记录</p>
+          <div class="page-rule"></div>
+          <div class="diary-prose" id="diaryProse">正在翻找日记册…</div>
+          <p class="source-note" id="diarySources"></p>
+        </article>
       </section>
-      <section class="memory-section">
-        <h2>数据边界</h2>
-        <p>聊天、互动、虚拟生活和日记素材留在本机；未启用向量服务，不启动 Docker 或网络记忆侧车。</p>
+
+      <section class="reader-view hidden" id="memoryView">
+        <aside class="entry-list" aria-label="记忆类别">
+          <div class="list-heading"><span>Memory Index</span><strong id="memoryCount">0 条</strong></div>
+          <div class="memory-tabs" id="memoryTabs">
+            <button class="memory-tab active" data-kind="episodes" type="button">相处片段</button>
+            <button class="memory-tab" data-kind="facts" type="button">记住的事</button>
+            <button class="memory-tab" data-kind="edges" type="button">关系</button>
+            <button class="memory-tab" data-kind="profiles" type="button">人格画像</button>
+            <button class="memory-tab" data-kind="events" type="button">事件</button>
+          </div>
+          <div class="entry-scroll" id="memoryList"></div>
+        </aside>
+        <article class="memory-detail" aria-live="polite">
+          <p class="detail-kicker" id="memoryKicker">Memory</p>
+          <h2 id="memoryTitle">选择一条记忆</h2>
+          <div class="detail-rule"></div>
+          <div class="memory-body" id="memoryBody">这里会显示完整内容、时间和可追溯来源。</div>
+          <dl class="memory-meta" id="memoryMeta"></dl>
+        </article>
       </section>
     </main>
+
     <footer class="panel-footer">
-      <span class="hint">Python Core 未就绪时不会读取或写入长期记忆。</span>
+      <span class="hint" id="statsLine">只读浏览，不会改写本地记忆。</span>
       <div class="spacer"></div>
+      <button class="btn small ghost" id="refreshBtn" type="button" title="刷新日记与记忆列表">↻</button>
       <button class="btn small ghost" id="closeBtn" type="button">关闭</button>
     </footer>
   </div>

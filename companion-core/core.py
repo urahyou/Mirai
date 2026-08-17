@@ -162,6 +162,19 @@ class CompanionCore:
         if not isinstance(query, str): raise CoreError("query 必须是字符串")
         return self.memory.search(query)
 
+    def memory_list(self, kind: Any, limit: Any = 30) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(kind, str): raise CoreError("记忆列表参数不合法")
+        methods = {
+            "episodes": self.memory.list_episodes,
+            "facts": self.memory.list_facts,
+            "profiles": self.memory.list_profiles,
+            "edges": self.memory.list_edges,
+            "events": self.memory.list_events,
+        }
+        handler = methods.get(kind)
+        if not handler: raise CoreError("未知记忆类别")
+        return handler(limit)
+
     def memory_forget_source(self, source_id: Any) -> int:
         if not self.memory or not isinstance(source_id, str) or not source_id: raise CoreError("sourceId 不合法")
         return self.memory.delete_by_source(source_id)
@@ -208,6 +221,10 @@ class CompanionCore:
         if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")
         try: return self.memory.get_daily_material(day)
         except ValueError as error: raise CoreError(str(error)) from error
+
+    def journal_list_daily(self, limit: Any = 50) -> list[dict[str, Any]]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        return self.memory.list_daily_journals(limit)
 
     def journal_save_daily_prose(self, day: Any, prose: Any, reflection: Any = None) -> dict[str, Any]:
         if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")

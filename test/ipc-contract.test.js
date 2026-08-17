@@ -97,6 +97,18 @@ test('Given the diary panel When generation is requested Then it uses an explici
   assert.match(script, /diaryGenerateBtn.*addEventListener\('click'/s);
 });
 
+test('Given the memory reader When it is inspected Then browsing is read-only and detail-oriented', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'memory-panel.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'memory-panel.js'), 'utf8');
+  assert.match(html, /id="diaryList"/);
+  assert.match(html, /id="memoryList"/);
+  assert.match(html, /data-kind="profiles"/);
+  assert.match(script, /memory\.listDailyJournals\(\)/);
+  assert.match(script, /memory\.getDailyJournal\(item\.date\)/);
+  assert.match(script, /memory\.list\(kind\)/);
+  assert.doesNotMatch(script, /innerHTML/);
+});
+
 test('Given a long reply When the balloon is inspected Then its text area can receive scroll input', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.css'), 'utf8');
 

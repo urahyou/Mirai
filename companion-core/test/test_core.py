@@ -87,6 +87,29 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory_neighbors("owner:default"), [])
             self.assertEqual(core.memory_stats()["episodes"], 0)
 
+    def test_memory_browser_lists_and_daily_pages_are_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "主人喜欢复古少女网页"}], "2026-08-17T08:00:00Z")
+            source_id = core.memory_list("episodes")[0]["id"]
+            core.memory_upsert_fact({"subjectId": "owner:default", "predicate": "likes", "objectText": "复古少女网页", "sourceId": source_id})
+            core.memory_upsert_profile({"id": "character:mirai", "role": "character", "core": {"tone": "少女感"}, "learned": {}})
+            core.memory_upsert_edge({"fromId": "character:mirai", "predicate": "cares_for", "toId": "owner:default", "sourceId": source_id})
+            core.ingest({"type": "user:opened_panel", "occurredAt": "2026-08-17T09:00:00Z", "source": "test", "payload": {}})
+            core.journal_build_daily_material("2026-08-17", 0)
+            core.journal_save_daily_prose("2026-08-17", "今天我把喜欢的复古网页悄悄记在了心里。")
+            self.assertEqual(len(core.memory_list("episodes")), 1)
+            self.assertEqual(core.memory_list("facts")[0]["objectText"], "复古少女网页")
+            self.assertEqual(core.memory_list("profiles")[0]["id"], "character:mirai")
+            self.assertEqual(core.memory_list("edges")[0]["predicate"], "cares_for")
+            self.assertEqual(core.memory_list("events")[0]["type"], "user:opened_panel")
+            pages = core.journal_list_daily()
+            self.assertEqual(pages[0]["date"], "2026-08-17")
+            self.assertTrue(pages[0]["exists"])
+            self.assertIn("复古网页", pages[0]["excerpt"])
+            with self.assertRaisesRegex(CoreError, "未知记忆类别"):
+                core.memory_list("unknown")
+
     def test_memory_rejects_unproven_source(self):
         with tempfile.TemporaryDirectory() as directory:
             core = CompanionCore(); core.bootstrap(directory)

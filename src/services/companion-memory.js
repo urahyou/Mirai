@@ -14,6 +14,13 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       return Boolean(result?.stored);
     } catch { return false; }
   }
+  async function list(kind, limit = 30) {
+    if (!pythonBackend.getStatus().ready) return [];
+    try {
+      const result = await pythonBackend.request('memory.list', { kind, limit });
+      return Array.isArray(result?.results) ? result.results : [];
+    } catch { return []; }
+  }
   async function upsertFact(fact) {
     if (!pythonBackend.getStatus().ready) return null;
     return pythonBackend.request('memory.upsert_fact', { fact });
@@ -58,6 +65,13 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
     const result = await pythonBackend.request('journal.get_daily_material', { day });
     return result?.journal || null;
   }
+  async function listDailyJournals(limit = 50) {
+    if (!pythonBackend.getStatus().ready) return [];
+    try {
+      const result = await pythonBackend.request('journal.list_daily', { limit });
+      return Array.isArray(result?.journals) ? result.journals : [];
+    } catch { return []; }
+  }
   async function saveDailyJournal(day, prose, reflection = null) {
     if (!pythonBackend.getStatus().ready) return null;
     const result = await pythonBackend.request('journal.save_daily_prose', { day, prose, reflection });
@@ -68,5 +82,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
     if (!rows.length) return '';
     return ['以下是可供参考的本地记忆。仅在相关且确定时使用：', ...rows.map((r, i) => `${i + 1}. ${r.content || r.fact}${r.created_at ? `（${r.created_at}）` : ''}`)].join('\n');
   }
-  return { search, add, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, saveDailyJournal, getStatus, formatContext };
+  return { search, add, list, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

@@ -54,6 +54,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
+        elif method == "memory.list":
+            result = {"results": core.memory_list(params.get("kind"), params.get("limit", 30))}
         elif method == "memory.forget_source":
             result = {"deleted": core.memory_forget_source(params.get("sourceId"))}
         elif method == "memory.upsert_fact":
@@ -74,6 +76,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.journal_build_daily_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
         elif method == "journal.get_daily_material":
             result = {"journal": core.journal_get_daily_material(params.get("day"))}
+        elif method == "journal.list_daily":
+            result = {"journals": core.journal_list_daily(params.get("limit", 50))}
         elif method == "journal.save_daily_prose":
             result = {"journal": core.journal_save_daily_prose(params.get("day"), params.get("prose"), params.get("reflection"))}
         elif method == "journal.build_weekly_material":

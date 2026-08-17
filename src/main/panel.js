@@ -115,7 +115,7 @@ module.exports = function createPanels({ getPetWindow, windowOptions, setInterac
   const displayPanel = makePanel({ width: 460, height: 360, settingsChild: true, file: 'display-panel.html' });
   const voiceSettingsPanel = makePanel({ width: 480, height: 360, settingsChild: true, file: 'voice-settings.html' });
   const contextPanel = makePanel({ width: 460, height: 380, settingsChild: true, file: 'context-panel.html' });
-  const memoryPanel = makePanel({ width: 520, height: 560, settingsChild: true, file: 'memory-panel.html' });
+  const memoryPanel = makePanel({ width: 860, height: 650, resizable: true, minWidth: 700, minHeight: 520, settingsChild: true, file: 'memory-panel.html' });
 
   // —— 设置中心体系（2026-08）：显示设置拆分为清晰子面板，由中心首页统一导航。
   // 无边框(frame:false) + 自定义拖动顶栏(.drag-bar)，替代系统标题栏，保证可移动。

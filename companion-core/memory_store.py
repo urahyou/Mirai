@@ -58,6 +58,10 @@ class MemoryStore:
         rows = self.db.execute(f"SELECT id, content, created_at FROM episodes WHERE {clause} ORDER BY created_at DESC LIMIT ?", (*values, limit)).fetchall()
         return [{"id": row["id"], "content": row["content"], "created_at": row["created_at"]} for row in rows]
 
+    def list_episodes(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, content, created_at, source FROM episodes ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "content": row["content"], "createdAt": row["created_at"], "source": row["source"]} for row in rows]
+
     def upsert_fact(self, fact: dict[str, Any]) -> dict[str, Any]:
         required = ("subjectId", "predicate", "objectText")
         if not isinstance(fact, dict) or any(not isinstance(fact.get(k), str) or not fact[k].strip() for k in required): raise ValueError("事实缺少主体、关系或内容")
@@ -82,6 +86,10 @@ class MemoryStore:
         rows = self.db.execute(f"SELECT id, subject_id, predicate, object_text, confidence, importance, valid_from, valid_to, source_id, state FROM facts WHERE {' AND '.join(where)} ORDER BY importance DESC, confidence DESC, id ASC LIMIT ?", (*values, limit)).fetchall()
         return [self._fact_row(row) for row in rows]
 
+    def list_facts(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, subject_id, predicate, object_text, confidence, importance, valid_from, valid_to, source_id, state FROM facts ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, importance DESC, confidence DESC, id ASC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [self._fact_row(row) for row in rows]
+
     def upsert_profile(self, profile: dict[str, Any], updated_at: str) -> dict[str, Any]:
         if not isinstance(profile, dict): raise ValueError("画像必须是对象")
         ident = self._required_text(profile.get("id"), "画像缺少 id", 120)
@@ -101,6 +109,10 @@ class MemoryStore:
         if not row: return None
         return {"id": row["id"], "role": row["role"], "core": json.loads(row["core_json"]), "learned": json.loads(row["learned_json"]), "updatedAt": row["updated_at"]}
 
+    def list_profiles(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, role, core_json, learned_json, updated_at FROM profiles ORDER BY updated_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "role": row["role"], "core": json.loads(row["core_json"]), "learned": json.loads(row["learned_json"]), "updatedAt": row["updated_at"]} for row in rows]
+
     def upsert_edge(self, edge: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(edge, dict): raise ValueError("关系边必须是对象")
         ident = edge.get("id") if isinstance(edge.get("id"), str) and edge["id"].strip() else "edge:" + uuid.uuid4().hex
@@ -119,6 +131,14 @@ class MemoryStore:
         ident = self._required_text(entity_id, "实体 id 不合法", 120)
         rows = self.db.execute("SELECT id, from_id, predicate, to_id, source_id, valid_from, valid_to, state FROM edges WHERE state='active' AND (from_id=? OR to_id=?) ORDER BY id ASC LIMIT ?", (ident, ident, self._limit(limit))).fetchall()
         return [{"id": row["id"], "fromId": row["from_id"], "predicate": row["predicate"], "toId": row["to_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]} for row in rows]
+
+    def list_edges(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, from_id, predicate, to_id, source_id, valid_from, valid_to, state FROM edges ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, id ASC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "fromId": row["from_id"], "predicate": row["predicate"], "toId": row["to_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]} for row in rows]
+
+    def list_events(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, type, occurred_at, source, privacy, payload_json FROM events ORDER BY occurred_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "type": row["type"], "occurredAt": row["occurred_at"], "source": row["source"], "privacy": row["privacy"], "payload": json.loads(row["payload_json"])} for row in rows]
 
     def delete_by_source(self, source_id: str) -> int:
         with self.db:
@@ -157,6 +177,10 @@ class MemoryStore:
 
     def get_daily_material(self, day_text: str) -> dict[str, Any] | None:
         return self._get_journal("daily_journals", "date", self._parse_day(day_text).isoformat())
+
+    def list_daily_journals(self, limit: Any = 50) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT date, prose, reflection, source_ids_json, built_at FROM daily_journals ORDER BY date DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"date": row["date"], "exists": bool(row["prose"]), "excerpt": (row["prose"] or "").replace("\n", " ")[:100], "reflection": row["reflection"], "sourceCount": len(json.loads(row["source_ids_json"])), "builtAt": row["built_at"]} for row in rows]
 
     def save_daily_prose(self, day_text: str, prose: Any, reflection: Any = None) -> dict[str, Any]:
         return self._save_journal_prose("daily_journals", "date", self._parse_day(day_text).isoformat(), prose, reflection)

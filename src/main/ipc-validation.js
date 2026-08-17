@@ -62,6 +62,15 @@ function validateChatExpanded(args) {
   return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
 }
 
+function validateMemoryList(args) {
+  const kinds = new Set(['episodes', 'facts', 'profiles', 'edges', 'events']);
+  return args.length === 1 && kinds.has(args[0]) ? args : null;
+}
+
+function validateDay(args) {
+  return args.length === 1 && typeof args[0] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args[0]) ? args : null;
+}
+
 function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
@@ -83,6 +92,10 @@ function validatePayload(channel, args, ctx = {}) {
         ? validateDisplaySettingsPatch(values)
         : channel === 'chat:setExpanded'
           ? validateChatExpanded(values)
+          : channel === 'memory:list'
+            ? validateMemoryList(values)
+            : channel === 'memory:getDailyJournal'
+              ? validateDay(values)
           : channel === 'context:set'
             ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
             : null;
