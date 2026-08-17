@@ -61,6 +61,7 @@ test('buffer 持久化：重启后同一天继续累积', () => {
   // 模拟重启
   journal._reset();
   journal.init({ dir: tmp, petState: { describe: () => '心情：平静' } });
+  journal._setNow(makeNow(t)); // 重启后测试时钟也需恢复，避免被真实日期触发跨日归档
   assert.strictEqual(journal._state().buffer.length, 1);
   journal.onEvent(E.PET.GREETING);
   assert.strictEqual(journal._state().buffer.length, 2);

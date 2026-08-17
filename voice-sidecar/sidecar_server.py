@@ -15,6 +15,8 @@ Mirai 语音侧车 —— 语音输入半程：
     {"type":"asr","text":"<识别的文字>"}      一句话的最终识别结果
     {"type":"audio","id":<对应speak的id>,"format":"mp3","data":"<base64>"}
                                                 对 speak 的响应：合成好的 MP3（base64）
+    {"type":"tts-error","id":<对应speak的id>,"error":"<简短错误>"}
+                                                合成失败，不阻塞后续识别/对话
 
 环境变量：
   SIDECAR_HOST      默认 127.0.0.1
@@ -305,10 +307,37 @@ async def handle_connection(websocket):
             started_at = time.monotonic()
             audio = await loop.run_in_executor(None, synth, text)
         except Exception as exc:  # noqa: BLE001
-            _log("tts failed:", repr(exc))
+            # HTTPError 的正文包含 GPT-SoVITS 的真正原因（参数/语言/模型等），
+            # 之前只打印 repr 导致 400 无法诊断；截断并屏蔽本地参考音频路径。
+            detail = str(exc)
+            try:
+                from urllib.error import HTTPError
+
+                if isinstance(exc, HTTPError):
+                    body = exc.read().decode("utf-8", errors="replace")
+                    detail = body[:500] or detail
+                    _log("tts HTTP error:", exc.code, detail)
+            except Exception:  # noqa: BLE001
+                pass
+            for ref_path in (TTS_REF_WAV, TTS_REF_WAV_JA):
+                if ref_path:
+                    detail = detail.replace(ref_path, "<reference-audio>")
+            if len(detail) > 500:
+                detail = detail[:500] + "..."
+            _log("tts failed:", detail)
+            await send_json({
+                "type": "tts-error",
+                "id": req_id,
+                "error": detail,
+            })
             return
         if not audio:
             _log("tts produced empty audio")
+            await send_json({
+                "type": "tts-error",
+                "id": req_id,
+                "error": "TTS returned empty audio",
+            })
             return
         await send_json(
             {

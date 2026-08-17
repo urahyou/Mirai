@@ -184,6 +184,14 @@ class VoiceBridge extends EventEmitter {
           ttsMs: Number(msg.ttsMs) || null,
           latencyMs: startedAt ? Date.now() - startedAt : null,
         });
+      } else if (msg.type === 'tts-error') {
+        const startedAt = this.speakStartedAt.get(msg.id);
+        this.speakStartedAt.delete(msg.id);
+        this.emit('tts-error', {
+          id: msg.id,
+          error: String(msg.error || 'TTS synthesis failed').slice(0, 500),
+          latencyMs: startedAt ? Date.now() - startedAt : null,
+        });
       }
     } catch {/* 忽略非 JSON */}
   }
@@ -211,9 +219,10 @@ class VoiceBridge extends EventEmitter {
       this.speakQueue.length = 0;
       this.speakQueue.push(wire);
       this.connect();
-      return;
+      return requestId;
     }
     this.ws.send(wire);
+    return requestId;
   }
 
   flushQueue() {

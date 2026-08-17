@@ -24,6 +24,7 @@ module.exports = function createVoice({
       return;
     }
     state._speakBusy = true;
+    state._speakRequestId = null;
     state._speakPending = null;
     clearTimeout(state._speakBusyTimer);
     state._speakBusyTimer = setTimeout(() => {
@@ -45,11 +46,11 @@ module.exports = function createVoice({
     if (speakLang && canSpeakLang) {
       // 先翻译再发音，失败则回退原话，避免没声
       generic.translate(t, speakLang)
-        .then((jp) => voiceBridge.speak((jp && jp.trim()) ? jp : t))
-        .catch(() => voiceBridge.speak(t));
+        .then((jp) => { state._speakRequestId = voiceBridge.speak((jp && jp.trim()) ? jp : t); })
+        .catch(() => { state._speakRequestId = voiceBridge.speak(t); });
       return;
     }
-    voiceBridge.speak(t);
+    state._speakRequestId = voiceBridge.speak(t);
   }
 
   // 语音输出开关：读取 .env 的 SIDECAR_TTS_ENABLED，防止误写时静音判定出错用白名单。
@@ -95,9 +96,13 @@ module.exports = function createVoice({
   }
 
   function releaseSpeak(id) {
-    if (!state._speakBusy || id !== state._speakActiveAudioId) return;
+    if (!state._speakBusy) return;
+    const requestMatches = id !== null && id !== undefined && id === state._speakRequestId;
+    const audioMatches = id !== null && id !== undefined && id === state._speakActiveAudioId;
+    if (!requestMatches && !audioMatches) return;
     clearTimeout(state._speakBusyTimer);
     state._speakBusy = false;
+    state._speakRequestId = null;
     state._speakActiveAudioId = null;
     const pending = state._speakPending;
     state._speakPending = null;
@@ -127,6 +132,7 @@ module.exports = function createVoice({
     if (audio.latencyMs) console.log('[voice] TTS end-to-end=%dms synth=%sms', audio.latencyMs, audio.ttsMs ?? 'n/a');
     clearTimeout(state._speakBusyTimer);
     state._speakActiveAudioId = audio.id;
+    state._speakRequestId = audio.id;
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send(IPC.VoiceAudio, {
         id: audio.id,
@@ -134,6 +140,13 @@ module.exports = function createVoice({
         data: audio.data, // Buffer → 序列化为 Uint8Array，renderer 端解码播放
       });
     } else releaseSpeak(audio.id);
+  });
+
+  // GPT-SoVITS/其它 TTS 失败时立即解锁朗读队列，不等待 120 秒兜底定时器。
+  // 文字回复已经由 chat.js 独立推送，此处只影响语音输出。
+  voiceBridge.on('tts-error', (failure) => {
+    console.error('[voice] TTS synthesis failed:', failure.error);
+    releaseSpeak(failure.id);
   });
 
   // 你开口说话时（speech_start）→ 通知宠物窗打断正在播放的语音，转听你说

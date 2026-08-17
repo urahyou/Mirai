@@ -38,6 +38,7 @@ module.exports = {
   // ---- 语音（主进程侧）----
   isVoiceListening: { value: false }, // 聆听开关（用对象以便跨引用共享同一可变值）
   _speakBusy: false,         // 是否有一条朗读正在侧车合成中
+  _speakRequestId: null,     // 当前正在侧车合成的请求 id（audio 到达前使用）
   _speakPending: null,       // 合成进行时累积的最新待读文本（旧的被覆盖丢弃）
   _speakBusyTimer: null,     // 超时兜底：某条未回 audio（如 TTS 失败）时释放，防 busy 卡死
   _ttsEnabledCache: null,    // 语音输出开关的内存缓存（null=未初始化，首次读取 .env）
