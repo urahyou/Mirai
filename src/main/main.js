@@ -20,7 +20,12 @@
  */
 
 const { app, BrowserWindow, ipcMain } = require('electron');
+// 必须最先固定应用名：userData 目录名 = app.getName()。
+// 放这里（任何其它 require 触及 userData 之前），避免被锁成旧名 haruhana-quest。
+// 钉死后目录名一生不变，防止发布期改名导致数据目录漂移。
+app.setName('Mirai');
 const path = require('path');
+const fs = require('fs');
 const generic = require('../engine/generic');
 const personalityConfig = require('../engine/personality-config');
 const personalityRuntime = require('../services/personality-runtime');
@@ -122,7 +127,57 @@ mountIpc({
   contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState, sensing, systemSense,
 });
 
+// 一次性数据迁移：把旧目录名 haruhana-quest 下的数据搬到当前 userData（Mirai），
+// 避免改名后用户已有的日记/好感/记忆等全部丢失。幂等：新目录已有真实数据则跳过。
+function migrateLegacyData() {
+  const appData = app.getPath('appData');       // …/Application Support（跨平台父目录）
+  const legacy = path.join(appData, 'haruhana-quest');
+  const current = app.getPath('userData');      // = …/<app.getName()>，通常 …/Mirai
+  // Electron 启动即会在 userData 下自建 Local State / GPUCache 等系统文件，
+  // 这些不算业务数据，不能据此判定“新目录已有内容”。
+  const isElectronSys = (ent) => {
+    const k = ent.toLowerCase();
+    return k === 'local state' || k === 'cookies' || k === 'sharedfilelist.lock' || k.endsWith('cache');
+  };
+  console.log('[data] migrate; legacy=%s current=%s', legacy, current);
+  try {
+    if (path.resolve(legacy) === path.resolve(current)) return;
+    if (!fs.existsSync(legacy)) return;
+    let hasBusinessData = false;
+    if (fs.existsSync(current)) {
+      for (const ent of fs.readdirSync(current)) {
+        if (!isElectronSys(ent)) { hasBusinessData = true; break; }
+      }
+    }
+    if (hasBusinessData) return; // 新目录已有真实业务数据，避免互相覆盖
+    fs.mkdirSync(current, { recursive: true });
+    for (const ent of fs.readdirSync(legacy)) {
+      const dst = path.join(current, ent);
+      const src = path.join(legacy, ent);
+      if (!isElectronSys(ent)) {
+        // 业务文件：搬到新目录；若同名已存在则保留新目录的、删旧的
+        if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+        else fs.rmSync(src, { recursive: true, force: true });
+      } else if (!fs.existsSync(dst)) {
+        fs.renameSync(src, dst); // 系统文件：新目录没有才搬，避免覆盖新会话会话数据
+      } else {
+        fs.rmSync(src, { recursive: true, force: true }); // 系统文件可再生产，删旧的
+      }
+    }
+    // 清理残余并移除旧目录
+    for (const ent of fs.readdirSync(legacy)) {
+      try { fs.rmSync(path.join(legacy, ent), { recursive: true, force: true }); } catch {}
+    }
+    try { fs.rmdirSync(legacy); } catch {}
+    console.log('[data] 迁移完成，旧目录已移除 →', current);
+  } catch (e) {
+    console.error('[data] 数据目录迁移失败，请手动处理：', e.stack || e.message);
+  }
+}
+
 app.whenReady().then(() => {
+  // 最先迁移（在一切读写 userData 之前），保证后续路径即新目录且数据已就位。
+  migrateLegacyData();
   // macOS：隐藏 Dock（ActivationPolicyAccessory / UIElementApplication）后，
   // 桌宠窗口才能加入其他应用的全屏 Space 并置顶（普通前台应用进不了全屏 Space）。
   if (process.platform === 'darwin' && app.setActivationPolicy) {
