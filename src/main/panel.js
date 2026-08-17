@@ -120,11 +120,20 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
     menuWindow.on('closed', () => { menuWindow = null; });
   }
 
-  // 菜单渲染就绪后按待显示位置重新定位（页面尺寸可能已变化）
+  // 菜单渲染就绪后按内容自适应尺寸并重新定位（菜单被展开到一级后项数变多）
   function repositionMenu() {
     if (!menuWindow || menuWindow.isDestroyed() || !menuPendingPosition) return false;
-    const [width, height] = menuWindow.getContentSize();
-    return setMenuPosition(menuPendingPosition, width, height);
+    menuWindow.webContents.executeJavaScript(
+      `(() => { const m = document.getElementById('menu'); return { h: m.scrollHeight, w: m.scrollWidth }; })()`
+    ).then(({ h, w }) => {
+      const winW = Math.max(MENU_WINDOW_SIZE.width, Math.min(w + 14, 340));
+      const winH = Math.max(MENU_WINDOW_SIZE.height, Math.min(h + 8, 620));
+      menuWindow.setBounds({ width: winW, height: winH });
+      setMenuPosition(menuPendingPosition, winW, winH);
+    }).catch(() => {
+      setMenuPosition(menuPendingPosition);
+    });
+    return true;
   }
 
   return {
