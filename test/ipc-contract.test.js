@@ -72,6 +72,7 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /chatSubmit/);
   assert.match(preload, /getChatHistory/);
   assert.match(preload, /setChatExpanded/);
+  assert.match(preload, /playbackFinished/);
   assert.match(preload, /memory:\s*Object\.freeze/);
   assert.match(preload, /setMousePassthrough/);
 });

@@ -13,8 +13,7 @@ module.exports = function createVoice({
   // 若 .env 设了 SIDECAR_TTS_SPEAK_LANG（如 ja=日语），则先把“中文回复”翻成该语言再发音；
   // 屏幕上显示的气泡文字（chatHistory/chat-input）保持中文不变 —— 实现“中文文字 + 外语朗读”。
   // SIDECAR_TTS_ENABLED=false 时关闭语音输出（沉默模式，只显示文字不发声）。
-  // main 端合成去重：同一时刻最多让侧车合成一条，连续 speak 只保留最新一句，
-  // 避免侧车堆积合成一堆会被渲染端丢弃的句子（浪费算力，尤其 GPT-SoVITS）。
+  // 同一时刻只合成/播放一条；下一条必须等待 renderer 回报实际播放结束。
   function speak(text) {
     const t = String(text || '').trim();
     if (!t) return;
@@ -28,11 +27,13 @@ module.exports = function createVoice({
     state._speakPending = null;
     clearTimeout(state._speakBusyTimer);
     state._speakBusyTimer = setTimeout(() => {
+      // 只有侧车迟迟未回音频才允许保底释放；收到 audio 后会立刻取消该计时。
+      if (state._speakActiveAudioId !== null && state._speakActiveAudioId !== undefined) return;
       state._speakBusy = false;
       const pending = state._speakPending;
       state._speakPending = null;
       if (pending) speak(pending);
-    }, 20000);
+    }, 120000);
     const sidecarEnv = voiceBridge.getSidecarEnv();
     const engine = String(sidecarEnv.SIDECAR_TTS_ENGINE || '').trim();
     const speakLang = String(sidecarEnv.SIDECAR_TTS_SPEAK_LANG || '').trim();
@@ -93,6 +94,16 @@ module.exports = function createVoice({
     broadcastVoiceStatus();
   }
 
+  function releaseSpeak(id) {
+    if (!state._speakBusy || id !== state._speakActiveAudioId) return;
+    clearTimeout(state._speakBusyTimer);
+    state._speakBusy = false;
+    state._speakActiveAudioId = null;
+    const pending = state._speakPending;
+    state._speakPending = null;
+    if (pending) speak(pending);
+  }
+
   // 侧车就绪/退出 → 刷新两侧 🎤 状态（加载中⇄就绪）
   voiceBridge.on('ready-change', broadcastVoiceStatus);
 
@@ -114,21 +125,15 @@ module.exports = function createVoice({
   // 让主窗口（宠物窗）播放小未来的语音
   voiceBridge.on('audio', (audio) => {
     if (audio.latencyMs) console.log('[voice] TTS end-to-end=%dms synth=%sms', audio.latencyMs, audio.ttsMs ?? 'n/a');
-    // 本条已合成完成 → 释放 busy；若期间又积累了最新待读文本，立即发起它（打断式：旧退场新上场）
-    if (state._speakBusy) {
-      clearTimeout(state._speakBusyTimer);
-      state._speakBusy = false;
-      const pending = state._speakPending;
-      state._speakPending = null;
-      if (pending) speak(pending);
-    }
+    clearTimeout(state._speakBusyTimer);
+    state._speakActiveAudioId = audio.id;
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send(IPC.VoiceAudio, {
         id: audio.id,
         format: audio.format || 'mp3',
         data: audio.data, // Buffer → 序列化为 Uint8Array，renderer 端解码播放
       });
-    }
+    } else releaseSpeak(audio.id);
   });
 
   // 你开口说话时（speech_start）→ 通知宠物窗打断正在播放的语音，转听你说
@@ -157,6 +162,9 @@ module.exports = function createVoice({
     return voiceOutputEnabled();
   });
   ipcMain.on(IPC.VoicePcm, (_event, buffer) => voiceBridge.sendPcm(buffer));
+  ipcMain.on(IPC.VoicePlaybackFinished, (_event, id) => {
+    if (typeof id === 'number' && Number.isFinite(id)) releaseSpeak(id);
+  });
 
   return {
     speak,

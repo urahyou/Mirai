@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
       audioListener = (_event, audio) => callback(audio);
       ipcRenderer.on('voice:audio', audioListener);
     },
+    playbackFinished: (id, reason = 'ended') => ipcRenderer.send('voice:playback-finished', id, reason),
     onSpeakInterrupt: (callback) => {
       if (speakInterruptListener) ipcRenderer.removeListener('voice:speak-interrupt', speakInterruptListener);
       speakInterruptListener = () => callback();

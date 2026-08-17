@@ -485,6 +485,7 @@ window.desktopPet.voice.onStatus((s) => {
 // ---------------- 语音输出（让小未来开口） ----------------
 let ttsContext = null;
 let ttsSource = null;
+let ttsPlaybackId = null;
 let ttsToken = 0; // 递增令牌：并发到达的音频只保留最新一句，从根上避免语音重叠
 
 function ensureTtsContext() {
@@ -494,11 +495,18 @@ function ensureTtsContext() {
   return ttsContext.resume().then(() => ttsContext);
 }
 
-function stopSpeech() {
+function notifyPlaybackFinished(id, reason) {
+  if (typeof id === 'number') window.desktopPet.voice.playbackFinished(id, reason);
+}
+
+function stopSpeech(reason = 'interrupted') {
+  const activeId = ttsPlaybackId;
+  ttsPlaybackId = null;
   if (ttsSource) {
     try { ttsSource.stop(); } catch {/* already stopped */}
     ttsSource = null;
   }
+  if (activeId !== null) notifyPlaybackFinished(activeId, reason);
   document.body.classList.remove('speaking');
 }
 
@@ -513,26 +521,30 @@ async function playSpeech(audio) {
   const ab = toArrayBuffer(audio?.data);
   if (!ab || !ab.byteLength) return;
   const token = ++ttsToken; // 抢占最新令牌
-  stopSpeech(); // 打断当前正在播放的语音
+  stopSpeech('replaced'); // 理论上队列已串行，此处仍兜底
   try {
     const ctx = await ensureTtsContext();
     const buf = await ctx.decodeAudioData(ab);
     // decode 期间又有更新的音频到达 → 丢弃本句，只保留最新
-    if (token !== ttsToken) return;
+    if (token !== ttsToken) { notifyPlaybackFinished(audio.id, 'discarded'); return; }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
     src.onended = () => {
-      if (ttsToken === token) {
+      if (ttsToken === token && ttsPlaybackId === audio.id) {
         ttsSource = null;
+        ttsPlaybackId = null;
+        notifyPlaybackFinished(audio.id, 'ended');
         document.body.classList.remove('speaking');
       }
     };
     ttsSource = src;
+    ttsPlaybackId = audio.id;
     src.start();
     document.body.classList.add('speaking'); // 说话浮动动画
   } catch (err) {
     console.error('[Voice] 播放语音失败:', err);
+    notifyPlaybackFinished(audio.id, 'failed');
     document.body.classList.remove('speaking');
   }
 }

@@ -42,6 +42,7 @@ module.exports = {
   VoiceAsrPartial: 'voice:asr-partial',
   VoiceAsrFinal: 'voice:asr-final',
   VoiceAudio: 'voice:audio',
+  VoicePlaybackFinished: 'voice:playback-finished',
   VoiceSpeakInterrupt: 'voice:speak-interrupt',
 
   // 菜单（panel.js）
