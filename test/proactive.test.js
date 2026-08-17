@@ -82,3 +82,13 @@ test('eventBus 订阅：事件触发自动 say', () => {
   assert.strictEqual(spoken.length, 1); // 冷却抑制第二次
   assert.ok(spoken[0].includes('主人'));
 });
+
+test('用户策略阻止时不消耗冷却，恢复后可以正常发言', () => {
+  let allowed = false;
+  let spoken = [];
+  proactive.init({ say: (line) => spoken.push(line), initiativePolicy: { allows: () => allowed, reserve: () => allowed } });
+  assert.equal(proactive.maybeAct({ type: E.PET.NEGLECT, now: NOW }), '');
+  allowed = true;
+  assert.ok(proactive.maybeAct({ type: E.PET.NEGLECT, now: NOW + 1000 }));
+  assert.equal(spoken.length, 1);
+});

@@ -71,6 +71,8 @@ module.exports = {
   DiaryGetToday: 'diary:getToday',
   DiaryOpenFolder: 'diary:openFolder',
   SystemSenseGet: 'systemSense:get',
+  InitiativeGet: 'initiative:get',
+  InitiativeSet: 'initiative:set',
 
   // 设置中心体系（2026-08）
   SettingsCenterOpen: 'settings:openCenter',

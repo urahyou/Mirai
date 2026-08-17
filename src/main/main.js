@@ -39,6 +39,7 @@ const createCompanionMemory = require('../services/companion-memory');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
 const createCompanionEmotion = require('../services/companion-emotion');
+const initiativeSettings = require('../services/initiative-settings');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -141,6 +142,7 @@ mountIpc({
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
   contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
+  initiativeSettings,
 });
 
 // 一次性数据迁移：把旧目录名 haruhana-quest 下的数据搬到当前 userData（Mirai），
@@ -207,6 +209,7 @@ app.whenReady().then(() => {
   windowLayout.setRuntimePath(path.join(app.getPath('userData'), 'window-layout.json'));
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
+  initiativeSettings.init({ storage });
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
     await companionPetState.seedFromLegacy();

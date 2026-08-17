@@ -72,10 +72,12 @@ let chance = CHANCE;                // 可注入（测试用）
 let lastSay = 0;                 // 上次真正开口（全局冷却）
 let lastKind = {};               // { kind: lastTime }
 let say = null;                  // 行动回调：say(line)
+let policy = null;               // 用户边界（安静时段 / 每日预算）
 
-function init({ eventBus, say: sayCb } = {}) {
+function init({ eventBus, say: sayCb, initiativePolicy } = {}) {
   bus = eventBus || null;
   say = sayCb || null;
+  policy = initiativePolicy || null;
   if (bus) {
     bus.on(E.PET.NEGLECT, () => maybeAct({ type: E.PET.NEGLECT }));
     bus.on(E.PET.LATE_NIGHT, () => maybeAct({ type: E.PET.LATE_NIGHT }));
@@ -124,9 +126,13 @@ function consider({ type, state, now = nowFn() } = {}) {
 
 // 行动入口：consider 通过则真正调用 say（供 main 装配调用）。
 function maybeAct({ type, state, now }) {
-  const r = consider({ type, state, now });
+  const at = now || nowFn();
+  // 先检查用户边界，避免静音/安静时段里的触发消耗冷却或每日配额。
+  if (policy && !policy.allows(at)) return '';
+  const r = consider({ type, state, now: at });
   if (r.shouldAct && say) {
-    lastSay = now || nowFn();
+    if (policy && !policy.reserve(at)) return '';
+    lastSay = at;
     try { say(r.line); } catch { /* 行动失败不致命 */ }
     return r.line;
   }
@@ -143,6 +149,7 @@ function _reset() {
   lastKind = {};
   chance = CHANCE;
   nowFn = () => Date.now();
+  policy = null;
 }
 
 module.exports = { init, consider, maybeAct, _setNow, _setChance, _reset };

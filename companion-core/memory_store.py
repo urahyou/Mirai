@@ -1,6 +1,7 @@
 """本地分层记忆 SQLite 仓储。只用标准库，不依赖图数据库或向量服务。"""
 from __future__ import annotations
 import json, sqlite3, uuid
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +15,32 @@ class MemoryStore:
         CREATE TABLE IF NOT EXISTS facts(id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, predicate TEXT NOT NULL, object_text TEXT NOT NULL, confidence REAL NOT NULL, importance REAL NOT NULL, valid_from TEXT, valid_to TEXT, source_id TEXT REFERENCES episodes(id), state TEXT NOT NULL DEFAULT 'active');
         CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY, role TEXT NOT NULL, core_json TEXT NOT NULL DEFAULT '{}', learned_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY, from_id TEXT NOT NULL, predicate TEXT NOT NULL, to_id TEXT NOT NULL, source_id TEXT REFERENCES episodes(id), valid_from TEXT, valid_to TEXT, state TEXT NOT NULL DEFAULT 'active');
+        CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, type TEXT NOT NULL, occurred_at TEXT NOT NULL, source TEXT NOT NULL, privacy TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}');
+        CREATE TABLE IF NOT EXISTS daily_journals(date TEXT PRIMARY KEY, timezone_offset_minutes INTEGER NOT NULL, material_json TEXT NOT NULL, source_ids_json TEXT NOT NULL, prose TEXT, reflection TEXT, built_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS weekly_journals(week_start TEXT PRIMARY KEY, timezone_offset_minutes INTEGER NOT NULL, material_json TEXT NOT NULL, source_ids_json TEXT NOT NULL, prose TEXT, reflection TEXT, built_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS episode_created ON episodes(created_at DESC);
+        CREATE INDEX IF NOT EXISTS event_occurred ON events(occurred_at DESC);
         CREATE INDEX IF NOT EXISTS fact_subject ON facts(subject_id, predicate, state);
         CREATE INDEX IF NOT EXISTS edge_from ON edges(from_id, state);
         """)
         self.db.commit()
 
+    def record_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(event, dict): raise ValueError("事件必须是对象")
+        event_type = self._required_text(event.get("type"), "事件缺少 type", 120)
+        occurred_at = self._required_text(event.get("occurredAt"), "事件缺少 occurredAt", 64)
+        self._parse_time(occurred_at)
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict): raise ValueError("事件 payload 必须是对象")
+        try: payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError) as error: raise ValueError("事件 payload 无法保存") from error
+        ident = "event:" + uuid.uuid4().hex
+        self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?)", (ident, event_type, occurred_at, str(event.get("source", "unknown"))[:80], str(event.get("privacy", "local-only"))[:40], payload_json))
+        self.db.commit()
+        return {"id": ident}
+
     def add_episode(self, messages: list[dict[str, Any]], created_at: str) -> bool:
+        self._parse_time(self._required_text(created_at, "episode 时间不合法", 64))
         rows = []
         for item in messages[:20]:
             if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"): continue
@@ -105,9 +125,138 @@ class MemoryStore:
             count = self.db.execute("DELETE FROM facts WHERE source_id=?", (source_id,)).rowcount
             count += self.db.execute("DELETE FROM edges WHERE source_id=?", (source_id,)).rowcount
             count += self.db.execute("DELETE FROM episodes WHERE id=?", (source_id,)).rowcount
+            count += self.db.execute("DELETE FROM events WHERE id=?", (source_id,)).rowcount
+            # 素材快照可随时由尚存来源重建；删除它们不会删除原始记忆。
+            if count:
+                count += self.db.execute("DELETE FROM daily_journals").rowcount
+                count += self.db.execute("DELETE FROM weekly_journals").rowcount
         return count
 
+    def build_daily_material(self, day_text: str, timezone_offset_minutes: Any, activities: Any, built_at: str) -> dict[str, Any]:
+        day = self._parse_day(day_text)
+        offset = self._timezone_offset(timezone_offset_minutes)
+        tz = timezone(timedelta(minutes=offset))
+        chat_sources = self._episodes_for_day(day, tz)
+        event_sources = self._events_for_day(day, tz)
+        activity_sources = self._activities_for_day(activities, day, tz)
+        material = {
+            "schemaVersion": 1,
+            "date": day.isoformat(),
+            "timezoneOffsetMinutes": offset,
+            "constraints": ["仅包含已保存的聊天、明确事件和已完成的虚拟活动", "这是一份事实素材，不是小未来自动生成的日记正文"],
+            "sources": {"episodes": chat_sources, "events": event_sources, "activities": activity_sources},
+            "facts": {
+                "chatCount": len(chat_sources),
+                "eventTypes": self._counts(event_sources, "type"),
+                "activityTypes": self._counts(activity_sources, "activityId"),
+            },
+        }
+        source_ids = [row["sourceId"] for group in material["sources"].values() for row in group]
+        self._upsert_journal("daily_journals", "date", day.isoformat(), offset, material, source_ids, built_at)
+        return material
+
+    def get_daily_material(self, day_text: str) -> dict[str, Any] | None:
+        return self._get_journal("daily_journals", "date", self._parse_day(day_text).isoformat())
+
+    def build_weekly_material(self, day_text: str, timezone_offset_minutes: Any, activities: Any, built_at: str) -> dict[str, Any]:
+        day = self._parse_day(day_text)
+        week_start = day - timedelta(days=day.weekday())
+        days = [self.build_daily_material((week_start + timedelta(days=index)).isoformat(), timezone_offset_minutes, activities, built_at) for index in range(7)]
+        sources = {"episodes": [], "events": [], "activities": []}
+        for daily in days:
+            for kind, rows in daily["sources"].items(): sources[kind].extend(rows)
+        material = {
+            "schemaVersion": 1,
+            "weekStart": week_start.isoformat(),
+            "weekEnd": (week_start + timedelta(days=6)).isoformat(),
+            "timezoneOffsetMinutes": self._timezone_offset(timezone_offset_minutes),
+            "constraints": ["周素材由每日事实素材汇总而成", "不得据此编造未记录的经历"],
+            "dailyDates": [item["date"] for item in days],
+            "sources": sources,
+            "facts": {"chatCount": len(sources["episodes"]), "eventTypes": self._counts(sources["events"], "type"), "activityTypes": self._counts(sources["activities"], "activityId")},
+        }
+        source_ids = [row["sourceId"] for group in sources.values() for row in group]
+        self._upsert_journal("weekly_journals", "week_start", week_start.isoformat(), material["timezoneOffsetMinutes"], material, source_ids, built_at)
+        return material
+
+    def get_weekly_material(self, day_text: str) -> dict[str, Any] | None:
+        day = self._parse_day(day_text)
+        return self._get_journal("weekly_journals", "week_start", (day - timedelta(days=day.weekday())).isoformat())
+
     def close(self) -> None: self.db.close()
+
+    def _episodes_for_day(self, day: date, tz: timezone) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, content, created_at FROM episodes ORDER BY created_at ASC").fetchall()
+        result = []
+        for row in rows:
+            if self._parse_time(row["created_at"]).astimezone(tz).date() == day:
+                result.append({"sourceId": row["id"], "createdAt": row["created_at"], "excerpt": row["content"][:1200]})
+        return result
+
+    def _events_for_day(self, day: date, tz: timezone) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, type, occurred_at, source FROM events ORDER BY occurred_at ASC").fetchall()
+        result = []
+        for row in rows:
+            if self._parse_time(row["occurred_at"]).astimezone(tz).date() == day:
+                result.append({"sourceId": row["id"], "type": row["type"], "occurredAt": row["occurred_at"], "source": row["source"]})
+        return result
+
+    def _activities_for_day(self, activities: Any, day: date, tz: timezone) -> list[dict[str, Any]]:
+        result = []
+        if not isinstance(activities, list): return result
+        for index, activity in enumerate(activities):
+            if not isinstance(activity, dict): continue
+            completed = activity.get("completedAt")
+            if not isinstance(completed, (int, float)) or isinstance(completed, bool): continue
+            occurred = datetime.fromtimestamp(completed / 1000, timezone.utc)
+            if occurred.astimezone(tz).date() != day: continue
+            activity_id = activity.get("activityId")
+            if not isinstance(activity_id, str) or not activity_id: continue
+            source_id = activity.get("id") if isinstance(activity.get("id"), str) and activity["id"] else f"activity:legacy:{int(completed)}:{index}"
+            result.append({"sourceId": source_id, "activityId": activity_id, "completedAt": int(completed), "durationMinutes": int(activity.get("durationMinutes", 0) or 0), "tags": list(activity.get("tags", []))[:8] if isinstance(activity.get("tags"), list) else []})
+        return result
+
+    def _upsert_journal(self, table: str, key: str, value: str, offset: int, material: dict[str, Any], source_ids: list[str], built_at: str) -> None:
+        previous = self.db.execute(f"SELECT prose, reflection FROM {table} WHERE {key}=?", (value,)).fetchone()
+        prose = previous["prose"] if previous else None
+        reflection = previous["reflection"] if previous else None
+        self.db.execute(f"INSERT INTO {table}({key}, timezone_offset_minutes, material_json, source_ids_json, prose, reflection, built_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT({key}) DO UPDATE SET timezone_offset_minutes=excluded.timezone_offset_minutes, material_json=excluded.material_json, source_ids_json=excluded.source_ids_json, prose=excluded.prose, reflection=excluded.reflection, built_at=excluded.built_at", (value, offset, json.dumps(material, ensure_ascii=False), json.dumps(source_ids, ensure_ascii=False), prose, reflection, built_at))
+        self.db.commit()
+
+    def _get_journal(self, table: str, key: str, value: str) -> dict[str, Any] | None:
+        row = self.db.execute(f"SELECT material_json, source_ids_json, prose, reflection, built_at FROM {table} WHERE {key}=?", (value,)).fetchone()
+        if not row: return None
+        material = json.loads(row["material_json"])
+        return {"material": material, "sourceIds": json.loads(row["source_ids_json"]), "prose": row["prose"], "reflection": row["reflection"], "builtAt": row["built_at"]}
+
+    @staticmethod
+    def _counts(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for row in rows:
+            value = row.get(key)
+            if isinstance(value, str) and value: counts[value] = counts.get(value, 0) + 1
+        return counts
+
+    @staticmethod
+    def _parse_day(value: Any) -> date:
+        if not isinstance(value, str): raise ValueError("日期必须是 YYYY-MM-DD")
+        try: return date.fromisoformat(value)
+        except ValueError as error: raise ValueError("日期必须是 YYYY-MM-DD") from error
+
+    @staticmethod
+    def _parse_time(value: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+        except ValueError as error: raise ValueError("时间必须是 ISO 8601") from error
+
+    @staticmethod
+    def _timezone_offset(value: Any) -> int:
+        if value is None: return 0
+        try: offset = int(value)
+        except (TypeError, ValueError) as error: raise ValueError("时区偏移必须是分钟数") from error
+        if not -14 * 60 <= offset <= 14 * 60: raise ValueError("时区偏移超出范围")
+        return offset
 
     def _source_id(self, value: Any) -> str | None:
         if value is None: return None

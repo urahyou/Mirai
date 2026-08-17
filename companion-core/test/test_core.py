@@ -92,6 +92,12 @@ class CompanionCoreTest(unittest.TestCase):
             with self.assertRaisesRegex(CoreError, "sourceId 不存在"):
                 core.memory_upsert_fact({"subjectId": "owner:default", "predicate": "likes", "objectText": "未验证", "sourceId": "episode:missing"})
 
+    def test_memory_rejects_episode_with_invalid_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            with self.assertRaisesRegex(CoreError, "ISO 8601"):
+                core.memory_add_episode([{"role": "user", "content": "测试"}], "not-a-time")
+
     def test_life_state_advances_offline_and_performs_virtual_activity(self):
         with tempfile.TemporaryDirectory() as directory:
             core = CompanionCore(); core.bootstrap(directory)
@@ -124,6 +130,31 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertGreater(emotional["focus"], praised["focus"])
             decayed = core.emotion_get_state(1_100_000 + 24 * 60 * 60 * 1000)
             self.assertLess(decayed["focus"], emotional["focus"])
+
+    def test_daily_and_weekly_journal_material_only_references_saved_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            timestamp = 1_786_968_800_000  # 2026-08-17T12:00:00Z
+            core.memory_add_episode([
+                {"role": "user", "content": "今天我们一起整理了记忆系统"},
+                {"role": "assistant", "content": "我会先写事实素材。"},
+            ], "2026-08-17T12:00:00Z")
+            core.pet_apply_event("pet:greeting", timestamp)
+            life = core.life_perform_activity("study", timestamp)
+
+            daily = core.journal_build_daily_material("2026-08-17", 0)
+            self.assertEqual(daily["facts"]["chatCount"], 1)
+            self.assertEqual(daily["facts"]["eventTypes"]["pet:greeting"], 1)
+            self.assertEqual(daily["facts"]["activityTypes"]["study"], 1)
+            self.assertEqual(daily["sources"]["activities"][0]["sourceId"], life["recentActivities"][-1]["id"])
+            self.assertIn("不是小未来自动生成的日记正文", daily["constraints"][1])
+            saved = core.journal_get_daily_material("2026-08-17")
+            self.assertEqual(saved["material"]["date"], "2026-08-17")
+
+            weekly = core.journal_build_weekly_material("2026-08-17", 0)
+            self.assertEqual(weekly["weekStart"], "2026-08-17")
+            self.assertEqual(weekly["facts"]["chatCount"], 1)
+            self.assertIsNotNone(core.journal_get_weekly_material("2026-08-17"))
 
 
 if __name__ == "__main__":

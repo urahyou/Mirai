@@ -121,7 +121,7 @@ module.exports = function createPanels({ getPetWindow, windowOptions, setInterac
   // 无边框(frame:false) + 自定义拖动顶栏(.drag-bar)，替代系统标题栏，保证可移动。
   const settingsCenterPanel = makePanel({ width: 560, height: 480, frame: false, resizable: true, minWidth: 480, minHeight: 400, settingsCenter: true, file: 'settings-center.html' });
   const appearancePanel = makePanel({ width: 460, height: 380, frame: false, settingsChild: true, file: 'appearance-panel.html' });
-  const behaviorPanel = makePanel({ width: 460, height: 360, frame: false, settingsChild: true, file: 'behavior-panel.html' });
+  const behaviorPanel = makePanel({ width: 460, height: 500, frame: false, settingsChild: true, file: 'behavior-panel.html' });
   const companionPanel = makePanel({ width: 520, height: 560, frame: false, settingsChild: true, file: 'companion-panel.html' });
 
   // ---------- 右键菜单（行为比面板特殊：失焦关闭 + 按点击点定位） ----------

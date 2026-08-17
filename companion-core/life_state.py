@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+import uuid
 
 SCHEMA_VERSION = 1
 MAX_RECENT_ACTIVITIES = 32
@@ -71,6 +72,7 @@ def perform(raw: Any, activity_id: str, now: int) -> dict[str, Any]:
     if activity_id == "shopping": state["inventory"].append("item:小礼物")
     state["currentActivityId"] = activity_id
     state["updatedAt"] = int(now) + int(activity["durationMinutes"] * 60 * 1000)
-    state["recentActivities"].append({"activityId": activity_id, "completedAt": int(now), "durationMinutes": activity["durationMinutes"], "tags": activity["tags"]})
+    # 活动本身也是日记与回忆的可追溯来源；不能只靠时间戳拼接身份。
+    state["recentActivities"].append({"id": "activity:" + uuid.uuid4().hex, "activityId": activity_id, "completedAt": int(now), "durationMinutes": activity["durationMinutes"], "tags": activity["tags"]})
     state["recentActivities"] = state["recentActivities"][-MAX_RECENT_ACTIVITIES:]
     return state

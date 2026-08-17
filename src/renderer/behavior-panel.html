@@ -44,6 +44,19 @@
         <input id="dockHideRange" class="scale-range" type="range" min="3" max="30" step="1" value="6" />
         <div class="range-labels"><span>3s</span><span>15s</span><span>30s</span></div>
       </section>
+
+      <section class="setting-section">
+        <label class="toggle-row" for="initiativeEnabled">
+          <span><span class="toggle-title">主动关怀</span><span class="hint">允许小未来在合适的时候主动说话</span></span>
+          <span class="switch"><input id="initiativeEnabled" type="checkbox" /><span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span></span>
+        </label>
+      </section>
+
+      <section class="setting-section" id="initiativeRules">
+        <div class="setting-heading"><div><h2 class="section-title">安静时段</h2><p class="hint">在此期间不主动弹出或朗读</p></div></div>
+        <div class="settings-inline"><label class="hint" for="quietStartHour">开始</label><select id="quietStartHour"></select><label class="hint" for="quietEndHour">结束</label><select id="quietEndHour"></select></div>
+        <div class="setting-heading budget-heading"><div><h2 class="section-title">每日主动次数</h2></div><input id="dailyBudget" type="number" min="0" max="12" step="1" /></div>
+      </section>
     </main>
 
     <footer class="panel-footer">

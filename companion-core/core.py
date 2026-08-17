@@ -95,6 +95,10 @@ class CompanionCore:
                 raise CoreError("sensing:tick payload.now 必须是时间戳")
             self.state["tickCount"] = int(self.state.get("tickCount", 0)) + 1
             self.state["lastTickAt"] = int(now)
+        elif self.memory:
+            # 高频感知节拍不进入日记来源；其余明确输入事件可被日后审计与引用。
+            normalized["occurredAt"] = normalized["occurredAt"] or datetime.now(timezone.utc).isoformat()
+            self.memory.record_event(normalized)
         self._write_state()
         return {"accepted": True, "state": self.snapshot()}
 
@@ -108,6 +112,8 @@ class CompanionCore:
         next_state, upgrade = pet_state.apply(self.state.get("petState"), event_type, int(now))
         self.state["petState"] = next_state
         self.state["emotionState"] = emotion_state.apply(self.state.get("emotionState"), event_type, int(now))
+        if self.memory:
+            self.memory.record_event({"type": event_type, "occurredAt": self._iso_from_ms(int(now)), "source": "core.pet", "privacy": "local-only", "payload": {}})
         self._write_state()
         return {"state": next_state, "stageUp": upgrade}
 
@@ -148,7 +154,8 @@ class CompanionCore:
     def memory_add_episode(self, messages: Any, created_at: Any) -> bool:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         if not isinstance(messages, list) or not isinstance(created_at, str): raise CoreError("episode 参数不合法")
-        return self.memory.add_episode(messages, created_at)
+        try: return self.memory.add_episode(messages, created_at)
+        except ValueError as error: raise CoreError(str(error)) from error
 
     def memory_search(self, query: Any) -> list[dict[str, Any]]:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
@@ -188,6 +195,26 @@ class CompanionCore:
         try: return self.memory.neighbors(entity_id, limit)
         except ValueError as error: raise CoreError(str(error)) from error
 
+    def journal_build_daily_material(self, day: Any, timezone_offset_minutes: Any = 0) -> dict[str, Any]:
+        if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")
+        try: return self.memory.build_daily_material(day, timezone_offset_minutes, self.state.get("lifeState", {}).get("recentActivities", []), datetime.now(timezone.utc).isoformat())
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def journal_get_daily_material(self, day: Any) -> dict[str, Any] | None:
+        if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")
+        try: return self.memory.get_daily_material(day)
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def journal_build_weekly_material(self, day: Any, timezone_offset_minutes: Any = 0) -> dict[str, Any]:
+        if not self.memory or not isinstance(day, str): raise CoreError("周记日期不合法")
+        try: return self.memory.build_weekly_material(day, timezone_offset_minutes, self.state.get("lifeState", {}).get("recentActivities", []), datetime.now(timezone.utc).isoformat())
+        except ValueError as error: raise CoreError(str(error)) from error
+
+    def journal_get_weekly_material(self, day: Any) -> dict[str, Any] | None:
+        if not self.memory or not isinstance(day, str): raise CoreError("周记日期不合法")
+        try: return self.memory.get_weekly_material(day)
+        except ValueError as error: raise CoreError(str(error)) from error
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "schemaVersion": self.state.get("schemaVersion", SCHEMA_VERSION),
@@ -223,3 +250,7 @@ class CompanionCore:
     @staticmethod
     def _validate_now(now: Any) -> None:
         if not isinstance(now, (int, float)) or isinstance(now, bool): raise CoreError("now 必须是时间戳")
+
+    @staticmethod
+    def _iso_from_ms(value: int) -> str:
+        return datetime.fromtimestamp(value / 1000, timezone.utc).isoformat().replace("+00:00", "Z")

@@ -6,10 +6,11 @@
 const proactiveSys = require('../systems/proactive');
 const IPC = require('../contracts/ipc');
 
-module.exports = function setup({ voice, state, eventBus }) {
+module.exports = function setup({ voice, state, eventBus, initiativeSettings, ipcMain }) {
   if (!eventBus) return;
   proactiveSys.init({
     eventBus,
+    initiativePolicy: initiativeSettings,
     say: (line) => {
       if (!line) return;
       try { voice.speak(String(line)); } catch {}
@@ -22,4 +23,8 @@ module.exports = function setup({ voice, state, eventBus }) {
       } catch {}
     },
   });
+  if (initiativeSettings && ipcMain) {
+    ipcMain.handle(IPC.InitiativeGet, () => initiativeSettings.getSettings());
+    ipcMain.handle(IPC.InitiativeSet, (_event, patch) => initiativeSettings.setSettings(patch));
+  }
 };

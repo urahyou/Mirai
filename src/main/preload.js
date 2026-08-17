@@ -130,6 +130,10 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     getToday: () => ipcRenderer.invoke('diary:getToday'),
     openFolder: () => ipcRenderer.invoke('diary:openFolder'),
   }),
+  initiative: Object.freeze({
+    get: () => ipcRenderer.invoke('initiative:get'),
+    set: (patch) => ipcRenderer.invoke('initiative:set', patch),
+  }),
   systemSense: Object.freeze({
     get: () => ipcRenderer.invoke('systemSense:get'),
   }),

@@ -68,6 +68,14 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.memory_upsert_edge(params.get("edge"))
         elif method == "memory.neighbors":
             result = {"results": core.memory_neighbors(params.get("entityId"), params.get("limit", 8))}
+        elif method == "journal.build_daily_material":
+            result = core.journal_build_daily_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
+        elif method == "journal.get_daily_material":
+            result = {"journal": core.journal_get_daily_material(params.get("day"))}
+        elif method == "journal.build_weekly_material":
+            result = core.journal_build_weekly_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
+        elif method == "journal.get_weekly_material":
+            result = {"journal": core.journal_get_weekly_material(params.get("day"))}
         elif method == "event.ingest":
             result = core.ingest(params.get("event"))
         elif method == "core.shutdown":

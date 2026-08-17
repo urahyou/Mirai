@@ -53,6 +53,18 @@
 .switch input:checked + .switch-track { background: var(--pink); }
 .switch input:checked + .switch-track .switch-thumb { transform: translateX(18px); }
 .switch input:focus-visible + .switch-track { outline: 3px solid var(--pink-soft); outline-offset: 2px; }
+.settings-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.settings-inline select, .budget-heading input {
+  min-height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--ink);
+  background: var(--paper);
+}
+.settings-inline select { min-width: 72px; padding: 3px 5px; }
+.budget-heading { align-items: center; margin-top: 11px; }
+.budget-heading .section-title { margin: 0; }
+.budget-heading input { width: 56px; padding: 3px 5px; text-align: center; }
 
 .panel-header { padding-bottom: 5px; }
 .panel-desc { margin-top: 2px; }
