@@ -103,10 +103,8 @@ module.exports = {
   ContextOpenPanel: 'context:openPanel',
   ContextClosePanel: 'context:closePanel',
 
-  // 长期记忆 Graphiti（main.js）
+  // 本地长期记忆（Python Core SQLite）
   MemoryGetStatus: 'memory:getStatus',
-  MemoryGetSettings: 'memory:getSettings',
-  MemorySetSettings: 'memory:setSettings',
   MemoryOpenPanel: 'memory:openPanel',
   MemoryClosePanel: 'memory:closePanel',
 

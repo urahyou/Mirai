@@ -9,7 +9,7 @@
  *   5. 聊天输入窗        —— open/close/resize/syncChatInputWithMain
  *   6. 菜单窗 + 各设置面板 —— 已拆 panel.js
  *   7. 聊天调度          —— 已拆 chat.js（handleUserUtterance / generateChat / 单句点击回应 / 聊天 IPC / 上下文预算）
- *   8. 长期记忆          —— Graphiti search(注入)+add(回写)（不可用时降级普通聊天）
+ *   8. 长期记忆          —— Python Core SQLite search(注入)+add(回写)
  *   9. 语音桥接          —— 已拆 voice.js（朗读/识别/打断/语音 IPC）
  *   10. IPC 能力         —— 已拆 src/subsystems/*.js（personality/display/voice/provider/context/memory/balloon/window/menu），本文件仅 mountIpc 装配
  *   11. IPC 校验         —— guarded/validatePayload 集中在 ipc-validation.js
@@ -34,7 +34,6 @@ const voiceEnv = require('../services/voice-env');
 const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-budget');
-const graphitiMemory = require('../services/graphiti-memory');
 const createCompanionMemory = require('../services/companion-memory');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
@@ -56,7 +55,7 @@ const state = require('./shared-state');
 const eventBus = createEventBus();
 // Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
 const pythonBackend = createPythonBackend();
-const companionMemory = createCompanionMemory({ pythonBackend, fallback: graphitiMemory });
+const companionMemory = createCompanionMemory({ pythonBackend });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
@@ -115,7 +114,7 @@ const chat = createChat({
   state,
   generic,
   chatHistory,
-  graphitiMemory: companionMemory,
+  memory: companionMemory,
   contextSettings,
   probeMaxContext,
   voice,
@@ -141,7 +140,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
+  contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
   initiativeSettings,
 });
 

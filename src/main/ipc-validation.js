@@ -62,24 +62,6 @@ function validateChatExpanded(args) {
   return args.length === 1 && typeof args[0] === 'boolean' ? args : null;
 }
 
-const GRAPHITI_SETTING_KEYS = new Set([
-  'GRAPHITI_ENABLED', 'GRAPHITI_BASE_URL', 'GRAPHITI_GROUP_ID',
-  'GRAPHITI_NEO4J_URI', 'GRAPHITI_NEO4J_USER', 'GRAPHITI_NEO4J_PASSWORD',
-  'GRAPHITI_NEO4J_DATABASE', 'GRAPHITI_LLM_BASE_URL', 'GRAPHITI_LLM_API_KEY',
-  'GRAPHITI_LLM_MODEL', 'GRAPHITI_LLM_SMALL_MODEL', 'GRAPHITI_LLM_MAX_TOKENS',
-  'GRAPHITI_OLLAMA_THINK', 'GRAPHITI_EMBED_BASE_URL', 'GRAPHITI_EMBED_API_KEY',
-  'GRAPHITI_EMBED_MODEL', 'GRAPHITI_EPISODE_TIMEOUT', 'GRAPHITI_SEARCH_TIMEOUT',
-]);
-
-function validateGraphitiSettingsPatch(args) {
-  if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
-  const patch = args[0];
-  const keys = Object.keys(patch);
-  if (!keys.length || keys.some((key) => !GRAPHITI_SETTING_KEYS.has(key))) return null;
-  if (keys.some((key) => typeof patch[key] !== 'string' || patch[key].length > 500)) return null;
-  return args;
-}
-
 function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
@@ -103,9 +85,7 @@ function validatePayload(channel, args, ctx = {}) {
           ? validateChatExpanded(values)
           : channel === 'context:set'
             ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
-            : channel === 'memory:setSettings'
-              ? validateGraphitiSettingsPatch(values)
-              : null;
+            : null;
   return data ? { ok: true, data } : IPC_ERROR;
 }
 

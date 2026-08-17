@@ -195,6 +195,10 @@ class CompanionCore:
         try: return self.memory.neighbors(entity_id, limit)
         except ValueError as error: raise CoreError(str(error)) from error
 
+    def memory_stats(self) -> dict[str, int]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        return self.memory.stats()
+
     def journal_build_daily_material(self, day: Any, timezone_offset_minutes: Any = 0) -> dict[str, Any]:
         if not self.memory or not isinstance(day, str): raise CoreError("日记日期不合法")
         try: return self.memory.build_daily_material(day, timezone_offset_minutes, self.state.get("lifeState", {}).get("recentActivities", []), datetime.now(timezone.utc).isoformat())

@@ -3,62 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>小未来 · Graphiti 记忆</title>
+  <title>小未来 · 本地记忆</title>
   <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="panel.css" />
   <style>
-    .settings { display: grid; gap: 14px; overflow-y: auto; padding: 16px 0; }
-    .section { display: grid; gap: 9px; padding: 13px; border: 1px solid rgba(0,0,0,.09); border-radius: 8px; }
-    .section h2 { margin: 0; font-size: 13px; }
-    .section p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-    label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 600; }
-    input { width: 100%; height: 34px; padding: 0 9px; border: 1px solid rgba(0,0,0,.15); border-radius: 6px; background: #fff; color: var(--text); font: inherit; font-size: 12px; }
-    input:focus { outline: 0; border-color: var(--pink); }
-    .check { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
-    .check input { width: 16px; height: 16px; }
-    .status { padding: 10px; border-radius: 7px; background: rgba(255,122,184,.08); color: var(--muted); font-size: 12px; line-height: 1.6; }
-    .status.ok { color: var(--success, #16834c); }
+    .memory-content { display: grid; gap: 10px; overflow-y: auto; padding: 16px 0; }
+    .memory-section { display: grid; gap: 8px; padding: 13px; border: 1px solid var(--line); background: var(--paper); }
+    .memory-section h2 { margin: 0; color: var(--pink-deep); font-size: 13px; }
+    .memory-section p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .status { padding: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .status.ok { color: var(--success); }
     .status.bad { color: var(--danger); }
-    .hint { color: var(--muted); font-size: 11px; }
   </style>
 </head>
 <body>
   <div id="app">
     <header class="panel-header">
-      <h1 class="panel-title">Graphiti 记忆</h1>
-      <p class="panel-desc">唯一长期记忆：时序事实存入 Neo4j，检索结果作为聊天参考资料。</p>
-      <p class="save-status" id="saveStatus" aria-live="polite"></p>
+      <h1 class="panel-title">本地记忆库</h1>
+      <p class="panel-desc">记忆保存在本机 SQLite，支持聊天情景、事实、关系图和日记来源追踪。</p>
     </header>
-    <div class="settings">
-      <div class="status" id="statusBox">正在检查 Graphiti…</div>
-      <section class="section">
-        <h2>运行开关</h2>
-        <label class="check"><input id="GRAPHITI_ENABLED" type="checkbox" />启用 Graphiti 长期记忆</label>
-        <label>Sidecar 地址<input id="GRAPHITI_BASE_URL" data-key="GRAPHITI_BASE_URL" /></label>
-        <label>记忆分组<input id="GRAPHITI_GROUP_ID" data-key="GRAPHITI_GROUP_ID" /></label>
+    <main class="memory-content">
+      <div class="status" id="statusBox">正在检查本地记忆库…</div>
+      <section class="memory-section">
+        <h2>当前能力</h2>
+        <p>SQLite 本地存储 · 关键词检索 · 关系图检索 · 来源级遗忘</p>
+        <p id="statsLine">正在读取数据统计…</p>
       </section>
-      <section class="section">
-        <h2>Neo4j</h2>
-        <label>连接地址<input id="GRAPHITI_NEO4J_URI" data-key="GRAPHITI_NEO4J_URI" /></label>
-        <label>用户名<input id="GRAPHITI_NEO4J_USER" data-key="GRAPHITI_NEO4J_USER" /></label>
-        <label>密码<input id="GRAPHITI_NEO4J_PASSWORD" data-key="GRAPHITI_NEO4J_PASSWORD" type="password" placeholder="留空保持原值" /></label>
-        <label>数据库<input id="GRAPHITI_NEO4J_DATABASE" data-key="GRAPHITI_NEO4J_DATABASE" /></label>
+      <section class="memory-section">
+        <h2>数据边界</h2>
+        <p>聊天、互动、虚拟生活和日记素材留在本机；未启用向量服务，不启动 Docker 或网络记忆侧车。</p>
       </section>
-      <section class="section">
-        <h2>模型</h2>
-        <label>LLM 地址<input id="GRAPHITI_LLM_BASE_URL" data-key="GRAPHITI_LLM_BASE_URL" /></label>
-        <label>LLM 模型<input id="GRAPHITI_LLM_MODEL" data-key="GRAPHITI_LLM_MODEL" /></label>
-        <label>Embedding 地址<input id="GRAPHITI_EMBED_BASE_URL" data-key="GRAPHITI_EMBED_BASE_URL" /></label>
-        <label>Embedding 模型<input id="GRAPHITI_EMBED_MODEL" data-key="GRAPHITI_EMBED_MODEL" /></label>
-        <label>LLM API Key<input id="GRAPHITI_LLM_API_KEY" data-key="GRAPHITI_LLM_API_KEY" type="password" placeholder="留空保持原值" /></label>
-        <p class="hint">API Key 仅写入本机 .env，不会保存到运行配置或回传明文。</p>
-      </section>
-    </div>
+    </main>
     <footer class="panel-footer">
-      <span class="hint">保存后需重启 Graphiti sidecar 才会应用 Neo4j 和模型配置。</span>
+      <span class="hint">Python Core 未就绪时不会读取或写入长期记忆。</span>
       <div class="spacer"></div>
-      <button class="btn small primary" id="saveBtn" type="button">保存</button>
-      <button class="btn small ghost" id="checkBtn" type="button">检查</button>
       <button class="btn small ghost" id="closeBtn" type="button">关闭</button>
     </footer>
   </div>

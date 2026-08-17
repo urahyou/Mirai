@@ -23,8 +23,6 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   getChatHistory: () => ipcRenderer.invoke('chat:getHistory'),
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
-    getSettings: () => ipcRenderer.invoke('memory:getSettings'),
-    setSettings: (patch) => ipcRenderer.invoke('memory:setSettings', patch),
     openPanel: () => ipcRenderer.invoke('memory:openPanel'),
     closePanel: () => ipcRenderer.invoke('memory:closePanel'),
   }),

@@ -1,7 +1,7 @@
 // 聊天调度核心模块：多轮对话、单句点击回应、流式广播、上下文压缩预算、聊天 IPC。
 //
 // 通过依赖注入获得所需能力，避免直接触碰主进程其它模块的可变全局：
-//   - generic / chatHistory / graphitiMemory / contextSettings / probeMaxContext / state / ipcMain
+//   - generic / chatHistory / memory / contextSettings / probeMaxContext / state / ipcMain
 //   - voice.speak：回复生成后让小未来朗读
 //   - sendToChatInput：把聊天历史/增量推给聊天输入窗
 //   - windowOps：聊天输入窗的开关/缩放/置顶（由主进程提供，避免循环依赖）
@@ -12,7 +12,7 @@ const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
 const createSpeechLead = require('../services/speech-lead');
 module.exports = function createChat({
-  ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
+  ipcMain, state, generic, chatHistory, memory, contextSettings, probeMaxContext,
   voice, sendToChatInput, petState, lifeState, emotionState, systemSense,
   windowOps: { openChatInputWindow, closeChatInputWindow, resizeChatInputWindow, setMainWindowAlwaysOnTop, displaySettings },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
@@ -56,8 +56,8 @@ module.exports = function createChat({
   }
 
   async function generateChat(input, emit, speechLead) {
-    const graphitiResults = await graphitiMemory.search(input);
-    const memoryContext = graphitiMemory.formatContext(graphitiResults);
+    const memoryResults = await memory.search(input);
+    const memoryContext = memory.formatContext(memoryResults);
     const contextMaxTokens = contextSettings.getSettings(state.cachedModelMaxTokens).maxContextTokens;
     for (const provider of generic.providerChain()) {
       try {
@@ -110,7 +110,7 @@ module.exports = function createChat({
       { role: 'user', content: input },
       { role: 'assistant', content: reply },
     ];
-    void graphitiMemory.add(episode, new Date(userMessage.createdAt).toISOString());
+    void memory.add(episode, new Date(userMessage.createdAt).toISOString());
     sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
     broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
     // 首句在流式输出时已抢跑，结束时只继续播放尚未朗读的部分。

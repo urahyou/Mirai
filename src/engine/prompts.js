@@ -1,5 +1,4 @@
 // Prompt 文件加载器。每个可编辑 Prompt 独立存放在 src/prompts/*.md。
-// Graphiti 的实体抽取 Prompt 由 graphiti-core 内部维护，不属于 Mirai 模板。
 
 const fs = require('fs');
 const path = require('path');

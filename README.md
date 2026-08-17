@@ -74,33 +74,11 @@ npm run start:voice
 
 ## 配置
 
-### Graphiti 时序关系记忆 PoC（可选）
+### 本地长期记忆
 
-Mirai 使用 Graphiti 作为唯一长期记忆。启用后，每轮正式对话会作为带参考时间的 episode 写入本机 Graphiti 侧车；下一轮对话会查询实体关系和事实有效期并注入模型。Graphiti 不可用时仅降级为无长期记忆的普通聊天，不使用其他记忆后端。
+Mirai 的长期记忆由 `companion-core/` 管理，数据保存在 Electron `userData/memory.db`。每轮正式对话会写入情景记忆；聊天会用关键词检索相关内容并注入上下文。事实、人物画像、关系边、日记素材和来源级遗忘都在同一个 SQLite 文件中完成。
 
-Graphiti 本身需要 Neo4j（推荐 5.26+）和 Python 侧车。先启动 Neo4j，再在项目根目录安装侧车依赖：
-
-```bash
-docker run --name mirai-neo4j -d -p 7474:7474 -p 7687:7687 \\
-  -e NEO4J_AUTH=neo4j/mirai-dev-password neo4j:latest
-python3 -m venv graphiti-sidecar/.venv
-graphiti-sidecar/.venv/bin/pip install -r graphiti-sidecar/requirements.txt
-```
-
-将 `.env.example` 复制为 `.env`，填写 `GRAPHITI_NEO4J_PASSWORD` 并开启：
-
-```dotenv
-GRAPHITI_ENABLED=true
-GRAPHITI_NEO4J_PASSWORD=你的本机Neo4j密码
-GRAPHITI_LLM_BASE_URL=http://127.0.0.1:11434/v1
-GRAPHITI_LLM_MODEL=你的对话模型
-GRAPHITI_EMBED_BASE_URL=http://127.0.0.1:11434/v1
-GRAPHITI_EMBED_MODEL=bge-m3
-```
-
-`GRAPHITI_LLM_MODEL` 应填写一个支持结构化 JSON 输出的对话模型；`GRAPHITI_EMBED_MODEL` 应填写本地 embedding 模型。若使用云端 OpenAI-compatible 服务，把对应 `*_BASE_URL` 和 `*_API_KEY` 改为该服务配置。
-
-另开终端运行 `npm run start:graphiti`，再启动 Mirai。记忆面板可检查 Graphiti sidecar 状态并修改本机 `.env` 配置；保存后需重启 sidecar。Graphiti 侧车停止后仅跳过长期记忆，不影响普通聊天。
+记忆不需要 Docker、embedding 模型或额外网络服务。Python Core 未就绪时，应用只会跳过长期记忆，不会回退到其他记忆服务。
 
 ### 语音输入与语音输出（可选）
 

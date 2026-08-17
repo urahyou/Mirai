@@ -1,18 +1,18 @@
-// Python 本地记忆优先；Core 不可用时保留既有 Graphiti 降级，避免聊天中断。
-module.exports = function createCompanionMemory({ pythonBackend, fallback }) {
+// Python Companion Core 是唯一长期记忆后端；Core 不可用时返回空记忆，绝不回退到旧服务。
+module.exports = function createCompanionMemory({ pythonBackend }) {
   async function search(query) {
-    if (!pythonBackend.getStatus().ready) return fallback.search(query);
+    if (!pythonBackend.getStatus().ready) return [];
     try {
       const result = await pythonBackend.request('memory.search', { query: String(query || '').slice(0, 2000) });
       return Array.isArray(result?.results) ? result.results : [];
-    } catch { return fallback.search(query); }
+    } catch { return []; }
   }
   async function add(messages, referenceTime) {
-    if (!pythonBackend.getStatus().ready) return fallback.add(messages, referenceTime);
+    if (!pythonBackend.getStatus().ready) return false;
     try {
       const result = await pythonBackend.request('memory.add_episode', { messages, createdAt: referenceTime });
       return Boolean(result?.stored);
-    } catch { return fallback.add(messages, referenceTime); }
+    } catch { return false; }
   }
   async function upsertFact(fact) {
     if (!pythonBackend.getStatus().ready) return null;
@@ -41,10 +41,18 @@ module.exports = function createCompanionMemory({ pythonBackend, fallback }) {
     const result = await pythonBackend.request('memory.neighbors', { entityId, limit });
     return Array.isArray(result?.results) ? result.results : [];
   }
+  async function getStatus() {
+    const bridge = pythonBackend.getStatus();
+    if (!bridge.ready) return { ok: false, state: 'unavailable', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true };
+    try {
+      const result = await pythonBackend.request('memory.stats');
+      return { ok: true, state: 'ready', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true, ...result };
+    } catch { return { ok: false, state: 'error', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true }; }
+  }
   function formatContext(results) {
     const rows = Array.isArray(results) ? results.filter((r) => r?.content || r?.fact).slice(0, 5) : [];
     if (!rows.length) return '';
     return ['以下是可供参考的本地记忆。仅在相关且确定时使用：', ...rows.map((r, i) => `${i + 1}. ${r.content || r.fact}${r.created_at ? `（${r.created_at}）` : ''}`)].join('\n');
   }
-  return { search, add, upsertFact, findFacts, saveProfile, getProfile, upsertEdge, neighbors, formatContext };
+  return { search, add, upsertFact, findFacts, saveProfile, getProfile, upsertEdge, neighbors, getStatus, formatContext };
 };

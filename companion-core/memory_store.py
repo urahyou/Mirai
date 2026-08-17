@@ -183,6 +183,11 @@ class MemoryStore:
         day = self._parse_day(day_text)
         return self._get_journal("weekly_journals", "week_start", (day - timedelta(days=day.weekday())).isoformat())
 
+    def stats(self) -> dict[str, int]:
+        def count(table: str) -> int:
+            return int(self.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        return {"episodes": count("episodes"), "facts": count("facts"), "profiles": count("profiles"), "edges": count("edges"), "events": count("events"), "dailyJournals": count("daily_journals"), "weeklyJournals": count("weekly_journals")}
+
     def close(self) -> None: self.db.close()
 
     def _episodes_for_day(self, day: date, tz: timezone) -> list[dict[str, Any]]:

@@ -21,7 +21,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - `src/main/shared-state.js` 共享状态（mainWindow/chatInputWindow/isVoiceListening 等）
   - `src/subsystems/*.js` IPC 能力域——personality/display/voice/provider/context/memory/balloon/window/menu 各一个 `setup(api)` 注册自己的 ipcMain；main.js 只 `mountIpc(api)` 装配。**新增能力 = 在 subsystems/ 加一个 setup(api) 并在 index.js 注册即可**
   - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住（并守卫 main.js 不再直接注册 IPC）
-  - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/graphiti-memory/voice-bridge/start-all 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
+  - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/voice-bridge 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
   - **自主体地基（P0）**：`src/services/storage.js` 统一 JSON 持久化（多 key、schema 版本+迁移、原子写、坏文件回退；各领域系统经它读写，勿再散落 JSON）；`src/services/event-bus.js` 事件总线（感知源仅 emit、系统仅 on，事件类型单源见 `src/contracts/events.js`）。设计蓝图见 `docs/自主桌宠架构与路线图.md`
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
 - 安全桥接 `src/main/preload.js`：所有 IPC 经 `desktopPet.*` 暴露，渲染进程不直接 require。
@@ -68,7 +68,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - `isAvailable()` 探测 `/models` 端点；对应 `.env` 变量为空时不加 Authorization 头。
 - `src/templates/personality.json`：角色出厂人格（只读默认）。`systemPrompt` 中的 `{personality}` 会被替换成整个 personality 对象注入给大模型。
   - 用户编辑的人格覆盖存 userData `personality-runtime.json`（深合并到出厂之上）。当前没有独立主人资料或 owner 服务。
-- 长期记忆唯一使用 Graphiti + Neo4j，通过独立 Python sidecar 接入；Graphiti 不可用时降级为无长期记忆的本地聊天，不使用其他记忆服务。
+- 长期记忆唯一使用 `companion-core/memory_store.py` 的本地 SQLite；Core 未就绪时降级为无长期记忆的本地聊天，不使用其他记忆服务。
 
 ## 工作偏好（用户明确要求，务必遵守）
 

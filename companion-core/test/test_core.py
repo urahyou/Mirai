@@ -85,6 +85,7 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory_forget_source(source_id), 3)
             self.assertEqual(core.memory_find_facts("像素风"), [])
             self.assertEqual(core.memory_neighbors("owner:default"), [])
+            self.assertEqual(core.memory_stats()["episodes"], 0)
 
     def test_memory_rejects_unproven_source(self):
         with tempfile.TemporaryDirectory() as directory:
