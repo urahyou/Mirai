@@ -119,7 +119,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState, sensing,
+  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState, sensing, systemSense,
 });
 
 app.whenReady().then(() => {

@@ -66,6 +66,11 @@ module.exports = {
   DisplayClosePanel: 'display:closePanel',
   PetStateGet: 'petState:get',
 
+  // 日记 & 系统感知（P1，面板可见入口）
+  DiaryGetToday: 'diary:getToday',
+  DiaryOpenFolder: 'diary:openFolder',
+  SystemSenseGet: 'systemSense:get',
+
   // 语音设置 .env（main.js）
   VoiceSettingsGet: 'voiceSettings:get',
   VoiceSettingsSet: 'voiceSettings:set',

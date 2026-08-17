@@ -125,6 +125,44 @@ function stopPetPolling() {
   if (petPoll.timer) { clearInterval(petPoll.timer); petPoll.timer = null; }
 }
 
+// —— P1：生活感知（实时感知 + 今日日记） ——
+const lifePoll = { timer: null };
+
+async function renderSensing() {
+  try {
+    const r = await window.desktopPet.systemSense.get();
+    if (!r) return;
+    const snap = r.snapshot || {};
+    const b = snap.battery || {};
+    const bits = [r.awareness || '—'];
+    if (typeof b.level === 'number') bits.push(`电量 ${b.level}%（${b.charging ? '充电中' : '使用中'}）`);
+    $('awareLine').textContent = bits.join(' · ');
+  } catch { /* 保持占位 */ }
+}
+
+async function renderDiary() {
+  try {
+    const d = await window.desktopPet.diary.getToday();
+    if (!d) return;
+    $('diaryDate').textContent = `${d.date} 的日记`;
+    if (d.exists && d.content) {
+      $('diaryText').textContent = d.content.trim();
+    } else {
+      $('diaryText').textContent = '（今天还没有日记，试着和她说说话吧）';
+    }
+  } catch { /* 保持占位 */ }
+}
+
+function startLifePolling() {
+  renderSensing();
+  renderDiary();
+  lifePoll.timer = setInterval(() => { renderSensing(); renderDiary(); }, 5000);
+}
+
+function stopLifePolling() {
+  if (lifePoll.timer) { clearInterval(lifePoll.timer); lifePoll.timer = null; }
+}
+
 async function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeDisplayPanel());
   $('resetBtn').addEventListener('click', reset);
@@ -150,6 +188,7 @@ async function init() {
     $('dockHideRange').style.setProperty('--progress', `${((v - 3) / 27) * 100}%`);
   });
   $('dockHideRange').addEventListener('change', () => save({ voiceDockAutoHideSec: Number($('dockHideRange').value) }));
+  $('diaryOpenBtn').addEventListener('click', () => { window.desktopPet.diary.openFolder(); });
 
   try {
     const loaded = await window.desktopPet.display.get();
@@ -159,7 +198,8 @@ async function init() {
     showFeedback('读取失败', '暂时没读到显示设置', true);
   }
   startPetPolling();
-  window.addEventListener('unload', stopPetPolling);
+  startLifePolling();
+  window.addEventListener('unload', () => { stopPetPolling(); stopLifePolling(); });
 }
 
 init();
