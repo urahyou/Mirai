@@ -117,6 +117,18 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertIn("item:小礼物", state["inventory"])
             self.assertEqual(state["money"], 1100)
 
+    def test_life_meal_and_school_stay_inside_virtual_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.state["lifeState"]["hunger"] = 80
+            fed = core.life_perform_activity("meal", 3_000_000)
+            self.assertLess(fed["hunger"], 40)
+            self.assertEqual(fed["location"], "home")
+            school = core.life_perform_activity("school", fed["updatedAt"])
+            self.assertEqual(school["currentActivityId"], "school")
+            self.assertEqual(school["location"], "school")
+            self.assertIn("上学", school["recentActivities"][-1]["tags"])
+
     def test_multidimensional_emotion_changes_with_events_and_decays(self):
         with tempfile.TemporaryDirectory() as directory:
             core = CompanionCore(); core.bootstrap(directory)

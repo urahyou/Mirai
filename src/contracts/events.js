@@ -6,6 +6,11 @@ module.exports = Object.freeze({
   // 系统状态/时间轮询产生的节拍（P0-3 起由感知源发出）
   SENSING_TICK: 'sensing:tick',
 
+  // —— 虚拟生活层（只改变 Core 本地状态，不触发真实外部行动）——
+  LIFE: Object.freeze({
+    ACTIVITY_COMPLETED: 'life:activity_completed',
+  }),
+
   // —— pet 状态系统（pet-state）——
   // 状态触发事件（deltas 表 key，见 src/systems/pet-state.js 的 DELTAS）
   PET: Object.freeze({

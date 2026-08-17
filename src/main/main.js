@@ -45,6 +45,7 @@ const createPythonBackend = require('../services/python-backend');
 const E = require('../contracts/events');
 const petState = require('../systems/pet-state');
 const sensing = require('../systems/sensing');
+const lifeRoutine = require('../systems/life-routine');
 const systemSense = require('../systems/system-sense');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
@@ -213,6 +214,7 @@ app.whenReady().then(() => {
     await companionPetState.seedFromLegacy();
     await companionLife.advance(Date.now());
     await companionEmotion.refresh(Date.now());
+    await lifeRoutine.tick(Date.now());
   })
     .catch((error) => console.warn('[companion-core] 未启动，暂以 Node 兼容路径运行：', error.message));
   // 感知源继续在 Node 侧采集；只镜像低敏感标准化事件给 Python，不发送原始屏幕/音频数据。
@@ -226,7 +228,6 @@ app.whenReady().then(() => {
       privacy: 'local-only',
       payload: { now: timestamp },
     }).catch((error) => console.warn('[companion-core] 感知事件未送达：', error.message));
-    void companionLife.advance(timestamp).catch((error) => console.warn('[companion-core] 生活状态未推进：', error.message));
   });
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });
@@ -236,6 +237,7 @@ app.whenReady().then(() => {
   }
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
   sensing.init({ eventBus, petState: companionPetState });
+  lifeRoutine.init({ eventBus, lifeState: companionLife });
   sensing.start();
   // 系统状态感知（P1）：电池/联网/时刻 → 注入对话意识
   systemSense.init();
@@ -264,6 +266,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   try { stopPythonEventMirror?.(); } catch {}
   sensing.stop(); // 停止感知心跳
+  lifeRoutine.stop(); // 停止生活活动编排
   try { systemSense.stop(); } catch {} // 停系统状态轮询
   voiceBridge.stop(); // 退出时回收侧车子进程
   void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程
