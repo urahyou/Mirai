@@ -12,7 +12,7 @@
 
 const storage = require('../services/storage');
 const E = require('../contracts/events');
-const petState = require('../systems/pet-state');
+let petState = require('../systems/pet-state');
 
 const SCHEMA_KEY = 'sensing_state';
 const SCHEMA_VERSION = 1;
@@ -111,8 +111,9 @@ function stop() {
 function isRunning() { return !!timer; }
 
 // 初始化：注册 schema + 注入事件总线（main 装配时调用）
-function init({ eventBus } = {}) {
+function init({ eventBus, petState: injectedPetState } = {}) {
   bus = eventBus || null;
+  if (injectedPetState) petState = injectedPetState;
   storage.register(SCHEMA_KEY, {
     version: SCHEMA_VERSION,
     defaults: DEFAULT_STATE,
@@ -125,6 +126,7 @@ function init({ eventBus } = {}) {
 function _setNow(fn) {
   nowFn = fn || (() => Date.now());
   sessionStartAt = null;
+  petState = require('../systems/pet-state');
 }
 function _reset() {
   bus = null;

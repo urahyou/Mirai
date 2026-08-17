@@ -219,7 +219,10 @@ function getState() {
 
 // 自然语言状态描述（供对话 system prompt / 面板展示）。已在内部惰性演化。
 function describe() {
-  const s = getState();
+  return describeState(getState());
+}
+
+function describeState(s) {
   const e = s.emotion;
   const a = s.affection.value;
   // 好感→关系亲密度提示（影响人格画像/口吻的软信号）
@@ -326,4 +329,4 @@ function _reset() {
   nowFn = () => Date.now();
 }
 
-module.exports = { init, getState, applyEvent, getStage, evolve, describe, _setNow, _reset };
+module.exports = { init, getState, applyEvent, getStage, evolve, describe, describeFromState: describeState, _setNow, _reset };

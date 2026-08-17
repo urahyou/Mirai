@@ -60,6 +60,7 @@ class CompanionCore:
             "lastTickAt": None,
             "recentEvents": [],
             "petState": pet_state.default(),
+            "petStateImported": False,
         }
 
     def bootstrap(self, data_dir: str) -> dict[str, Any]:
@@ -102,6 +103,15 @@ class CompanionCore:
         next_state, upgrade = pet_state.apply(self.state.get("petState"), event_type, int(now))
         self.state["petState"] = next_state; self._write_state()
         return {"state": next_state, "stageUp": upgrade}
+
+    def pet_seed_if_empty(self, state: Any) -> dict[str, Any]:
+        if self.data_dir is None: raise CoreError("Core 尚未 bootstrap")
+        if not self.state.get("petStateImported"):
+            self.state["petState"] = pet_state.normalize(state)
+            self.state["petStateImported"] = True
+            self._write_state()
+            return {"seeded": True, "state": self.state["petState"]}
+        return {"seeded": False, "state": self.state["petState"]}
 
     def memory_add_episode(self, messages: Any, created_at: Any) -> bool:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")

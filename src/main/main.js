@@ -36,6 +36,7 @@ const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
 const createCompanionMemory = require('../services/companion-memory');
+const createPetStateAdapter = require('../services/pet-state-adapter');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -53,6 +54,7 @@ const eventBus = createEventBus();
 // Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
 const pythonBackend = createPythonBackend();
 const companionMemory = createCompanionMemory({ pythonBackend, fallback: graphitiMemory });
+const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -112,7 +114,7 @@ const chat = createChat({
   contextSettings,
   probeMaxContext,
   voice,
-  petState,
+  petState: companionPetState,
   systemSense,
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
@@ -132,7 +134,7 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState, sensing, systemSense,
+  contextSettings, graphitiMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
 });
 
 // 一次性数据迁移：把旧目录名 haruhana-quest 下的数据搬到当前 userData（Mirai），
@@ -200,7 +202,7 @@ app.whenReady().then(() => {
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
-  void pythonBackend.start({ dataDir: app.getPath('userData') })
+  void pythonBackend.start({ dataDir: app.getPath('userData') }).then(() => companionPetState.seedFromLegacy())
     .catch((error) => console.warn('[companion-core] 未启动，暂以 Node 兼容路径运行：', error.message));
   // 感知源继续在 Node 侧采集；只镜像低敏感标准化事件给 Python，不发送原始屏幕/音频数据。
   stopPythonEventMirror = eventBus.on(E.SENSING_TICK, ({ now }) => {
@@ -216,11 +218,12 @@ app.whenReady().then(() => {
   });
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });
+  companionPetState.init({ eventBus });
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
-  sensing.init({ eventBus });
+  sensing.init({ eventBus, petState: companionPetState });
   sensing.start();
   // 自写日记（P1）：订阅互动事件，按自然日落盘；dir 指向 userData，可注入时钟
-  journalSys.init({ eventBus, petState, dir: app.getPath('userData') });
+  journalSys.init({ eventBus, petState: companionPetState, dir: app.getPath('userData') });
   // 每 6h 检查一次日期切换，跨天后 close 昨日并开新页
   const journalTimer = setInterval(() => { try { journalSys.reconcile(Date.now()); } catch {} }, 6 * 3600 * 1000);
   // 系统状态感知（P1）：电池/联网/时刻 → 注入对话意识
