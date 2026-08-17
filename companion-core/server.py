@@ -40,6 +40,12 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = core.pet_get_state(params.get("now"))
         elif method == "pet.apply_event":
             result = core.pet_apply_event(params.get("eventType"), params.get("now"))
+        elif method == "memory.add_episode":
+            result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
+        elif method == "memory.search":
+            result = {"results": core.memory_search(params.get("query"))}
+        elif method == "memory.forget_source":
+            result = {"deleted": core.memory_forget_source(params.get("sourceId"))}
         elif method == "event.ingest":
             result = core.ingest(params.get("event"))
         elif method == "core.shutdown":

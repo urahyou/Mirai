@@ -59,6 +59,15 @@ class CompanionCoreTest(unittest.TestCase):
             later = core.pet_get_state(1000 + 12 * 60 * 60 * 1000)
             self.assertLess(later["emotion"]["moodScore"], 66)
 
+    def test_memory_persists_searches_and_forgets_by_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            self.assertTrue(core.memory_add_episode([{"role": "user", "content": "我正在开发 Mirai 记忆系统"}], "2026-08-17T00:00:00Z"))
+            rows = core.memory_search("Mirai")
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(core.memory_forget_source(rows[0]["id"]), 1)
+            self.assertEqual(core.memory_search("Mirai"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

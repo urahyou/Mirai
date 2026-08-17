@@ -35,6 +35,7 @@ const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
+const createCompanionMemory = require('../services/companion-memory');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -51,6 +52,7 @@ const state = require('./shared-state');
 const eventBus = createEventBus();
 // Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
 const pythonBackend = createPythonBackend();
+const companionMemory = createCompanionMemory({ pythonBackend, fallback: graphitiMemory });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -106,7 +108,7 @@ const chat = createChat({
   state,
   generic,
   chatHistory,
-  graphitiMemory,
+  graphitiMemory: companionMemory,
   contextSettings,
   probeMaxContext,
   voice,

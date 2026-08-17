@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 import pet_state
+from memory_store import MemoryStore
 
 SCHEMA_VERSION = 1
 STATE_FILE = "companion-core-state.json"
@@ -49,6 +50,7 @@ class CompanionCore:
     def __init__(self) -> None:
         self.data_dir: Path | None = None
         self.state: dict[str, Any] = self._default_state()
+        self.memory: MemoryStore | None = None
 
     @staticmethod
     def _default_state() -> dict[str, Any]:
@@ -66,6 +68,8 @@ class CompanionCore:
         self.data_dir = Path(data_dir).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.state = self._read_state()
+        if self.memory: self.memory.close()
+        self.memory = MemoryStore(self.data_dir / "memory.db")
         return self.snapshot()
 
     def ingest(self, event: Any) -> dict[str, Any]:
@@ -98,6 +102,20 @@ class CompanionCore:
         next_state, upgrade = pet_state.apply(self.state.get("petState"), event_type, int(now))
         self.state["petState"] = next_state; self._write_state()
         return {"state": next_state, "stageUp": upgrade}
+
+    def memory_add_episode(self, messages: Any, created_at: Any) -> bool:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        if not isinstance(messages, list) or not isinstance(created_at, str): raise CoreError("episode 参数不合法")
+        return self.memory.add_episode(messages, created_at)
+
+    def memory_search(self, query: Any) -> list[dict[str, Any]]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        if not isinstance(query, str): raise CoreError("query 必须是字符串")
+        return self.memory.search(query)
+
+    def memory_forget_source(self, source_id: Any) -> int:
+        if not self.memory or not isinstance(source_id, str) or not source_id: raise CoreError("sourceId 不合法")
+        return self.memory.delete_by_source(source_id)
 
     def snapshot(self) -> dict[str, Any]:
         return {
