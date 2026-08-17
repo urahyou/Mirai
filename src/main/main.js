@@ -37,6 +37,7 @@ const contextSettings = require('../services/context-budget');
 const graphitiMemory = require('../services/graphiti-memory');
 const createCompanionMemory = require('../services/companion-memory');
 const createPetStateAdapter = require('../services/pet-state-adapter');
+const createCompanionLife = require('../services/companion-life');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -55,6 +56,7 @@ const eventBus = createEventBus();
 const pythonBackend = createPythonBackend();
 const companionMemory = createCompanionMemory({ pythonBackend, fallback: graphitiMemory });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
+const companionLife = createCompanionLife({ pythonBackend });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -115,6 +117,7 @@ const chat = createChat({
   probeMaxContext,
   voice,
   petState: companionPetState,
+  lifeState: companionLife,
   systemSense,
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
@@ -202,7 +205,10 @@ app.whenReady().then(() => {
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
-  void pythonBackend.start({ dataDir: app.getPath('userData') }).then(() => companionPetState.seedFromLegacy())
+  void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
+    await companionPetState.seedFromLegacy();
+    await companionLife.advance(Date.now());
+  })
     .catch((error) => console.warn('[companion-core] 未启动，暂以 Node 兼容路径运行：', error.message));
   // 感知源继续在 Node 侧采集；只镜像低敏感标准化事件给 Python，不发送原始屏幕/音频数据。
   stopPythonEventMirror = eventBus.on(E.SENSING_TICK, ({ now }) => {
@@ -215,6 +221,7 @@ app.whenReady().then(() => {
       privacy: 'local-only',
       payload: { now: timestamp },
     }).catch((error) => console.warn('[companion-core] 感知事件未送达：', error.message));
+    void companionLife.advance(timestamp).catch((error) => console.warn('[companion-core] 生活状态未推进：', error.message));
   });
   // pet 状态系统（情绪/好感/养成，P0-2）
   petState.init({ eventBus });

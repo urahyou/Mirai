@@ -12,7 +12,7 @@ const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
-  voice, sendToChatInput, petState, systemSense,
+  voice, sendToChatInput, petState, lifeState, systemSense,
   windowOps: { openChatInputWindow, closeChatInputWindow, resizeChatInputWindow, setMainWindowAlwaysOnTop, displaySettings },
   consts: { CHAT_INPUT_COMPACT_SIZE, CHAT_INPUT_EXPANDED_SIZE },
 }) {
@@ -22,9 +22,10 @@ module.exports = function createChat({
   // 注入到对话的状态：pet 自身状态 + 电脑/环境实时感知（让发言贴合现实）
   function buildState() {
     const pet = petState ? petState.describe() : '';
+    const life = lifeState ? lifeState.describe() : '';
     let aw = '';
     try { if (systemSense && typeof systemSense.getAwareness === 'function') aw = systemSense.getAwareness(); } catch {}
-    return aw ? `${pet}\n环境：${aw}` : pet;
+    return [pet, life, aw ? `环境：${aw}` : ''].filter(Boolean).join('\n');
   }
 
   function broadcastChatDelta(data) {
