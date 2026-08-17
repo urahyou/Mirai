@@ -64,6 +64,12 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
   const contextPanel = makePanel({ width: 460, height: 380, file: 'context-panel.html' });
   const memoryPanel = makePanel({ width: 520, height: 560, file: 'memory-panel.html' });
 
+  // —— 设置中心体系（2026-08）：显示设置拆分为清晰子面板，由中心首页统一导航 ——
+  const settingsCenterPanel = makePanel({ width: 560, height: 480, resizable: true, minWidth: 480, minHeight: 400, file: 'settings-center.html' });
+  const appearancePanel = makePanel({ width: 460, height: 380, file: 'appearance-panel.html' });
+  const behaviorPanel = makePanel({ width: 460, height: 360, file: 'behavior-panel.html' });
+  const companionPanel = makePanel({ width: 520, height: 560, file: 'companion-panel.html' });
+
   // ---------- 右键菜单（行为比面板特殊：失焦关闭 + 按点击点定位） ----------
   function closeMenuWindow() {
     if (menuWindow && !menuWindow.isDestroyed()) menuWindow.destroy();
@@ -135,5 +141,14 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
     closeContextPanel: contextPanel.close,
     openMemoryPanel: memoryPanel.open,
     closeMemoryPanel: memoryPanel.close,
+    // —— 设置中心体系 ——
+    openSettingsCenterPanel: settingsCenterPanel.open,
+    closeSettingsCenterPanel: settingsCenterPanel.close,
+    openAppearancePanel: appearancePanel.open,
+    closeAppearancePanel: appearancePanel.close,
+    openBehaviorPanel: behaviorPanel.open,
+    closeBehaviorPanel: behaviorPanel.close,
+    openCompanionPanel: companionPanel.open,
+    closeCompanionPanel: companionPanel.close,
   };
 };

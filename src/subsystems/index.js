@@ -18,6 +18,7 @@ const petState = require('./pet-state');
 const proactive = require('./proactive');
 const schedule = require('./schedule');
 const diary = require('./diary');
+const settingsNav = require('./settings-nav');
 
 module.exports = function mountAll(api) {
   personality(api);
@@ -33,4 +34,5 @@ module.exports = function mountAll(api) {
   proactive(api);
   schedule(api);
   diary(api);
+  settingsNav(api);
 };

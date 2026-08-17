@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 相处</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="display-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">与小未来相处</h1>
+      <p class="panel-desc">她的心情、成长与生活</p>
+    </header>
+
+    <main class="settings-content">
+      <section class="setting-section" style="display:block">
+        <div class="setting-heading">
+          <div><h2 class="section-title">心情与状态</h2><p class="hint">随互动与真实时间的流逝而变化</p></div>
+          <span class="chip" id="stageChip">幼年</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat" title="心情"><span class="stat-label">心情</span><strong class="stat-value" id="sMood">—</strong></div>
+          <div class="stat" title="好感"><span class="stat-label">好感</span><strong class="stat-value" id="sAffection">—</strong></div>
+          <div class="stat" title="体力"><span class="stat-label">体力</span><strong class="stat-value" id="sEnergy">—</strong></div>
+          <div class="stat" title="压力"><span class="stat-label">压力</span><strong class="stat-value" id="sStress">—</strong></div>
+          <div class="stat" title="孤独"><span class="stat-label">孤独</span><strong class="stat-value" id="sLoneliness">—</strong></div>
+          <div class="stat" title="健康"><span class="stat-label">健康</span><strong class="stat-value" id="sHealth">—</strong></div>
+        </div>
+        <div class="exp-row">
+          <span class="exp-label" id="stageLabel">成长经验</span>
+          <div class="exp-track"><div class="exp-fill" id="expFill"></div></div>
+          <span class="exp-num" id="stageExp">0</span>
+        </div>
+      </section>
+
+      <section class="setting-section">
+        <div class="setting-heading"><div><h2 class="section-title">怎么让她更喜欢你</h2><p class="hint">好感与经验会随相处自动增长，不用手动"喂"</p></div></div>
+        <ul class="help-list">
+          <li>💬 多和她<strong>聊天</strong> —— 每次对话都会增加好感与经验</li>
+          <li>👋 点点她 —— 点击角色打招呼也会让她开心</li>
+          <li>🧊 别冷落太久 —— 长时间不理她会让她有点失落</li>
+        </ul>
+      </section>
+
+      <section class="setting-section">
+        <div class="setting-heading"><div><h2 class="section-title">她眼里的当下</h2><p class="hint">小未来正在感知你的电脑</p></div></div>
+        <div class="sensing-row" id="awareLine">正在感知…</div>
+      </section>
+
+      <section class="setting-section">
+        <div class="setting-heading"><div><h2 class="section-title">她的日记</h2><p class="hint">她每天自己记一篇，欢迎回看</p></div></div>
+        <div class="diary-box">
+          <div class="diary-head">
+            <strong class="diary-date" id="diaryDate">今天的日记</strong>
+            <button class="btn tiny ghost" id="diaryOpenBtn" type="button">打开日记文件夹</button>
+          </div>
+          <pre class="diary-text" id="diaryText">（今天还没有日记，试着和她说说话吧）</pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="panel-footer">
+      <button class="btn small ghost" id="backBtn" type="button">← 设置中心</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+  <script src="companion-panel.js"></script>
+</body>
+</html>

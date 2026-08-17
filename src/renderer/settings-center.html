@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 设置中心</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="settings-center.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">设置中心</h1>
+      <p class="panel-desc">挑一个你想调整的方面吧</p>
+    </header>
+
+    <main class="center-content">
+      <button class="card card-featured" id="cardCompanion">
+        <span class="card-emoji">❤️</span>
+        <span class="card-body">
+          <strong class="card-title">与小未来相处</strong>
+          <span class="card-desc">好感 · 心情 · 成长 · 她的日记 · 感知</span>
+        </span>
+        <span class="card-arrow">›</span>
+      </button>
+
+      <div class="card-grid">
+        <button class="card" id="cardAppearance">
+          <span class="card-emoji">🎨</span>
+          <span class="card-body"><strong class="card-title">外观</strong><span class="card-desc">角色大小 · 阴影 · 气泡时长</span></span>
+        </button>
+        <button class="card" id="cardBehavior">
+          <span class="card-emoji">🖥️</span>
+          <span class="card-body"><strong class="card-title">桌面行为</strong><span class="card-desc">置顶 · 扇形面板自动收起</span></span>
+        </button>
+        <button class="card" id="cardChat">
+          <span class="card-emoji">💬</span>
+          <span class="card-body"><strong class="card-title">聊天 · 上下文</strong><span class="card-desc">对话预算 · 历史长度</span></span>
+        </button>
+        <button class="card" id="cardMemory">
+          <span class="card-emoji">🧠</span>
+          <span class="card-body"><strong class="card-title">记忆</strong><span class="card-desc">长期记忆开关与状态</span></span>
+        </button>
+        <button class="card" id="cardPersonality">
+          <span class="card-emoji">😊</span>
+          <span class="card-body"><strong class="card-title">性格</strong><span class="card-desc">小未来的个性设定</span></span>
+        </button>
+        <button class="card" id="cardVoice">
+          <span class="card-emoji">🎙️</span>
+          <span class="card-body"><strong class="card-title">语音</strong><span class="card-desc">音色 · 语音输入输出</span></span>
+        </button>
+        <button class="card" id="cardModel">
+          <span class="card-emoji">🤖</span>
+          <span class="card-body"><strong class="card-title">模型</strong><span class="card-desc">对话大模型与供应商</span></span>
+        </button>
+      </div>
+    </main>
+
+    <footer class="panel-footer">
+      <span class="hint">右键小未来随时回到这里</span>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+  <script src="settings-center.js"></script>
+</body>
+</html>

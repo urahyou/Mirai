@@ -71,6 +71,15 @@ module.exports = {
   DiaryOpenFolder: 'diary:openFolder',
   SystemSenseGet: 'systemSense:get',
 
+  // 设置中心体系（2026-08）
+  SettingsCenterOpen: 'settings:openCenter',
+  SettingsCenterClose: 'settings:closeCenter',
+  AppearanceOpen: 'appearance:open',
+  AppearanceClose: 'appearance:close',
+  BehaviorOpen: 'behavior:open',
+  BehaviorClose: 'behavior:close',
+  CompanionOpen: 'companion:open',
+  CompanionClose: 'companion:close',
   // 语音设置 .env（main.js）
   VoiceSettingsGet: 'voiceSettings:get',
   VoiceSettingsSet: 'voiceSettings:set',

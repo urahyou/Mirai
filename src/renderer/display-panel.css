@@ -130,3 +130,8 @@
   max-height: 180px;
   overflow-y: auto;
 }
+
+/* 相处面板：喂养说明 */
+.help-list { margin: 4px 0 0; padding: 0; list-style: none; }
+.help-list li { font-size: 13px; color: #5a4d55; line-height: 1.7; padding: 2px 0; }
+.help-list strong { color: var(--pink); font-weight: 600; }

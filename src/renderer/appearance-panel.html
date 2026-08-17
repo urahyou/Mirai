@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 外观</title>
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="display-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">外观</h1>
+      <p class="panel-desc">小未来长什么样</p>
+    </header>
+
+    <main class="settings-content">
+      <section class="setting-section">
+        <div class="setting-heading">
+          <div><h2 class="section-title">角色大小</h2><p class="hint">窗口和 Live2D 会同步缩放</p></div>
+          <strong class="value" id="scaleValue">100%</strong>
+        </div>
+        <input id="scaleRange" class="scale-range" type="range" min="70" max="150" step="5" value="100" />
+        <div class="range-labels"><span>70%</span><span>100%</span><span>150%</span></div>
+      </section>
+
+      <section class="setting-section">
+        <label class="toggle-row" for="outlineShadow">
+          <span><span class="toggle-title">角色轮廓阴影</span><span class="hint">给 Live2D 轮廓添加柔和的粉色外阴影</span></span>
+          <span class="switch"><input id="outlineShadow" type="checkbox" /><span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span></span>
+        </label>
+      </section>
+
+      <section class="setting-section">
+        <div class="setting-heading">
+          <div><h2 class="section-title">气泡显示时长</h2><p class="hint">聊天泡泡停留多久后消失；「自动」按文字长短智能调整（2.6~7.6 秒）</p></div>
+          <strong class="value" id="bubbleValue">自动</strong>
+        </div>
+        <input id="bubbleRange" class="scale-range" type="range" min="0" max="30" step="1" value="0" />
+        <div class="range-labels"><span>自动</span><span>15s</span><span>30s</span></div>
+      </section>
+    </main>
+
+    <footer class="panel-footer">
+      <button class="btn small ghost" id="backBtn" type="button">← 设置中心</button>
+      <div class="spacer"></div>
+      <span class="hint" id="saveHint" aria-live="polite"></span>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+  <script src="appearance-panel.js"></script>
+</body>
+</html>
