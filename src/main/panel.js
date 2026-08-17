@@ -121,10 +121,20 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
   }
 
   // 菜单渲染就绪后按待显示位置重新定位（页面尺寸可能已变化）
+  // 菜单渲染/状态行填充就绪后，按内容自适应尺寸并重新定位（分组菜单项数多，超高需自适应）
   function repositionMenu() {
     if (!menuWindow || menuWindow.isDestroyed() || !menuPendingPosition) return false;
-    const [width, height] = menuWindow.getContentSize();
-    return setMenuPosition(menuPendingPosition, width, height);
+    menuWindow.webContents.executeJavaScript(
+      `(() => { const m = document.getElementById('menu'); let h=0,w=0; for (const c of m.children){ h=Math.max(h,c.offsetTop+c.offsetHeight); w=Math.max(w,c.offsetLeft+c.offsetWidth);} return { h, w }; })()`
+    ).then(({ h, w }) => {
+      const winW = Math.max(MENU_WINDOW_SIZE.width, Math.min(w + 14, 340));
+      const winH = Math.max(MENU_WINDOW_SIZE.height, Math.min(h + 8, 620));
+      menuWindow.setBounds({ width: winW, height: winH });
+      setMenuPosition(menuPendingPosition, winW, winH);
+    }).catch(() => {
+      setMenuPosition(menuPendingPosition);
+    });
+    return true;
   }
 
   return {
