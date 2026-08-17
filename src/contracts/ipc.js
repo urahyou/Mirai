@@ -69,8 +69,12 @@ module.exports = {
 
   // 日记 & 系统感知（P1，面板可见入口）
   DiaryGetToday: 'diary:getToday',
+  DiaryList: 'diary:list',
+  DiaryGet: 'diary:get',
   DiaryGenerateToday: 'diary:generateToday',
   DiaryOpenFolder: 'diary:openFolder',
+  DiaryOpenPanel: 'diary:openPanel',
+  DiaryClosePanel: 'diary:closePanel',
   SystemSenseGet: 'systemSense:get',
   InitiativeGet: 'initiative:get',
   InitiativeSet: 'initiative:set',
@@ -107,6 +111,7 @@ module.exports = {
   // 本地长期记忆（Python Core SQLite）
   MemoryGetStatus: 'memory:getStatus',
   MemoryList: 'memory:list',
+  MemoryListMind: 'memory:listMind',
   MemoryListDailyJournals: 'memory:listDailyJournals',
   MemoryGetDailyJournal: 'memory:getDailyJournal',
   MemoryOpenPanel: 'memory:openPanel',

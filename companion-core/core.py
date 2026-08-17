@@ -78,6 +78,11 @@ class CompanionCore:
         self.memory = MemoryStore(self.data_dir / "memory.db")
         return self.snapshot()
 
+    def close(self) -> None:
+        if self.memory:
+            self.memory.close()
+            self.memory = None
+
     def ingest(self, event: Any) -> dict[str, Any]:
         if self.data_dir is None:
             raise CoreError("Core 尚未 bootstrap")
@@ -162,10 +167,17 @@ class CompanionCore:
         if not isinstance(query, str): raise CoreError("query 必须是字符串")
         return self.memory.search(query)
 
+    def memory_import_messages(self, messages: Any) -> int:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        try: return self.memory.import_messages(messages)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_list(self, kind: Any, limit: Any = 30) -> list[dict[str, Any]]:
         if not self.memory or not isinstance(kind, str): raise CoreError("记忆列表参数不合法")
         methods = {
             "episodes": self.memory.list_episodes,
+            "messages": self.memory.list_messages,
+            "vectors": self.memory.list_vectors,
             "facts": self.memory.list_facts,
             "profiles": self.memory.list_profiles,
             "edges": self.memory.list_edges,
@@ -174,6 +186,26 @@ class CompanionCore:
         handler = methods.get(kind)
         if not handler: raise CoreError("未知记忆类别")
         return handler(limit)
+
+    def mind_record_thought(self, thought: Any) -> dict[str, Any]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        try: return self.memory.record_thought(thought)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def mind_record_dream(self, dream: Any) -> dict[str, Any]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        try: return self.memory.record_dream(dream)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def mind_record_reflection(self, reflection: Any) -> dict[str, Any]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        try: return self.memory.record_reflection(reflection)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def mind_list(self, kind: Any, limit: Any = 30) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(kind, str): raise CoreError("内心活动查询参数不合法")
+        try: return self.memory.list_mind(kind, limit)
+        except ValueError as error: raise CoreError(str(error)) from error
 
     def memory_forget_source(self, source_id: Any) -> int:
         if not self.memory or not isinstance(source_id, str) or not source_id: raise CoreError("sourceId 不合法")

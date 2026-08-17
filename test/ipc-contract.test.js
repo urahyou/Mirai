@@ -97,15 +97,20 @@ test('Given the diary panel When generation is requested Then it uses an explici
   assert.match(script, /diaryGenerateBtn.*addEventListener\('click'/s);
 });
 
-test('Given the memory reader When it is inspected Then browsing is read-only and detail-oriented', () => {
+test('Given the diary and memory readers When they are inspected Then they are separate read-only entries', () => {
+  const diaryHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'diary-panel.html'), 'utf8');
+  const diaryScript = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'diary-panel.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'memory-panel.html'), 'utf8');
   const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'memory-panel.js'), 'utf8');
-  assert.match(html, /id="diaryList"/);
+  assert.match(diaryHtml, /id="diaryList"/);
+  assert.match(diaryScript, /diary\.list\(\)/);
+  assert.match(diaryScript, /diary\.get\(item\.date\)/);
+  assert.doesNotMatch(html, /diaryList|diaryView|日记册/);
   assert.match(html, /id="memoryList"/);
-  assert.match(html, /data-kind="profiles"/);
-  assert.match(script, /memory\.listDailyJournals\(\)/);
-  assert.match(script, /memory\.getDailyJournal\(item\.date\)/);
+  assert.match(html, /data-kind="vectors"/);
+  assert.match(html, /data-kind="thoughts"/);
   assert.match(script, /memory\.list\(kind\)/);
+  assert.match(script, /memory\.listMind\(kind\)/);
   assert.doesNotMatch(script, /innerHTML/);
 });
 

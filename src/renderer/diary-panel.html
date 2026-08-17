@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 日记册</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="memory-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <div class="title-line"><div><h1 class="panel-title">小未来的日记册</h1><p class="panel-desc">一页一天，写给她自己，也写给愿意回看的主人。</p></div><span class="core-status" id="statusBox">正在连接…</span></div>
+    </header>
+    <main class="reader-shell">
+      <section class="reader-view">
+        <aside class="entry-list" aria-label="日记日期"><div class="list-heading"><span>Diary Pages</span><strong id="diaryCount">0 页</strong></div><div class="entry-scroll" id="diaryList"></div></aside>
+        <article class="diary-page" aria-live="polite"><div class="tape tape-left"></div><div class="tape tape-right"></div><div class="page-stamp" id="diaryStamp">MY DIARY</div><p class="page-date" id="diaryDate">今天</p><p class="page-weekday" id="diaryWeekday">小未来的记录</p><div class="page-rule"></div><div class="diary-prose" id="diaryProse">正在翻找日记册…</div><p class="source-note" id="diarySources"></p></article>
+      </section>
+    </main>
+    <footer class="panel-footer"><span class="hint">日记只基于已保存的聊天、事件和虚拟生活素材。</span><div class="spacer"></div><button class="btn small ghost" id="refreshBtn" type="button" title="刷新日记">↻</button><button class="btn small ghost" id="folderBtn" type="button">打开文件夹</button><button class="btn small ghost" id="closeBtn" type="button">关闭</button></footer>
+  </div>
+  <script src="diary-panel.js"></script>
+</body>
+</html>

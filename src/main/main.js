@@ -46,6 +46,7 @@ const E = require('../contracts/events');
 const petState = require('../systems/pet-state');
 const sensing = require('../systems/sensing');
 const lifeRoutine = require('../systems/life-routine');
+const mindRoutine = require('../systems/mind-routine');
 const systemSense = require('../systems/system-sense');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
@@ -211,6 +212,8 @@ app.whenReady().then(() => {
   initiativeSettings.init({ storage });
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
+    const importedMessages = await companionMemory.importMessages(chatHistory.getMessages());
+    if (importedMessages) console.log('[companion-core] imported %d existing chat messages', importedMessages);
     await companionPetState.seedFromLegacy();
     await companionLife.advance(Date.now());
     await companionEmotion.refresh(Date.now());
@@ -238,6 +241,7 @@ app.whenReady().then(() => {
   // 感知系统：真实时钟/系统状态 → 语境事件（P0-3）
   sensing.init({ eventBus, petState: companionPetState });
   lifeRoutine.init({ eventBus, lifeState: companionLife });
+  mindRoutine.init({ eventBus, companionMemory });
   sensing.start();
   // 系统状态感知（P1）：电池/联网/时刻 → 注入对话意识
   systemSense.init();
@@ -267,6 +271,7 @@ app.on('will-quit', () => {
   try { stopPythonEventMirror?.(); } catch {}
   sensing.stop(); // 停止感知心跳
   lifeRoutine.stop(); // 停止生活活动编排
+  mindRoutine.stop(); // 停止低频内心活动/夜间梦境编排
   try { systemSense.stop(); } catch {} // 停系统状态轮询
   voiceBridge.stop(); // 退出时回收侧车子进程
   void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程

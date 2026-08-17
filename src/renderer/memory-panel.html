@@ -1,75 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>小未来 · 日记与记忆</title>
-  <link rel="stylesheet" href="theme.css" />
-  <link rel="stylesheet" href="panel.css" />
-  <link rel="stylesheet" href="memory-panel.css" />
-</head>
-<body>
-  <div id="app">
-    <header class="panel-header">
-      <div class="title-line">
-        <div>
-          <h1 class="panel-title">日记与记忆</h1>
-          <p class="panel-desc">留在这台电脑里的相处片段，以及小未来写下的每一天。</p>
-        </div>
-        <span class="core-status" id="statusBox">正在连接…</span>
-      </div>
-      <nav class="main-tabs" aria-label="阅读内容">
-        <button class="main-tab active" data-view="diary" type="button">日记册</button>
-        <button class="main-tab" data-view="memory" type="button">记忆库</button>
-      </nav>
-    </header>
-
-    <main class="reader-shell">
-      <section class="reader-view" id="diaryView">
-        <aside class="entry-list" aria-label="日记日期">
-          <div class="list-heading"><span>Diary Pages</span><strong id="diaryCount">0 页</strong></div>
-          <div class="entry-scroll" id="diaryList"></div>
-        </aside>
-        <article class="diary-page" aria-live="polite">
-          <div class="tape tape-left"></div><div class="tape tape-right"></div>
-          <div class="page-stamp" id="diaryStamp">MY DIARY</div>
-          <p class="page-date" id="diaryDate">今天</p>
-          <p class="page-weekday" id="diaryWeekday">小未来的记录</p>
-          <div class="page-rule"></div>
-          <div class="diary-prose" id="diaryProse">正在翻找日记册…</div>
-          <p class="source-note" id="diarySources"></p>
-        </article>
-      </section>
-
-      <section class="reader-view hidden" id="memoryView">
-        <aside class="entry-list" aria-label="记忆类别">
-          <div class="list-heading"><span>Memory Index</span><strong id="memoryCount">0 条</strong></div>
-          <div class="memory-tabs" id="memoryTabs">
-            <button class="memory-tab active" data-kind="episodes" type="button">相处片段</button>
-            <button class="memory-tab" data-kind="facts" type="button">记住的事</button>
-            <button class="memory-tab" data-kind="edges" type="button">关系</button>
-            <button class="memory-tab" data-kind="profiles" type="button">人格画像</button>
-            <button class="memory-tab" data-kind="events" type="button">事件</button>
-          </div>
-          <div class="entry-scroll" id="memoryList"></div>
-        </aside>
-        <article class="memory-detail" aria-live="polite">
-          <p class="detail-kicker" id="memoryKicker">Memory</p>
-          <h2 id="memoryTitle">选择一条记忆</h2>
-          <div class="detail-rule"></div>
-          <div class="memory-body" id="memoryBody">这里会显示完整内容、时间和可追溯来源。</div>
-          <dl class="memory-meta" id="memoryMeta"></dl>
-        </article>
-      </section>
-    </main>
-
-    <footer class="panel-footer">
-      <span class="hint" id="statsLine">只读浏览，不会改写本地记忆。</span>
-      <div class="spacer"></div>
-      <button class="btn small ghost" id="refreshBtn" type="button" title="刷新日记与记忆列表">↻</button>
-      <button class="btn small ghost" id="closeBtn" type="button">关闭</button>
-    </footer>
-  </div>
-  <script src="memory-panel.js"></script>
-</body>
-</html>
+<head><meta charset="UTF-8" /><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" /><title>小未来 · 记忆库</title><link rel="stylesheet" href="theme.css" /><link rel="stylesheet" href="panel.css" /><link rel="stylesheet" href="memory-panel.css" /></head>
+<body><div id="app">
+  <header class="panel-header"><div class="title-line"><div><h1 class="panel-title">小未来的记忆库</h1><p class="panel-desc">全量对话、语义片段、事实关系，以及她没有说出口的心事。</p></div><span class="core-status" id="statusBox">正在连接…</span></div></header>
+  <main class="reader-shell"><section class="reader-view"><aside class="entry-list" aria-label="记忆类别"><div class="list-heading"><span>Memory Index</span><strong id="memoryCount">0 条</strong></div><div class="memory-tabs" id="memoryTabs">
+    <button class="memory-tab active" data-kind="messages" type="button">全量对话</button><button class="memory-tab" data-kind="episodes" type="button">相处片段</button><button class="memory-tab" data-kind="vectors" type="button">向量记忆</button><button class="memory-tab" data-kind="facts" type="button">事实</button><button class="memory-tab" data-kind="edges" type="button">图关系</button><button class="memory-tab" data-kind="profiles" type="button">人格画像</button><button class="memory-tab" data-kind="thoughts" type="button">内心活动</button><button class="memory-tab" data-kind="dreams" type="button">梦境</button><button class="memory-tab" data-kind="reflections" type="button">反思</button><button class="memory-tab" data-kind="events" type="button">事件</button>
+  </div><div class="entry-scroll" id="memoryList"></div></aside><article class="memory-detail" aria-live="polite"><p class="detail-kicker" id="memoryKicker">Memory</p><h2 id="memoryTitle">选择一条记忆</h2><div class="detail-rule"></div><div class="memory-body" id="memoryBody">这里会显示原文、心理状态或关系证据。</div><dl class="memory-meta" id="memoryMeta"></dl></article></section></main>
+  <footer class="panel-footer"><span class="hint" id="statsLine">只读浏览，不会改写本地记忆。</span><div class="spacer"></div><button class="btn small ghost" id="refreshBtn" type="button" title="刷新记忆">↻</button><button class="btn small ghost" id="closeBtn" type="button">关闭</button></footer>
+</div><script src="memory-panel.js"></script></body></html>

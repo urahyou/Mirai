@@ -1,97 +1,43 @@
 const $ = (id) => document.getElementById(id);
-const weekday = ['日', '一', '二', '三', '四', '五', '六'];
-let activeKind = 'episodes';
-let diaryRows = [];
-let memoryRows = [];
-
+let activeKind = 'messages';
+let rows = [];
+const memoryKinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'edges', 'profiles', 'events']);
+const mindKinds = new Set(['thoughts', 'dreams', 'reflections']);
 function text(value) { return value == null || value === '' ? '—' : String(value); }
-function formatTime(value) {
-  if (!value) return '未记录时间';
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
-}
-function safeJson(value) { return JSON.stringify(value || {}, null, 2); }
+function time(value) { const date = new Date(value); return !value || Number.isNaN(date.valueOf()) ? text(value) : date.toLocaleString('zh-CN', { hour12: false }); }
+function json(value) { return JSON.stringify(value || {}, null, 2); }
 function clear(node) { node.replaceChildren(); }
-
-function renderDiaryList() {
-  const list = $('diaryList'); clear(list);
-  $('diaryCount').textContent = `${diaryRows.filter((item) => item.exists).length} 页`;
-  if (!diaryRows.length) { list.textContent = '还没有可翻阅的日记。写下第一页后，它会留在这里。'; return; }
-  diaryRows.forEach((item, index) => {
-    const button = document.createElement('button');
-    const date = new Date(`${item.date}T12:00:00`);
-    button.type = 'button'; button.className = `entry-item ${index === 0 ? 'active' : ''} ${item.exists ? '' : 'draft'}`;
-    const day = document.createElement('span'); day.className = 'entry-day'; day.textContent = date.getDate();
-    const copy = document.createElement('span'); copy.className = 'entry-copy';
-    const month = document.createElement('strong'); month.textContent = `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const excerpt = document.createElement('small'); excerpt.textContent = item.exists ? item.excerpt || '这一天的日记' : '素材已整理，尚未写成日记';
-    copy.append(month, excerpt); button.append(day, copy);
-    button.addEventListener('click', () => { list.querySelectorAll('.entry-item').forEach((node) => node.classList.remove('active')); button.classList.add('active'); loadDiary(item); });
-    list.append(button);
-  });
+function summary(row) {
+  if (activeKind === 'messages') return { title: `${row.role === 'user' ? '主人' : '小未来'} · ${time(row.createdAt)}`, body: row.content };
+  if (activeKind === 'episodes') return { title: time(row.createdAt), body: row.content };
+  if (activeKind === 'vectors') return { title: `${row.model} · ${row.dimensions} 维`, body: row.content };
+  if (activeKind === 'facts') return { title: `${text(row.subjectId)} · ${text(row.predicate)}`, body: row.objectText };
+  if (activeKind === 'edges') return { title: `${text(row.fromId)} → ${text(row.toId)}`, body: row.predicate };
+  if (activeKind === 'profiles') return { title: row.id, body: row.role };
+  if (activeKind === 'thoughts') return { title: `${row.kind} · ${time(row.createdAt)}`, body: row.content };
+  if (activeKind === 'dreams') return { title: `${row.dreamDate} 的梦`, body: row.content };
+  if (activeKind === 'reflections') return { title: `${row.periodStart} 至 ${row.periodEnd}`, body: row.content };
+  return { title: row.type, body: time(row.occurredAt) };
 }
-
-async function loadDiary(item) {
-  $('diaryProse').textContent = '正在翻到这一页…';
-  const date = new Date(`${item.date}T12:00:00`);
-  $('diaryDate').textContent = `${date.getFullYear()} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日`;
-  $('diaryWeekday').textContent = `星期${weekday[date.getDay()]} · 小未来的记录`;
-  $('diaryStamp').textContent = item.exists ? 'MY DIARY' : 'DRAFT PAGE';
-  try {
-    const journal = await window.desktopPet.memory.getDailyJournal(item.date);
-    if (journal?.prose) {
-      $('diaryProse').textContent = journal.prose.trim();
-      $('diarySources').textContent = `这一页来自 ${Array.isArray(journal.sourceIds) ? journal.sourceIds.length : item.sourceCount || 0} 条已保存的相处与生活素材`;
-    } else {
-      $('diaryProse').textContent = '这一天的素材已经整理好了，但小未来还没有把它写成日记。';
-      $('diarySources').textContent = '日记只会基于已保存的聊天、事件和虚拟活动来写。';
-    }
-  } catch {
-    $('diaryProse').textContent = '这一页暂时打不开，请刷新后再试。'; $('diarySources').textContent = '';
-  }
+function detail(row) {
+  if (activeKind === 'messages') return { kicker: `${row.role === 'user' ? '全量对话 · 主人' : '全量对话 · 小未来'}`, title: time(row.createdAt), body: row.content, meta: [['会话', row.conversationId], ['序号', row.sequence], ['来源', row.source]] };
+  if (activeKind === 'episodes') return { kicker: '相处片段', title: time(row.createdAt), body: row.content, meta: [['来源', row.source], ['编号', row.id]] };
+  if (activeKind === 'vectors') return { kicker: `向量记忆 · ${row.state}`, title: `${row.model} (${row.dimensions} 维)`, body: row.content, meta: [['区块', row.chunkId], ['来源', row.sourceIds?.join(', ')], ['建立时间', time(row.createdAt)]] };
+  if (activeKind === 'facts') return { kicker: `事实 · ${row.state}`, title: `${row.subjectId} ${row.predicate}`, body: row.objectText, meta: [['重要度', row.importance], ['置信度', row.confidence], ['来源', row.sourceId]] };
+  if (activeKind === 'edges') return { kicker: `图关系 · ${row.state}`, title: `${row.fromId}  ${row.predicate}  ${row.toId}`, body: '关系必须能追溯到来源片段，图谱本身不产生新的事实。', meta: [['来源', row.sourceId], ['编号', row.id]] };
+  if (activeKind === 'profiles') return { kicker: `人格画像 · ${row.role}`, title: row.id, body: json({ core: row.core, learned: row.learned }), meta: [['更新时间', time(row.updatedAt)]] };
+  if (activeKind === 'thoughts') return { kicker: `内心活动 · ${row.state}`, title: `${row.kind} · ${time(row.createdAt)}`, body: row.content, meta: [['确定性', row.certainty], ['情绪快照', json(row.emotion)], ['来源', row.sourceIds?.join(', ')], ['过期时间', time(row.expiresAt)]] };
+  if (activeKind === 'dreams') return { kicker: `梦境 · ${row.state}`, title: `${row.dreamDate} 的梦`, body: row.content, meta: [['虚构体验', row.isFiction ? '是，不是现实事实' : '否'], ['情绪影响', json(row.emotion)], ['来源', row.sourceIds?.join(', ')]] };
+  if (activeKind === 'reflections') return { kicker: `反思 · ${row.kind} · ${row.state}`, title: `${row.periodStart} 至 ${row.periodEnd}`, body: row.content, meta: [['置信度', row.confidence], ['依据', row.sourceIds?.join(', ')], ['生成时间', time(row.createdAt)]] };
+  return { kicker: `事件 · ${row.privacy}`, title: row.type, body: json(row.payload), meta: [['发生时间', time(row.occurredAt)], ['来源', row.source], ['编号', row.id]] };
 }
-
-function rowSummary(row) {
-  if (activeKind === 'episodes') return { title: formatTime(row.createdAt), summary: row.content };
-  if (activeKind === 'facts') return { title: `${text(row.subjectId)} · ${text(row.predicate)}`, summary: row.objectText };
-  if (activeKind === 'edges') return { title: `${text(row.fromId)} → ${text(row.toId)}`, summary: row.predicate };
-  if (activeKind === 'profiles') return { title: row.id, summary: row.role };
-  return { title: row.type, summary: formatTime(row.occurredAt) };
+function show(row) { const item = detail(row); $('memoryKicker').textContent = item.kicker; $('memoryTitle').textContent = item.title; $('memoryBody').textContent = item.body; const meta = $('memoryMeta'); clear(meta); (item.meta || []).filter(([, value]) => value != null && value !== '').forEach(([label, value]) => { const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = text(value); meta.append(dt, dd); }); }
+function render() {
+  const list = $('memoryList'); clear(list); $('memoryCount').textContent = `${rows.length} 条`;
+  if (!rows.length) { $('memoryKicker').textContent = activeKind === 'vectors' ? '向量索引尚未建立' : 'Memory'; $('memoryTitle').textContent = activeKind === 'vectors' ? '还没有向量记忆' : '这里还没有内容'; $('memoryBody').textContent = activeKind === 'vectors' ? '当前仍是关键词和来源浏览阶段；向量模型接入后，语义片段会出现在这里。' : '新的内容会在保存后显示在这里。'; clear($('memoryMeta')); list.textContent = '暂时没有已保存的内容。'; return; }
+  rows.forEach((row, index) => { const info = summary(row); const button = document.createElement('button'); button.type = 'button'; button.className = `entry-item memory-entry ${index === 0 ? 'active' : ''}`; const title = document.createElement('strong'); title.textContent = info.title; const body = document.createElement('small'); body.textContent = info.body; button.append(title, body); button.addEventListener('click', () => { list.querySelectorAll('.entry-item').forEach((node) => node.classList.remove('active')); button.classList.add('active'); show(row); }); list.append(button); }); show(rows[0]);
 }
-function detailFor(row) {
-  if (activeKind === 'episodes') return { kicker: '相处片段', title: formatTime(row.createdAt), body: row.content, meta: [['来源', row.source], ['编号', row.id]] };
-  if (activeKind === 'facts') return { kicker: `记住的事 · ${row.state}`, title: `${row.subjectId} ${row.predicate}`, body: row.objectText, meta: [['重要度', row.importance], ['置信度', row.confidence], ['来源', row.sourceId], ['有效期', [row.validFrom, row.validTo].filter(Boolean).join(' 至 ')]] };
-  if (activeKind === 'edges') return { kicker: `关系 · ${row.state}`, title: `${row.fromId}  ${row.predicate}  ${row.toId}`, body: '这是一条可追溯的关系连接，不会单独生成未经证实的结论。', meta: [['来源', row.sourceId], ['有效期', [row.validFrom, row.validTo].filter(Boolean).join(' 至 ')], ['编号', row.id]] };
-  if (activeKind === 'profiles') return { kicker: `人格画像 · ${row.role}`, title: row.id, body: safeJson({ core: row.core, learned: row.learned }), meta: [['更新时间', formatTime(row.updatedAt)]] };
-  return { kicker: `事件 · ${row.privacy}`, title: row.type, body: safeJson(row.payload), meta: [['发生时间', formatTime(row.occurredAt)], ['来源', row.source], ['编号', row.id]] };
-}
-function showMemoryDetail(row) {
-  const detail = detailFor(row); $('memoryKicker').textContent = detail.kicker; $('memoryTitle').textContent = detail.title; $('memoryBody').textContent = detail.body;
-  const meta = $('memoryMeta'); clear(meta);
-  detail.meta.filter(([, value]) => value != null && value !== '').forEach(([label, value]) => { const term = document.createElement('dt'); term.textContent = label; const definition = document.createElement('dd'); definition.textContent = text(value); meta.append(term, definition); });
-}
-function renderMemoryList() {
-  const list = $('memoryList'); clear(list); $('memoryCount').textContent = `${memoryRows.length} 条`;
-  if (!memoryRows.length) { $('memoryKicker').textContent = 'Memory'; $('memoryTitle').textContent = '这里还没有内容'; $('memoryBody').textContent = '新的相处片段、事实、关系和事件会在保存后显示在这里。'; clear($('memoryMeta')); list.textContent = '暂时没有已保存的内容。'; return; }
-  memoryRows.forEach((row, index) => {
-    const info = rowSummary(row); const button = document.createElement('button'); button.type = 'button'; button.className = `entry-item memory-entry ${index === 0 ? 'active' : ''}`;
-    const title = document.createElement('strong'); title.textContent = info.title;
-    const summary = document.createElement('small'); summary.textContent = info.summary;
-    button.append(title, summary);
-    button.addEventListener('click', () => { list.querySelectorAll('.entry-item').forEach((node) => node.classList.remove('active')); button.classList.add('active'); showMemoryDetail(row); }); list.append(button);
-  }); showMemoryDetail(memoryRows[0]);
-}
-async function loadMemory(kind = activeKind) { activeKind = kind; $('memoryList').textContent = '正在读取…'; memoryRows = await window.desktopPet.memory.list(kind); renderMemoryList(); }
-async function refresh() {
-  const status = await window.desktopPet.memory.getStatus(); const box = $('statusBox'); box.className = `core-status ${status?.ok ? 'ok' : 'bad'}`; box.textContent = status?.ok ? 'SQLite 已就绪' : 'Core 未就绪';
-  $('statsLine').textContent = status?.ok ? `情景 ${status.episodes} · 事实 ${status.facts} · 关系 ${status.edges} · 画像 ${status.profiles} · 事件 ${status.events} · 日记 ${status.dailyJournals}` : 'Python Core 未就绪时，面板不会读取或写入长期记忆。';
-  if (!status?.ok) { diaryRows = []; renderDiaryList(); renderMemoryList(); $('diaryProse').textContent = '本地记忆 Core 尚未就绪，日记册暂时不可读取。'; return; }
-  diaryRows = await window.desktopPet.memory.listDailyJournals(); renderDiaryList();
-  if (diaryRows.length) await loadDiary(diaryRows[0]);
-  else { $('diaryDate').textContent = '还没有日记页'; $('diaryWeekday').textContent = '小未来的记录'; $('diaryStamp').textContent = 'MY DIARY'; $('diaryProse').textContent = '在“显示设置”里点一下“写一页”，第一篇日记就会放进这本册子。'; $('diarySources').textContent = ''; }
-  await loadMemory(activeKind);
-}
-document.querySelectorAll('.main-tab').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.main-tab').forEach((node) => node.classList.toggle('active', node === button)); $('diaryView').classList.toggle('hidden', button.dataset.view !== 'diary'); $('memoryView').classList.toggle('hidden', button.dataset.view !== 'memory'); }));
-document.querySelectorAll('.memory-tab').forEach((button) => button.addEventListener('click', async () => { document.querySelectorAll('.memory-tab').forEach((node) => node.classList.toggle('active', node === button)); await loadMemory(button.dataset.kind); }));
-$('refreshBtn').addEventListener('click', refresh); $('closeBtn').addEventListener('click', () => window.desktopPet.memory.closePanel());
-refresh().catch((error) => { $('statusBox').textContent = `读取失败：${error.message || error}`; });
+async function load(kind = activeKind) { activeKind = kind; $('memoryList').textContent = '正在读取…'; rows = memoryKinds.has(kind) ? await window.desktopPet.memory.list(kind) : await window.desktopPet.memory.listMind(kind); render(); }
+async function refresh() { const status = await window.desktopPet.memory.getStatus(); $('statusBox').className = `core-status ${status?.ok ? 'ok' : 'bad'}`; $('statusBox').textContent = status?.ok ? 'SQLite 已就绪' : 'Core 未就绪'; $('statsLine').textContent = status?.ok ? `消息 ${status.messages} · 向量 ${status.vectors} · 事实 ${status.facts} · 图关系 ${status.edges} · 内心 ${status.thoughts} · 梦境 ${status.dreams} · 反思 ${status.reflections}` : 'Python Core 未就绪时，面板不会读取或写入长期记忆。'; if (!status?.ok) { rows = []; render(); return; } await load(activeKind); }
+document.querySelectorAll('.memory-tab').forEach((button) => button.addEventListener('click', async () => { document.querySelectorAll('.memory-tab').forEach((node) => node.classList.toggle('active', node === button)); await load(button.dataset.kind); }));
+$('refreshBtn').addEventListener('click', refresh); $('closeBtn').addEventListener('click', () => window.desktopPet.memory.closePanel()); refresh().catch((error) => { $('statusBox').textContent = `读取失败：${error.message || error}`; });

@@ -10,12 +10,13 @@ const IPC = require('../contracts/ipc');
 const path = require('path');
 const fs = require('fs');
 const { shell } = require('electron');
+const { guarded } = require('../main/ipc-validation');
 
 function p2(n) { return String(n).padStart(2, '0'); }
 function todayLocal() { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; }
 function jdir(userData) { return path.join(userData, 'journals'); }
 
-module.exports = function setup({ ipcMain, app, systemSense, companionMemory, generic }) {
+module.exports = function setup({ ipcMain, app, systemSense, companionMemory, generic, panels }) {
   const dir = () => jdir(app.getPath('userData'));
   const generating = new Map();
 
@@ -44,6 +45,11 @@ module.exports = function setup({ ipcMain, app, systemSense, companionMemory, ge
       return { date, exists, content: exists ? fs.readFileSync(fp, 'utf8') : '' };
     } catch (e) { return { date: todayLocal(), exists: false, content: '', error: String(e && e.message) }; }
   });
+
+  ipcMain.handle(IPC.DiaryList, async () => companionMemory.listDailyJournals());
+  ipcMain.handle(IPC.DiaryGet, guarded(IPC.DiaryGet, async (date) => companionMemory.getDailyJournal(date)));
+  ipcMain.handle(IPC.DiaryOpenPanel, () => { panels.openDiaryPanel(); return true; });
+  ipcMain.handle(IPC.DiaryClosePanel, () => { panels.closeDiaryPanel(); return true; });
 
   ipcMain.handle(IPC.DiaryGenerateToday, async () => {
     const date = todayLocal();

@@ -51,22 +51,13 @@ async function renderSensing() {
   } catch {}
 }
 
-async function renderDiary() {
-  try {
-    const d = await window.desktopPet.diary.getToday();
-    if (!d) return;
-    $('diaryDate').textContent = `${d.date} 的日记`;
-    $('diaryText').textContent = d.exists && d.content ? d.content.trim() : '（今天还没有日记，试着和她说说话吧）';
-  } catch {}
-}
-
 function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeCompanionPanel());
   $('dragClose')?.addEventListener('click', () => window.desktopPet.closeCompanionPanel());
   $('backBtn').addEventListener('click', () => { window.desktopPet.closeCompanionPanel(); window.desktopPet.openSettingsCenter(); });
-  $('diaryOpenBtn').addEventListener('click', () => window.desktopPet.diary.openFolder());
-  renderPetState(); renderSensing(); renderDiary();
-  setInterval(() => { renderPetState(); renderSensing(); renderDiary(); }, 5000);
+  $('diaryOpenBtn').addEventListener('click', () => window.desktopPet.diary.openPanel());
+  renderPetState(); renderSensing();
+  setInterval(() => { renderPetState(); renderSensing(); }, 5000);
 }
 
 init();

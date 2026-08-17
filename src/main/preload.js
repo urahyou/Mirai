@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
     list: (kind) => ipcRenderer.invoke('memory:list', kind),
+    listMind: (kind) => ipcRenderer.invoke('memory:listMind', kind),
     listDailyJournals: () => ipcRenderer.invoke('memory:listDailyJournals'),
     getDailyJournal: (day) => ipcRenderer.invoke('memory:getDailyJournal', day),
     openPanel: () => ipcRenderer.invoke('memory:openPanel'),
@@ -129,8 +130,12 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   }),
   diary: Object.freeze({
     getToday: () => ipcRenderer.invoke('diary:getToday'),
+    list: () => ipcRenderer.invoke('diary:list'),
+    get: (date) => ipcRenderer.invoke('diary:get', date),
     generateToday: () => ipcRenderer.invoke('diary:generateToday'),
     openFolder: () => ipcRenderer.invoke('diary:openFolder'),
+    openPanel: () => ipcRenderer.invoke('diary:openPanel'),
+    closePanel: () => ipcRenderer.invoke('diary:closePanel'),
   }),
   initiative: Object.freeze({
     get: () => ipcRenderer.invoke('initiative:get'),

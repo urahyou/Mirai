@@ -18,10 +18,20 @@ class MemoryStore:
         CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, type TEXT NOT NULL, occurred_at TEXT NOT NULL, source TEXT NOT NULL, privacy TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}');
         CREATE TABLE IF NOT EXISTS daily_journals(date TEXT PRIMARY KEY, timezone_offset_minutes INTEGER NOT NULL, material_json TEXT NOT NULL, source_ids_json TEXT NOT NULL, prose TEXT, reflection TEXT, built_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS weekly_journals(week_start TEXT PRIMARY KEY, timezone_offset_minutes INTEGER NOT NULL, material_json TEXT NOT NULL, source_ids_json TEXT NOT NULL, prose TEXT, reflection TEXT, built_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS conversation_messages(id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, sequence_no INTEGER NOT NULL, created_at TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, emotion_json TEXT NOT NULL DEFAULT '{}', source_ids_json TEXT NOT NULL DEFAULT '[]', certainty REAL NOT NULL, expires_at TEXT, state TEXT NOT NULL DEFAULT 'active');
+        CREATE TABLE IF NOT EXISTS dreams(id TEXT PRIMARY KEY, dream_date TEXT NOT NULL, created_at TEXT NOT NULL, content TEXT NOT NULL, emotion_json TEXT NOT NULL DEFAULT '{}', source_ids_json TEXT NOT NULL DEFAULT '[]', is_fiction INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT 'active');
+        CREATE TABLE IF NOT EXISTS reflections(id TEXT PRIMARY KEY, period_start TEXT NOT NULL, period_end TEXT NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, source_ids_json TEXT NOT NULL DEFAULT '[]', confidence REAL NOT NULL, created_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active');
+        CREATE TABLE IF NOT EXISTS memory_vectors(id TEXT PRIMARY KEY, chunk_id TEXT NOT NULL, model TEXT NOT NULL, dimensions INTEGER NOT NULL, content TEXT NOT NULL, vector_json TEXT NOT NULL, source_ids_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active');
         CREATE INDEX IF NOT EXISTS episode_created ON episodes(created_at DESC);
         CREATE INDEX IF NOT EXISTS event_occurred ON events(occurred_at DESC);
         CREATE INDEX IF NOT EXISTS fact_subject ON facts(subject_id, predicate, state);
         CREATE INDEX IF NOT EXISTS edge_from ON edges(from_id, state);
+        CREATE INDEX IF NOT EXISTS message_conversation ON conversation_messages(conversation_id, sequence_no);
+        CREATE INDEX IF NOT EXISTS thought_created ON thoughts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS dream_date ON dreams(dream_date DESC);
+        CREATE INDEX IF NOT EXISTS reflection_period ON reflections(period_end DESC);
+        CREATE INDEX IF NOT EXISTS vector_created ON memory_vectors(created_at DESC);
         """)
         self.db.commit()
 
@@ -47,7 +57,13 @@ class MemoryStore:
             text = str(item.get("content", "")).strip()[:4000]
             if text: rows.append(("主人" if item["role"] == "user" else "小未来") + "：" + text)
         if not rows: return False
-        self.db.execute("INSERT INTO episodes VALUES(?,?,?,?)", ("episode:" + uuid.uuid4().hex, created_at, "\n".join(rows), "chat"))
+        episode_id = "episode:" + uuid.uuid4().hex
+        self.db.execute("INSERT INTO episodes VALUES(?,?,?,?)", (episode_id, created_at, "\n".join(rows), "chat"))
+        for sequence_no, item in enumerate(messages[:20]):
+            if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"): continue
+            content = str(item.get("content", "")).strip()[:4000]
+            if not content: continue
+            self.db.execute("INSERT INTO conversation_messages VALUES(?,?,?,?,?,?,?)", ("message:" + uuid.uuid4().hex, episode_id, sequence_no, created_at, item["role"], content, "chat"))
         self.db.commit(); return True
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
@@ -140,6 +156,78 @@ class MemoryStore:
         rows = self.db.execute("SELECT id, type, occurred_at, source, privacy, payload_json FROM events ORDER BY occurred_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
         return [{"id": row["id"], "type": row["type"], "occurredAt": row["occurred_at"], "source": row["source"], "privacy": row["privacy"], "payload": json.loads(row["payload_json"])} for row in rows]
 
+    def list_messages(self, limit: Any = 100) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, conversation_id, sequence_no, created_at, role, content, source FROM conversation_messages ORDER BY created_at DESC, sequence_no DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "conversationId": row["conversation_id"], "sequence": row["sequence_no"], "createdAt": row["created_at"], "role": row["role"], "content": row["content"], "source": row["source"]} for row in rows]
+
+    def import_messages(self, messages: Any) -> int:
+        if not isinstance(messages, list): raise ValueError("聊天记录必须是数组")
+        inserted = 0
+        for sequence_no, item in enumerate(messages[:10000]):
+            if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"): continue
+            raw_id = item.get("id")
+            if not isinstance(raw_id, str) or not raw_id.strip(): continue
+            created_at = self._required_text(item.get("createdAt"), "聊天记录缺少时间", 64); self._parse_time(created_at)
+            content = self._required_text(item.get("content"), "聊天记录内容不能为空", 4000)
+            cursor = self.db.execute("INSERT OR IGNORE INTO conversation_messages VALUES(?,?,?,?,?,?,?)", ("message:history:" + raw_id[:80], "conversation:chat-history", sequence_no, created_at, item["role"], content, "chat-history"))
+            inserted += max(0, cursor.rowcount)
+        self.db.commit(); return inserted
+
+    def record_thought(self, thought: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(thought, dict): raise ValueError("内心活动必须是对象")
+        ident = thought.get("id") if isinstance(thought.get("id"), str) and thought["id"].strip() else "thought:" + uuid.uuid4().hex
+        created_at = self._required_text(thought.get("createdAt"), "内心活动缺少时间", 64); self._parse_time(created_at)
+        content = self._required_text(thought.get("content"), "内心活动不能为空", 2000)
+        sources = self._source_ids(thought.get("sourceIds", []))
+        emotion = thought.get("emotion", {})
+        if not isinstance(emotion, dict): raise ValueError("内心活动情绪必须是对象")
+        self.db.execute("INSERT OR REPLACE INTO thoughts VALUES(?,?,?,?,?,?,?,?,?)", (ident[:120], created_at, str(thought.get("kind", "reflection"))[:80], content, json.dumps(emotion, ensure_ascii=False), json.dumps(sources, ensure_ascii=False), self._score(thought.get("certainty"), .5), self._optional_text(thought.get("expiresAt"), 64), self._state(thought.get("state"))))
+        self.db.commit(); return self.get_thought(ident) or {}
+
+    def record_dream(self, dream: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(dream, dict): raise ValueError("梦境必须是对象")
+        ident = dream.get("id") if isinstance(dream.get("id"), str) and dream["id"].strip() else "dream:" + uuid.uuid4().hex
+        dream_date = self._parse_day(dream.get("dreamDate")).isoformat(); created_at = self._required_text(dream.get("createdAt"), "梦境缺少时间", 64); self._parse_time(created_at)
+        content = self._required_text(dream.get("content"), "梦境不能为空", 3000)
+        emotion = dream.get("emotion", {})
+        if not isinstance(emotion, dict): raise ValueError("梦境情绪必须是对象")
+        self.db.execute("INSERT OR REPLACE INTO dreams VALUES(?,?,?,?,?,?,?,?)", (ident[:120], dream_date, created_at, content, json.dumps(emotion, ensure_ascii=False), json.dumps(self._source_ids(dream.get("sourceIds", [])), ensure_ascii=False), 1, self._state(dream.get("state"))))
+        self.db.commit(); return self.get_dream(ident) or {}
+
+    def record_reflection(self, reflection: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(reflection, dict): raise ValueError("反思必须是对象")
+        ident = reflection.get("id") if isinstance(reflection.get("id"), str) and reflection["id"].strip() else "reflection:" + uuid.uuid4().hex
+        start = self._parse_day(reflection.get("periodStart")).isoformat(); end = self._parse_day(reflection.get("periodEnd")).isoformat()
+        created_at = self._required_text(reflection.get("createdAt"), "反思缺少时间", 64); self._parse_time(created_at)
+        content = self._required_text(reflection.get("content"), "反思不能为空", 3000)
+        self.db.execute("INSERT OR REPLACE INTO reflections VALUES(?,?,?,?,?,?,?,?,?)", (ident[:120], start, end, str(reflection.get("kind", "daily"))[:80], content, json.dumps(self._source_ids(reflection.get("sourceIds", [])), ensure_ascii=False), self._score(reflection.get("confidence"), .5), created_at, self._state(reflection.get("state"))))
+        self.db.commit(); return self.get_reflection(ident) or {}
+
+    def get_thought(self, ident: str) -> dict[str, Any] | None:
+        row = self.db.execute("SELECT * FROM thoughts WHERE id=?", (ident,)).fetchone()
+        return self._thought_row(row) if row else None
+
+    def get_dream(self, ident: str) -> dict[str, Any] | None:
+        row = self.db.execute("SELECT * FROM dreams WHERE id=?", (ident,)).fetchone()
+        return self._dream_row(row) if row else None
+
+    def get_reflection(self, ident: str) -> dict[str, Any] | None:
+        row = self.db.execute("SELECT * FROM reflections WHERE id=?", (ident,)).fetchone()
+        return self._reflection_row(row) if row else None
+
+    def list_mind(self, kind: str, limit: Any = 30) -> list[dict[str, Any]]:
+        if kind == "thoughts":
+            rows = self.db.execute("SELECT * FROM thoughts ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall(); return [self._thought_row(row) for row in rows]
+        if kind == "dreams":
+            rows = self.db.execute("SELECT * FROM dreams ORDER BY dream_date DESC, created_at DESC LIMIT ?", (self._limit(limit),)).fetchall(); return [self._dream_row(row) for row in rows]
+        if kind == "reflections":
+            rows = self.db.execute("SELECT * FROM reflections ORDER BY period_end DESC, created_at DESC LIMIT ?", (self._limit(limit),)).fetchall(); return [self._reflection_row(row) for row in rows]
+        raise ValueError("未知内心活动类别")
+
+    def list_vectors(self, limit: Any = 30) -> list[dict[str, Any]]:
+        rows = self.db.execute("SELECT id, chunk_id, model, dimensions, content, source_ids_json, created_at, state FROM memory_vectors ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
+        return [{"id": row["id"], "chunkId": row["chunk_id"], "model": row["model"], "dimensions": row["dimensions"], "content": row["content"], "sourceIds": json.loads(row["source_ids_json"]), "createdAt": row["created_at"], "state": row["state"]} for row in rows]
+
     def delete_by_source(self, source_id: str) -> int:
         with self.db:
             count = self.db.execute("DELETE FROM facts WHERE source_id=?", (source_id,)).rowcount
@@ -217,9 +305,16 @@ class MemoryStore:
     def stats(self) -> dict[str, int]:
         def count(table: str) -> int:
             return int(self.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
-        return {"episodes": count("episodes"), "facts": count("facts"), "profiles": count("profiles"), "edges": count("edges"), "events": count("events"), "dailyJournals": count("daily_journals"), "weeklyJournals": count("weekly_journals")}
+        return {"episodes": count("episodes"), "messages": count("conversation_messages"), "facts": count("facts"), "profiles": count("profiles"), "edges": count("edges"), "events": count("events"), "vectors": count("memory_vectors"), "thoughts": count("thoughts"), "dreams": count("dreams"), "reflections": count("reflections"), "dailyJournals": count("daily_journals"), "weeklyJournals": count("weekly_journals")}
 
-    def close(self) -> None: self.db.close()
+    def close(self) -> None:
+        if self.db is not None:
+            self.db.close()
+            self.db = None
+
+    def __del__(self) -> None:
+        # Short-lived CLI clients and tests may not reach the explicit shutdown RPC.
+        self.close()
 
     def _episodes_for_day(self, day: date, tz: timezone) -> list[dict[str, Any]]:
         rows = self.db.execute("SELECT id, content, created_at FROM episodes ORDER BY created_at ASC").fetchall()
@@ -264,6 +359,22 @@ class MemoryStore:
         if not row: return None
         material = json.loads(row["material_json"])
         return {"material": material, "sourceIds": json.loads(row["source_ids_json"]), "prose": row["prose"], "reflection": row["reflection"], "builtAt": row["built_at"]}
+
+    def _source_ids(self, values: Any) -> list[str]:
+        if not isinstance(values, list): raise ValueError("来源必须是数组")
+        return [self._required_text(value, "来源 id 不合法", 120) for value in values[:50] if isinstance(value, str) and value.strip()]
+
+    @staticmethod
+    def _thought_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {"id": row["id"], "createdAt": row["created_at"], "kind": row["kind"], "content": row["content"], "emotion": json.loads(row["emotion_json"]), "sourceIds": json.loads(row["source_ids_json"]), "certainty": row["certainty"], "expiresAt": row["expires_at"], "state": row["state"]}
+
+    @staticmethod
+    def _dream_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {"id": row["id"], "dreamDate": row["dream_date"], "createdAt": row["created_at"], "content": row["content"], "emotion": json.loads(row["emotion_json"]), "sourceIds": json.loads(row["source_ids_json"]), "isFiction": bool(row["is_fiction"]), "state": row["state"]}
+
+    @staticmethod
+    def _reflection_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {"id": row["id"], "periodStart": row["period_start"], "periodEnd": row["period_end"], "kind": row["kind"], "content": row["content"], "sourceIds": json.loads(row["source_ids_json"]), "confidence": row["confidence"], "createdAt": row["created_at"], "state": row["state"]}
 
     def _save_journal_prose(self, table: str, key: str, value: str, prose: Any, reflection: Any) -> dict[str, Any]:
         body = self._required_text(prose, "日记正文不能为空", 6000)

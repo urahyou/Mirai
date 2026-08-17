@@ -7,6 +7,7 @@ const routes = {
   cardBehavior: () => window.desktopPet.openBehaviorPanel(),
   cardChat: () => window.desktopPet.openContextPanel(),
   cardMemory: () => window.desktopPet.memory.openPanel(),
+  cardDiary: () => window.desktopPet.diary.openPanel(),
   cardPersonality: () => window.desktopPet.openPersonalityPanel(),
   cardVoice: () => window.desktopPet.openVoiceSettingsPanel(),
   cardModel: () => window.desktopPet.openProviderPanel(),

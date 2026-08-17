@@ -54,6 +54,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
+        elif method == "memory.import_messages":
+            result = {"inserted": core.memory_import_messages(params.get("messages"))}
         elif method == "memory.list":
             result = {"results": core.memory_list(params.get("kind"), params.get("limit", 30))}
         elif method == "memory.forget_source":
@@ -72,6 +74,14 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"results": core.memory_neighbors(params.get("entityId"), params.get("limit", 8))}
         elif method == "memory.stats":
             result = core.memory_stats()
+        elif method == "mind.record_thought":
+            result = {"thought": core.mind_record_thought(params.get("thought"))}
+        elif method == "mind.record_dream":
+            result = {"dream": core.mind_record_dream(params.get("dream"))}
+        elif method == "mind.record_reflection":
+            result = {"reflection": core.mind_record_reflection(params.get("reflection"))}
+        elif method == "mind.list":
+            result = {"results": core.mind_list(params.get("kind"), params.get("limit", 30))}
         elif method == "journal.build_daily_material":
             result = core.journal_build_daily_material(params.get("day"), params.get("timezoneOffsetMinutes", 0))
         elif method == "journal.get_daily_material":
@@ -89,6 +99,7 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
         elif method == "event.ingest":
             result = core.ingest(params.get("event"))
         elif method == "core.shutdown":
+            core.close()
             result = {"stopped": True}
             return {"id": request_id, "ok": True, "result": result}, True
         else:

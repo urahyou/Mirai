@@ -110,6 +110,48 @@ class CompanionCoreTest(unittest.TestCase):
             with self.assertRaisesRegex(CoreError, "未知记忆类别"):
                 core.memory_list("unknown")
 
+    def test_full_messages_and_inner_life_never_become_facts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([
+                {"role": "user", "content": "今天有点累"},
+                {"role": "assistant", "content": "那我陪主人安静待一会儿。"},
+            ], "2026-08-17T20:00:00Z")
+            episode_id = core.memory_list("episodes")[0]["id"]
+            messages = core.memory_list("messages")
+            self.assertEqual(len(messages), 2)
+            self.assertEqual(messages[0]["role"], "assistant")
+            thought = core.mind_record_thought({
+                "createdAt": "2026-08-17T20:05:00Z", "kind": "worry",
+                "content": "主人今天好像有点累，我想安静陪着。", "sourceIds": [episode_id],
+                "emotion": {"care": 0.7}, "certainty": 0.4, "expiresAt": "2026-08-18T08:00:00Z",
+            })
+            dream = core.mind_record_dream({
+                "dreamDate": "2026-08-18", "createdAt": "2026-08-18T02:00:00Z",
+                "content": "我梦见和主人坐在星光下面。", "sourceIds": [episode_id], "emotion": {"calm": 0.8},
+            })
+            reflection = core.mind_record_reflection({
+                "periodStart": "2026-08-17", "periodEnd": "2026-08-17", "createdAt": "2026-08-17T23:00:00Z",
+                "kind": "daily", "content": "今天我学会了少说一点，也能陪在主人身边。", "sourceIds": [episode_id], "confidence": 0.5,
+            })
+            self.assertEqual(core.mind_list("thoughts")[0]["id"], thought["id"])
+            self.assertTrue(core.mind_list("dreams")[0]["isFiction"])
+            self.assertEqual(core.mind_list("reflections")[0]["id"], reflection["id"])
+            self.assertEqual(core.memory_find_facts("星光"), [])
+            stats = core.memory_stats()
+            self.assertEqual((stats["messages"], stats["thoughts"], stats["dreams"], stats["reflections"]), (2, 1, 1, 1))
+
+    def test_imported_full_history_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            messages = [
+                {"id": "one", "role": "user", "content": "第一句", "createdAt": "2026-08-17T10:00:00Z"},
+                {"id": "two", "role": "assistant", "content": "第二句", "createdAt": "2026-08-17T10:00:01Z"},
+            ]
+            self.assertEqual(core.memory_import_messages(messages), 2)
+            self.assertEqual(core.memory_import_messages(messages), 0)
+            self.assertEqual(len(core.memory_list("messages")), 2)
+
     def test_memory_rejects_unproven_source(self):
         with tempfile.TemporaryDirectory() as directory:
             core = CompanionCore(); core.bootstrap(directory)

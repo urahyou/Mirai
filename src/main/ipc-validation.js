@@ -63,7 +63,12 @@ function validateChatExpanded(args) {
 }
 
 function validateMemoryList(args) {
-  const kinds = new Set(['episodes', 'facts', 'profiles', 'edges', 'events']);
+  const kinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'profiles', 'edges', 'events']);
+  return args.length === 1 && kinds.has(args[0]) ? args : null;
+}
+
+function validateMindList(args) {
+  const kinds = new Set(['thoughts', 'dreams', 'reflections']);
   return args.length === 1 && kinds.has(args[0]) ? args : null;
 }
 
@@ -94,6 +99,8 @@ function validatePayload(channel, args, ctx = {}) {
           ? validateChatExpanded(values)
           : channel === 'memory:list'
             ? validateMemoryList(values)
+            : channel === 'memory:listMind'
+              ? validateMindList(values)
             : channel === 'memory:getDailyJournal'
               ? validateDay(values)
           : channel === 'context:set'
