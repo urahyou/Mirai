@@ -14,6 +14,7 @@ const routes = {
 
 function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeSettingsCenter());
+  $('dragClose')?.addEventListener('click', () => window.desktopPet.closeSettingsCenter());
   for (const [id, fn] of Object.entries(routes)) {
     const el = $(id);
     if (el) el.addEventListener('click', fn);

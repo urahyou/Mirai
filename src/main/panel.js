@@ -45,6 +45,7 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
         resizable: Boolean(cfg.resizable),
         ...(cfg.minWidth ? { minWidth: cfg.minWidth } : {}),
         ...(cfg.minHeight ? { minHeight: cfg.minHeight } : {}),
+        ...(cfg.frame !== undefined ? { frame: cfg.frame } : {}),
         alwaysOnTop: true,
         skipTaskbar: true,
         webPreferences: windowOptions(),
@@ -64,11 +65,12 @@ module.exports = function createPanels({ getPetWindow, windowOptions }) {
   const contextPanel = makePanel({ width: 460, height: 380, file: 'context-panel.html' });
   const memoryPanel = makePanel({ width: 520, height: 560, file: 'memory-panel.html' });
 
-  // —— 设置中心体系（2026-08）：显示设置拆分为清晰子面板，由中心首页统一导航 ——
-  const settingsCenterPanel = makePanel({ width: 560, height: 480, resizable: true, minWidth: 480, minHeight: 400, file: 'settings-center.html' });
-  const appearancePanel = makePanel({ width: 460, height: 380, file: 'appearance-panel.html' });
-  const behaviorPanel = makePanel({ width: 460, height: 360, file: 'behavior-panel.html' });
-  const companionPanel = makePanel({ width: 520, height: 560, file: 'companion-panel.html' });
+  // —— 设置中心体系（2026-08）：显示设置拆分为清晰子面板，由中心首页统一导航。
+  // 无边框(frame:false) + 自定义拖动顶栏(.drag-bar)，替代系统标题栏，保证可移动。
+  const settingsCenterPanel = makePanel({ width: 560, height: 480, frame: false, resizable: true, minWidth: 480, minHeight: 400, file: 'settings-center.html' });
+  const appearancePanel = makePanel({ width: 460, height: 380, frame: false, file: 'appearance-panel.html' });
+  const behaviorPanel = makePanel({ width: 460, height: 360, frame: false, file: 'behavior-panel.html' });
+  const companionPanel = makePanel({ width: 520, height: 560, frame: false, file: 'companion-panel.html' });
 
   // ---------- 右键菜单（行为比面板特殊：失焦关闭 + 按点击点定位） ----------
   function closeMenuWindow() {

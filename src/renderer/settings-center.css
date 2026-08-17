@@ -1,4 +1,14 @@
-.center-content { padding: 6px 2px 12px; }
+.center-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 6px 12px 2px;
+  scrollbar-color: rgba(255, 79, 158, .35) transparent;
+  scrollbar-width: thin;
+}
+.center-content::-webkit-scrollbar { width: 8px; }
+.center-content::-webkit-scrollbar-thumb { background: rgba(255, 79, 158, .35); border-radius: 4px; }
+.center-content::-webkit-scrollbar-track { background: transparent; }
 
 .card {
   display: flex;

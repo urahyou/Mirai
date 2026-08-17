@@ -62,6 +62,7 @@ async function renderDiary() {
 
 function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeCompanionPanel());
+  $('dragClose')?.addEventListener('click', () => window.desktopPet.closeCompanionPanel());
   $('backBtn').addEventListener('click', () => { window.desktopPet.closeCompanionPanel(); window.desktopPet.openSettingsCenter(); });
   $('diaryOpenBtn').addEventListener('click', () => window.desktopPet.diary.openFolder());
   renderPetState(); renderSensing(); renderDiary();

@@ -30,6 +30,7 @@ async function save(patch) {
 
 async function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeBehaviorPanel());
+  $('dragClose')?.addEventListener('click', () => window.desktopPet.closeBehaviorPanel());
   $('backBtn').addEventListener('click', () => { window.desktopPet.closeBehaviorPanel(); window.desktopPet.openSettingsCenter(); });
   $('alwaysOnTop').addEventListener('change', () => save({ alwaysOnTop: $('alwaysOnTop').checked }));
   $('voiceDockAutoHide').addEventListener('change', () => save({ voiceDockAutoHide: $('voiceDockAutoHide').checked }));

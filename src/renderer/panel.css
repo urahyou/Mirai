@@ -10,6 +10,48 @@ html, body { margin: 0; height: 100%; font-family: "PingFang SC", "Microsoft YaH
 .hint { font-size: 11px; color: var(--muted); }
 .panel-footer { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .spacer { flex: 1; }
+
+/* 自定义可拖动顶栏：无边框面板用于移动窗口的抓手条（见 makePanel frame:false） */
+.drag-bar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 28px;
+  margin: -14px -16px 12px; /* 抵消 #app 内边距，让条顶到窗口上缘并左右全宽 */
+  padding: 0 12px;
+  background: linear-gradient(90deg, #ffe3ef, #fff0f6);
+  border-bottom: 1px solid rgba(255, 79, 158, 0.16);
+  border-radius: 8px 8px 0 0;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  color: #b0456e;
+  font-size: 11px;
+}
+.drag-bar:active { cursor: grabbing; }
+.drag-bar .drag-grip {
+  letter-spacing: -2px;
+  opacity: 0.75;
+  font-size: 12px;
+  margin-right: 2px;
+}
+.drag-bar .drag-title { font-weight: 600; }
+.drag-bar .drag-tip { color: #c98aa6; margin-left: 2px; }
+.drag-bar .drag-close {
+  -webkit-app-region: no-drag; /* 按钮需可点击 */
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: #b0456e;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+.drag-bar .drag-close:hover { background: rgba(255, 79, 158, 0.14); }
 .btn { border: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; background: var(--pink-soft); color: var(--pink); }
 .btn.primary { background: var(--pink); color: #fff; }
 .btn.ghost { background: transparent; border: 1px solid rgba(0,0,0,.12); color: var(--text); }

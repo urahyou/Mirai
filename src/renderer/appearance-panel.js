@@ -45,6 +45,7 @@ function previewScale(scale) {
 
 async function init() {
   $('closeBtn').addEventListener('click', () => window.desktopPet.closeAppearancePanel());
+  $('dragClose')?.addEventListener('click', () => window.desktopPet.closeAppearancePanel());
   $('backBtn').addEventListener('click', () => { window.desktopPet.closeAppearancePanel(); window.desktopPet.openSettingsCenter(); });
   $('scaleRange').addEventListener('input', () => {
     const scale = Number($('scaleRange').value) / 100;
