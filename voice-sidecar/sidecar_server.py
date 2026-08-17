@@ -40,6 +40,7 @@ import base64
 import json
 import os
 import threading
+import time
 
 import numpy as np
 
@@ -301,6 +302,7 @@ async def handle_connection(websocket):
 
 
         try:
+            started_at = time.monotonic()
             audio = await loop.run_in_executor(None, synth, text)
         except Exception as exc:  # noqa: BLE001
             _log("tts failed:", repr(exc))
@@ -313,6 +315,7 @@ async def handle_connection(websocket):
                 "type": "audio",
                 "id": req_id,
                 "format": fmt,
+                "ttsMs": round((time.monotonic() - started_at) * 1000),
                 "data": base64.b64encode(audio).decode("ascii"),
             }
         )

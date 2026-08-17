@@ -113,6 +113,7 @@ module.exports = function createVoice({
 
   // 让主窗口（宠物窗）播放小未来的语音
   voiceBridge.on('audio', (audio) => {
+    if (audio.latencyMs) console.log('[voice] TTS end-to-end=%dms synth=%sms', audio.latencyMs, audio.ttsMs ?? 'n/a');
     // 本条已合成完成 → 释放 busy；若期间又积累了最新待读文本，立即发起它（打断式：旧退场新上场）
     if (state._speakBusy) {
       clearTimeout(state._speakBusyTimer);

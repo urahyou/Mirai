@@ -10,6 +10,7 @@
 // 主进程通过惰性引用注入，避免 voice ⇄ chat 循环 require。
 const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
+const createSpeechLead = require('../services/speech-lead');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, graphitiMemory, contextSettings, probeMaxContext,
   voice, sendToChatInput, petState, lifeState, emotionState, systemSense,
@@ -54,14 +55,23 @@ module.exports = function createChat({
     return '';
   }
 
-  async function generateChat(input, emit) {
+  async function generateChat(input, emit, speechLead) {
     const graphitiResults = await graphitiMemory.search(input);
     const memoryContext = graphitiMemory.formatContext(graphitiResults);
     const contextMaxTokens = contextSettings.getSettings(state.cachedModelMaxTokens).maxContextTokens;
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        return await generic.generateReply(input, { provider, onDelta: emit, memoryContext, contextMaxTokens, state: buildState() });
+        return await generic.generateReply(input, {
+          provider,
+          onDelta: (chunk, full) => {
+            emit(chunk, full);
+            speechLead?.observe(full);
+          },
+          memoryContext,
+          contextMaxTokens,
+          state: buildState(),
+        });
       } catch {
         // Try the next configured provider.
       }
@@ -93,7 +103,8 @@ module.exports = function createChat({
     const emit = (chunk, full) => {
       broadcastChatDelta({ chunk, full, done: false, turnId });
     };
-    const reply = await enqueueChat(() => generateChat(input, emit));
+    const speechLead = createSpeechLead({ speak: (text) => voice.speak(text) });
+    const reply = await enqueueChat(() => generateChat(input, emit, speechLead));
     const assistantMessage = chatHistory.appendMessage('assistant', reply);
     const episode = [
       { role: 'user', content: input },
@@ -102,8 +113,8 @@ module.exports = function createChat({
     void graphitiMemory.add(episode, new Date(userMessage.createdAt).toISOString());
     sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
     broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
-    // 语音输出：让小未来开口说这句回复
-    voice.speak(reply);
+    // 首句在流式输出时已抢跑，结束时只继续播放尚未朗读的部分。
+    speechLead.finish(reply);
     // 喂养 pet 状态：一次真实对话 → 好感/情绪/养成(e.g. CONVERSATION 事件)
     try { if (petState) petState.applyEvent(E.PET.CONVERSATION); } catch {}
     return reply;

@@ -74,6 +74,8 @@ class VoiceBridge extends EventEmitter {
     this.connecting = false;
     this.pcmQueue = [];
     this.speakQueue = [];
+    this.speakSequence = 0;
+    this.speakStartedAt = new Map();
     this.restartTimer = null;
     this.retryTimer = null;
   }
@@ -173,7 +175,15 @@ class VoiceBridge extends EventEmitter {
       } else if (msg.type === 'audio') {
         // 侧车合成的语音（base64 MP3）→ 解码为 Buffer 交还上层播放
         const data = Buffer.from(msg.data || '', 'base64');
-        if (data.length) this.emit('audio', { id: msg.id, format: msg.format || 'mp3', data });
+        const startedAt = this.speakStartedAt.get(msg.id);
+        this.speakStartedAt.delete(msg.id);
+        if (data.length) this.emit('audio', {
+          id: msg.id,
+          format: msg.format || 'mp3',
+          data,
+          ttsMs: Number(msg.ttsMs) || null,
+          latencyMs: startedAt ? Date.now() - startedAt : null,
+        });
       }
     } catch {/* 忽略非 JSON */}
   }
@@ -190,10 +200,12 @@ class VoiceBridge extends EventEmitter {
   }
 
   // 让小未来开口：把要朗读的文字交给侧车合成语音
-  speak(text, id = 0) {
+  speak(text, id = null) {
     const value = String(text || '').trim().slice(0, 2000);
     if (!value) return;
-    const wire = JSON.stringify({ type: 'speak', text: value, id });
+    const requestId = id === null ? ++this.speakSequence : id;
+    this.speakStartedAt.set(requestId, Date.now());
+    const wire = JSON.stringify({ type: 'speak', text: value, id: requestId });
     if (!this.ready || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // 未就绪：只保留最新一条待读文本，避免就绪后一次性 flush 堆积
       this.speakQueue.length = 0;
@@ -247,6 +259,7 @@ class VoiceBridge extends EventEmitter {
     this.child = null;
     this.pcmQueue = [];
     this.speakQueue = [];
+    this.speakStartedAt.clear();
   }
 }
 
