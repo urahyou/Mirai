@@ -187,6 +187,10 @@ class CompanionCore:
         if not handler: raise CoreError("未知记忆类别")
         return handler(limit)
 
+    def memory_graph(self, limit: Any = 50) -> dict[str, list[dict[str, Any]]]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        return self.memory.graph_snapshot(limit)
+
     def mind_record_thought(self, thought: Any) -> dict[str, Any]:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         try: return self.memory.record_thought(thought)

@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   memory: Object.freeze({
     getStatus: () => ipcRenderer.invoke('memory:getStatus'),
     list: (kind) => ipcRenderer.invoke('memory:list', kind),
+    getGraph: () => ipcRenderer.invoke('memory:getGraph'),
     listMind: (kind) => ipcRenderer.invoke('memory:listMind', kind),
     listDailyJournals: () => ipcRenderer.invoke('memory:listDailyJournals'),
     getDailyJournal: (day) => ipcRenderer.invoke('memory:getDailyJournal', day),

@@ -27,3 +27,17 @@ test('Companion memory reports SQLite stats from Python Core', async () => {
   const status = await memory.getStatus();
   assert.deepEqual(status, { ok: true, state: 'ready', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true, episodes: 2, facts: 1, profiles: 1, edges: 3, events: 4, dailyJournals: 1, weeklyJournals: 0 });
 });
+
+test('Companion memory only exposes a graph returned by the Python Core', async () => {
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        assert.equal(method, 'memory.graph');
+        assert.equal(params.limit, 50);
+        return { nodes: [{ id: 'character:mirai' }], edges: [{ id: 'edge:1' }] };
+      },
+    },
+  });
+  assert.deepEqual(await memory.getGraph(), { nodes: [{ id: 'character:mirai' }], edges: [{ id: 'edge:1' }] });
+});

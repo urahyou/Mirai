@@ -58,6 +58,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"inserted": core.memory_import_messages(params.get("messages"))}
         elif method == "memory.list":
             result = {"results": core.memory_list(params.get("kind"), params.get("limit", 30))}
+        elif method == "memory.graph":
+            result = core.memory_graph(params.get("limit", 50))
         elif method == "memory.forget_source":
             result = {"deleted": core.memory_forget_source(params.get("sourceId"))}
         elif method == "memory.upsert_fact":

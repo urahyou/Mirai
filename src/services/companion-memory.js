@@ -32,6 +32,16 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       return Array.isArray(result?.results) ? result.results : [];
     } catch { return []; }
   }
+  async function getGraph(limit = 50) {
+    if (!pythonBackend.getStatus().ready) return { nodes: [], edges: [] };
+    try {
+      const result = await pythonBackend.request('memory.graph', { limit });
+      return {
+        nodes: Array.isArray(result?.nodes) ? result.nodes : [],
+        edges: Array.isArray(result?.edges) ? result.edges : [],
+      };
+    } catch { return { nodes: [], edges: [] }; }
+  }
   async function listMind(kind, limit = 30) {
     if (!pythonBackend.getStatus().ready) return [];
     try {
@@ -115,5 +125,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
     if (!rows.length) return '';
     return ['以下是可供参考的本地记忆。仅在相关且确定时使用：', ...rows.map((r, i) => `${i + 1}. ${r.content || r.fact}${r.created_at ? `（${r.created_at}）` : ''}`)].join('\n');
   }
-  return { search, add, importMessages, list, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, add, importMessages, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

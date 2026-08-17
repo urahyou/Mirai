@@ -111,6 +111,7 @@ module.exports = {
   // 本地长期记忆（Python Core SQLite）
   MemoryGetStatus: 'memory:getStatus',
   MemoryList: 'memory:list',
+  MemoryGetGraph: 'memory:getGraph',
   MemoryListMind: 'memory:listMind',
   MemoryListDailyJournals: 'memory:listDailyJournals',
   MemoryGetDailyJournal: 'memory:getDailyJournal',

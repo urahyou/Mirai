@@ -152,6 +152,16 @@ class MemoryStore:
         rows = self.db.execute("SELECT id, from_id, predicate, to_id, source_id, valid_from, valid_to, state FROM edges ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, id ASC LIMIT ?", (self._limit(limit),)).fetchall()
         return [{"id": row["id"], "fromId": row["from_id"], "predicate": row["predicate"], "toId": row["to_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]} for row in rows]
 
+    def graph_snapshot(self, limit: Any = 50) -> dict[str, list[dict[str, Any]]]:
+        edges = [edge for edge in self.list_edges(limit) if edge["state"] == "active"]
+        nodes: dict[str, dict[str, Any]] = {}
+        for edge in edges:
+            for ident in (edge["fromId"], edge["toId"]):
+                if ident not in nodes:
+                    nodes[ident] = {"id": ident, "kind": self._entity_kind(ident), "degree": 0}
+                nodes[ident]["degree"] += 1
+        return {"nodes": sorted(nodes.values(), key=lambda node: (-node["degree"], node["id"])), "edges": edges}
+
     def list_events(self, limit: Any = 30) -> list[dict[str, Any]]:
         rows = self.db.execute("SELECT id, type, occurred_at, source, privacy, payload_json FROM events ORDER BY occurred_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
         return [{"id": row["id"], "type": row["type"], "occurredAt": row["occurred_at"], "source": row["source"], "privacy": row["privacy"], "payload": json.loads(row["payload_json"])} for row in rows]
@@ -439,6 +449,12 @@ class MemoryStore:
         state = value if isinstance(value, str) else "active"
         if state not in ("active", "archived", "forgotten", "invalidated"): raise ValueError("记忆状态不合法")
         return state
+
+    @staticmethod
+    def _entity_kind(ident: str) -> str:
+        if ident.startswith("character:"): return "character"
+        if ident.startswith("owner:"): return "owner"
+        return "entity"
 
     @staticmethod
     def _limit(value: Any) -> int:
