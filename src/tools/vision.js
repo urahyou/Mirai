@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// 视觉描述工具：把本地图片委托给远端多模态模型(qwen3.6-35b-a3b) 分析。
+// 视觉描述工具：把本地图片委托给远端多模态模型(qwen3.8-27b) 分析。
 // 配置(密钥/地址)从 ~/.pi/agent/models.json 的 lab provider 读取，不入仓库。
 // 用法:
-//   node src/tools/vision.js --image /tmp/shot.png [--question "这是什么?"] [--max-tokens 300]
+//   node src/tools/vision.js --image /tmp/shot.png [--question "这是什么?"] [--max-tokens 300] [--model qwen3.8-27b]
 //   --raw          只输出纯文本答案
 //   --json         输出 {ok, answer, model}
 const fs = require('node:fs');
@@ -17,7 +17,7 @@ function loadConfig() {
   return {
     baseUrl: lab.baseUrl,
     apiKey: lab.apiKey || '',
-    model: 'qwen3.6-35b-a3b',
+    model: 'qwen3.8-27b',
   };
 }
 
@@ -28,6 +28,7 @@ async function main() {
   const imagePath = get('image');
   const question = get('question') || '请详细描述这张截图的内容，包括界面上可见的文本、按钮、状态和布局。';
   const maxTokens = Number(get('max-tokens', 700));
+  const modelArg = get('model', '');
 
   if (!imagePath) { console.error('用法: vision.js --image <path> [--question "..." ]'); process.exit(2); }
   if (!fs.existsSync(imagePath)) { console.error('图片不存在:', imagePath); process.exit(2); }
@@ -36,8 +37,9 @@ async function main() {
   const b64 = fs.readFileSync(imagePath).toString('base64');
 
   const cfg = loadConfig();
+  const model = modelArg || cfg.model;
   const body = {
-    model: cfg.model,
+    model,
     messages: [{
       role: 'user',
       content: [
