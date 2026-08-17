@@ -101,3 +101,11 @@
   朗读 + 宠物窗气泡（复用 proactive say 通道）。6 例测试。
   - 已生成示例 `~userData/schedule.ics`（45 分钟后"和小未来聊天"），应用每 1min 重读文件。
 - **当前 npm run check 119/119 全绿**。运行实例 PID 37308，日志 /tmp/mirai-run.log。
+
+## 面板可见性（用户反馈：功能后台不可见、面板按不到）
+- **`894551c`** 控制面板新增「小未来的生活」区块：
+  - 实时感知行（此刻/电量/联网，5s 轮询）
+  - 今日日记卡片（读 journals/YYYY-MM-DD.md 全文 + 「打开日记文件夹」shell.openPath）
+  - IPC diary:getToday / diary:openFolder / systemSense:get（contracts+preload+subsystems/diary.js 纯读取）
+  - main.js api 胶囊注入 systemSense，保持纯装配
+- **喂养说明**：非按钮，= 跟它说话(对话→CONVERSATION) / 点它(GREETING) 自动增加好感/经验，无需手动喂。
