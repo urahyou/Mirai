@@ -10,6 +10,10 @@ Thumbs.db
 
 # Pi / coding-agent internals
 .omo/
+.pi/
+.agents/
+.claude/
+skills-lock.json
 .codegraph
 .codegraph/
 
