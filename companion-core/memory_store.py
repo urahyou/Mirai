@@ -6,11 +6,20 @@ from pathlib import Path
 from typing import Any
 
 class MemoryStore:
+    SCHEMA_VERSION = 2
+
     def __init__(self, file: Path) -> None:
         self.db = sqlite3.connect(file)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript("""
-        PRAGMA foreign_keys=ON;
+        self.db.execute("PRAGMA foreign_keys=ON")
+        self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        version = int(self.db.execute("PRAGMA user_version").fetchone()[0])
+        if version > self.SCHEMA_VERSION:
+            raise RuntimeError(f"memory.db schema {version} is newer than supported {self.SCHEMA_VERSION}")
+        if version < 1:
+            self.db.executescript("""
         CREATE TABLE IF NOT EXISTS episodes(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS facts(id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, predicate TEXT NOT NULL, object_text TEXT NOT NULL, confidence REAL NOT NULL, importance REAL NOT NULL, valid_from TEXT, valid_to TEXT, source_id TEXT REFERENCES episodes(id), state TEXT NOT NULL DEFAULT 'active');
         CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY, role TEXT NOT NULL, core_json TEXT NOT NULL DEFAULT '{}', learned_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL);
@@ -32,8 +41,93 @@ class MemoryStore:
         CREATE INDEX IF NOT EXISTS dream_date ON dreams(dream_date DESC);
         CREATE INDEX IF NOT EXISTS reflection_period ON reflections(period_end DESC);
         CREATE INDEX IF NOT EXISTS vector_created ON memory_vectors(created_at DESC);
+            """)
+            self.db.execute("PRAGMA user_version=1")
+            self.db.commit()
+            version = 1
+        if version < 2:
+            self._migrate_v2()
+
+    def _migrate_v2(self) -> None:
+        self.db.executescript("""
+        CREATE TABLE IF NOT EXISTS entities(
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS assertions(
+            id TEXT PRIMARY KEY,
+            subject_id TEXT NOT NULL REFERENCES entities(id),
+            predicate TEXT NOT NULL,
+            object_kind TEXT NOT NULL CHECK(object_kind IN ('literal', 'entity')),
+            object_text TEXT,
+            object_entity_id TEXT REFERENCES entities(id),
+            scope TEXT NOT NULL DEFAULT 'companion',
+            confidence REAL NOT NULL,
+            importance REAL NOT NULL,
+            valid_from TEXT,
+            valid_to TEXT,
+            state TEXT NOT NULL DEFAULT 'active',
+            supersedes_id TEXT REFERENCES assertions(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK((object_kind='literal' AND object_text IS NOT NULL AND object_entity_id IS NULL)
+               OR (object_kind='entity' AND object_text IS NULL AND object_entity_id IS NOT NULL))
+        );
+        CREATE TABLE IF NOT EXISTS assertion_evidence(
+            assertion_id TEXT NOT NULL REFERENCES assertions(id) ON DELETE CASCADE,
+            source_kind TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            stance TEXT NOT NULL DEFAULT 'supports' CHECK(stance IN ('supports', 'contradicts')),
+            PRIMARY KEY(assertion_id, source_kind, source_id)
+        );
+        CREATE INDEX IF NOT EXISTS assertion_subject ON assertions(subject_id, predicate, state);
+        CREATE INDEX IF NOT EXISTS assertion_object_entity ON assertions(object_entity_id, state);
+        CREATE INDEX IF NOT EXISTS assertion_literal ON assertions(object_text, state);
+        CREATE INDEX IF NOT EXISTS assertion_evidence_source ON assertion_evidence(source_kind, source_id);
         """)
-        self.db.commit()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.db:
+            for row in self.db.execute("SELECT * FROM facts ORDER BY id").fetchall():
+                self._ensure_entity(row["subject_id"], now)
+                created_at = row["valid_from"] or self._episode_time(row["source_id"]) or now
+                self.db.execute("""INSERT OR IGNORE INTO assertions(
+                    id, subject_id, predicate, object_kind, object_text, object_entity_id, scope,
+                    confidence, importance, valid_from, valid_to, state, supersedes_id, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                    row["id"], row["subject_id"], row["predicate"], "literal", row["object_text"], None,
+                    "companion", row["confidence"], row["importance"], row["valid_from"], row["valid_to"],
+                    row["state"], None, created_at, now,
+                ))
+                self._backfill_evidence(row["id"], row["source_id"], created_at)
+            for row in self.db.execute("SELECT * FROM edges ORDER BY id").fetchall():
+                self._ensure_entity(row["from_id"], now)
+                self._ensure_entity(row["to_id"], now)
+                created_at = row["valid_from"] or self._episode_time(row["source_id"]) or now
+                self.db.execute("""INSERT OR IGNORE INTO assertions(
+                    id, subject_id, predicate, object_kind, object_text, object_entity_id, scope,
+                    confidence, importance, valid_from, valid_to, state, supersedes_id, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                    row["id"], row["from_id"], row["predicate"], "entity", None, row["to_id"],
+                    "companion", .7, .5, row["valid_from"], row["valid_to"], row["state"], None, created_at, now,
+                ))
+                self._backfill_evidence(row["id"], row["source_id"], created_at)
+            self.db.execute("PRAGMA user_version=2")
+
+    def _ensure_entity(self, ident: str, timestamp: str) -> None:
+        self.db.execute("INSERT OR IGNORE INTO entities VALUES(?,?,?,?)", (ident, self._entity_kind(ident), timestamp, timestamp))
+
+    def _episode_time(self, source_id: str | None) -> str | None:
+        if not source_id:
+            return None
+        row = self.db.execute("SELECT created_at FROM episodes WHERE id=?", (source_id,)).fetchone()
+        return row["created_at"] if row else None
+
+    def _backfill_evidence(self, assertion_id: str, source_id: str | None, observed_at: str) -> None:
+        if source_id:
+            self.db.execute("INSERT OR IGNORE INTO assertion_evidence VALUES(?,?,?,?,?)", (assertion_id, "episode", source_id, observed_at, "supports"))
 
     def record_event(self, event: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(event, dict): raise ValueError("事件必须是对象")
@@ -81,29 +175,47 @@ class MemoryStore:
     def upsert_fact(self, fact: dict[str, Any]) -> dict[str, Any]:
         required = ("subjectId", "predicate", "objectText")
         if not isinstance(fact, dict) or any(not isinstance(fact.get(k), str) or not fact[k].strip() for k in required): raise ValueError("事实缺少主体、关系或内容")
-        ident = fact.get("id") if isinstance(fact.get("id"), str) else "fact:" + uuid.uuid4().hex
         source_id = self._source_id(fact.get("sourceId"))
-        values = (ident, fact["subjectId"].strip()[:120], fact["predicate"].strip()[:120], fact["objectText"].strip()[:2000], self._score(fact.get("confidence"), .7), self._score(fact.get("importance"), .5), self._optional_text(fact.get("validFrom"), 64), self._optional_text(fact.get("validTo"), 64), source_id, self._state(fact.get("state")))
-        self.db.execute("""INSERT INTO facts VALUES(?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET subject_id=excluded.subject_id, predicate=excluded.predicate,
-            object_text=excluded.object_text, confidence=excluded.confidence, importance=excluded.importance,
-            valid_from=excluded.valid_from, valid_to=excluded.valid_to, source_id=excluded.source_id, state=excluded.state""", values)
-        self.db.commit()
-        return {"id": ident}
+        ident = fact.get("id") if isinstance(fact.get("id"), str) and fact["id"].strip() else None
+        return self._upsert_assertion(
+            ident=ident,
+            prefix="fact",
+            subject_id=fact["subjectId"],
+            predicate=fact["predicate"],
+            object_kind="literal",
+            object_text=fact["objectText"],
+            object_entity_id=None,
+            confidence=self._score(fact.get("confidence"), .7),
+            importance=self._score(fact.get("importance"), .5),
+            valid_from=self._optional_time(fact.get("validFrom")),
+            valid_to=self._optional_time(fact.get("validTo")),
+            state=self._state(fact.get("state")),
+            scope=self._optional_text(fact.get("scope"), 80) or "companion",
+            source_id=source_id,
+            supersedes_id=self._optional_text(fact.get("supersedesId"), 120),
+        )
 
     def find_facts(self, query: str = "", subject_id: str | None = None, limit: int = 8) -> list[dict[str, Any]]:
         limit = self._limit(limit)
-        where, values = ["state='active'"], []
+        where, values = ["a.state='active'"], []
         if subject_id:
-            where.append("subject_id=?"); values.append(str(subject_id)[:120])
+            where.append("a.subject_id=?"); values.append(str(subject_id)[:120])
         if query.strip():
-            where.append("(subject_id LIKE ? OR predicate LIKE ? OR object_text LIKE ?)")
+            where.append("(a.subject_id LIKE ? OR a.predicate LIKE ? OR a.object_text LIKE ?)")
             needle = f"%{query.strip()[:500]}%"; values.extend((needle, needle, needle))
-        rows = self.db.execute(f"SELECT id, subject_id, predicate, object_text, confidence, importance, valid_from, valid_to, source_id, state FROM facts WHERE {' AND '.join(where)} ORDER BY importance DESC, confidence DESC, id ASC LIMIT ?", (*values, limit)).fetchall()
+        rows = self.db.execute(f"""SELECT a.id, a.subject_id, a.predicate, a.object_text, a.confidence,
+            a.importance, a.valid_from, a.valid_to, a.state,
+            (SELECT source_id FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS source_id
+            FROM assertions a WHERE a.object_kind='literal' AND {' AND '.join(where)}
+            ORDER BY a.importance DESC, a.confidence DESC, a.id ASC LIMIT ?""", (*values, limit)).fetchall()
         return [self._fact_row(row) for row in rows]
 
     def list_facts(self, limit: Any = 30) -> list[dict[str, Any]]:
-        rows = self.db.execute("SELECT id, subject_id, predicate, object_text, confidence, importance, valid_from, valid_to, source_id, state FROM facts ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, importance DESC, confidence DESC, id ASC LIMIT ?", (self._limit(limit),)).fetchall()
+        rows = self.db.execute("""SELECT a.id, a.subject_id, a.predicate, a.object_text, a.confidence,
+            a.importance, a.valid_from, a.valid_to, a.state,
+            (SELECT source_id FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS source_id
+            FROM assertions a WHERE a.object_kind='literal'
+            ORDER BY CASE a.state WHEN 'active' THEN 0 ELSE 1 END, a.importance DESC, a.confidence DESC, a.id ASC LIMIT ?""", (self._limit(limit),)).fetchall()
         return [self._fact_row(row) for row in rows]
 
     def upsert_profile(self, profile: dict[str, Any], updated_at: str) -> dict[str, Any]:
@@ -131,26 +243,41 @@ class MemoryStore:
 
     def upsert_edge(self, edge: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(edge, dict): raise ValueError("关系边必须是对象")
-        ident = edge.get("id") if isinstance(edge.get("id"), str) and edge["id"].strip() else "edge:" + uuid.uuid4().hex
+        ident = edge.get("id") if isinstance(edge.get("id"), str) and edge["id"].strip() else None
         from_id = self._required_text(edge.get("fromId"), "关系边缺少起点", 120)
         predicate = self._required_text(edge.get("predicate"), "关系边缺少关系", 120)
         to_id = self._required_text(edge.get("toId"), "关系边缺少终点", 120)
-        values = (ident[:120], from_id, predicate, to_id, self._source_id(edge.get("sourceId")), self._optional_text(edge.get("validFrom"), 64), self._optional_text(edge.get("validTo"), 64), self._state(edge.get("state")))
-        self.db.execute("""INSERT INTO edges VALUES(?,?,?,?,?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET from_id=excluded.from_id, predicate=excluded.predicate,
-            to_id=excluded.to_id, source_id=excluded.source_id, valid_from=excluded.valid_from,
-            valid_to=excluded.valid_to, state=excluded.state""", values)
-        self.db.commit()
-        return {"id": values[0]}
+        return self._upsert_assertion(
+            ident=ident,
+            prefix="edge",
+            subject_id=from_id,
+            predicate=predicate,
+            object_kind="entity",
+            object_text=None,
+            object_entity_id=to_id,
+            confidence=self._score(edge.get("confidence"), .7),
+            importance=self._score(edge.get("importance"), .5),
+            valid_from=self._optional_time(edge.get("validFrom")),
+            valid_to=self._optional_time(edge.get("validTo")),
+            state=self._state(edge.get("state")),
+            scope=self._optional_text(edge.get("scope"), 80) or "companion",
+            source_id=self._source_id(edge.get("sourceId")),
+            supersedes_id=self._optional_text(edge.get("supersedesId"), 120),
+        )
 
     def neighbors(self, entity_id: str, limit: int = 8) -> list[dict[str, Any]]:
         ident = self._required_text(entity_id, "实体 id 不合法", 120)
-        rows = self.db.execute("SELECT id, from_id, predicate, to_id, source_id, valid_from, valid_to, state FROM edges WHERE state='active' AND (from_id=? OR to_id=?) ORDER BY id ASC LIMIT ?", (ident, ident, self._limit(limit))).fetchall()
-        return [{"id": row["id"], "fromId": row["from_id"], "predicate": row["predicate"], "toId": row["to_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]} for row in rows]
+        rows = self.db.execute("""SELECT a.id, a.subject_id, a.predicate, a.object_entity_id, a.valid_from, a.valid_to, a.state,
+            (SELECT source_id FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS source_id
+            FROM assertions a WHERE a.object_kind='entity' AND a.state='active' AND (a.subject_id=? OR a.object_entity_id=?) ORDER BY a.id ASC LIMIT ?""", (ident, ident, self._limit(limit))).fetchall()
+        return [self._edge_row(row) for row in rows]
 
     def list_edges(self, limit: Any = 30) -> list[dict[str, Any]]:
-        rows = self.db.execute("SELECT id, from_id, predicate, to_id, source_id, valid_from, valid_to, state FROM edges ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, id ASC LIMIT ?", (self._limit(limit),)).fetchall()
-        return [{"id": row["id"], "fromId": row["from_id"], "predicate": row["predicate"], "toId": row["to_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]} for row in rows]
+        rows = self.db.execute("""SELECT a.id, a.subject_id, a.predicate, a.object_entity_id, a.valid_from, a.valid_to, a.state,
+            (SELECT source_id FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS source_id
+            FROM assertions a WHERE a.object_kind='entity'
+            ORDER BY CASE a.state WHEN 'active' THEN 0 ELSE 1 END, a.id ASC LIMIT ?""", (self._limit(limit),)).fetchall()
+        return [self._edge_row(row) for row in rows]
 
     def graph_snapshot(self, limit: Any = 50) -> dict[str, list[dict[str, Any]]]:
         edges = [edge for edge in self.list_edges(limit) if edge["state"] == "active"]
@@ -161,6 +288,103 @@ class MemoryStore:
                     nodes[ident] = {"id": ident, "kind": self._entity_kind(ident), "degree": 0}
                 nodes[ident]["degree"] += 1
         return {"nodes": sorted(nodes.values(), key=lambda node: (-node["degree"], node["id"])), "edges": edges}
+
+    def _upsert_assertion(
+        self,
+        *,
+        ident: str | None,
+        prefix: str,
+        subject_id: str,
+        predicate: str,
+        object_kind: str,
+        object_text: str | None,
+        object_entity_id: str | None,
+        confidence: float,
+        importance: float,
+        valid_from: str | None,
+        valid_to: str | None,
+        state: str,
+        scope: str,
+        source_id: str | None,
+        supersedes_id: str | None,
+    ) -> dict[str, Any]:
+        subject_id = self._required_text(subject_id, "断言主体不合法", 120)
+        predicate = self._required_text(predicate, "断言关系不合法", 120)
+        object_text = self._required_text(object_text, "断言内容不合法", 2000) if object_kind == "literal" else None
+        object_entity_id = self._required_text(object_entity_id, "断言实体不合法", 120) if object_kind == "entity" else None
+        ident = self._optional_text(ident, 120)
+        self._validate_interval(valid_from, valid_to)
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self.db:
+            self._ensure_entity(subject_id, now)
+            if object_entity_id:
+                self._ensure_entity(object_entity_id, now)
+
+            superseded = None
+            if supersedes_id:
+                superseded = self.db.execute("SELECT id, subject_id, predicate, object_kind, valid_from, state FROM assertions WHERE id=?", (supersedes_id,)).fetchone()
+                if not superseded:
+                    raise ValueError("supersedesId 不存在")
+                if superseded["state"] != "active":
+                    raise ValueError("只能替代 active 断言")
+                if state != "active":
+                    raise ValueError("替代旧断言的新断言必须是 active")
+                if superseded["subject_id"] != subject_id or superseded["predicate"] != predicate or superseded["object_kind"] != object_kind:
+                    raise ValueError("不能替代其他主体、关系或类型的断言")
+                if ident == supersedes_id:
+                    raise ValueError("断言不能替代自身")
+                valid_from = valid_from or now
+                self._validate_interval(valid_from, valid_to)
+                if superseded["valid_from"] and self._parse_time(valid_from) < self._parse_time(superseded["valid_from"]):
+                    raise ValueError("新断言 validFrom 不能早于被替代断言")
+
+            current = self.db.execute("SELECT * FROM assertions WHERE id=?", (ident,)).fetchone() if ident else None
+            if not ident and not supersedes_id:
+                current = self.db.execute("""SELECT * FROM assertions
+                    WHERE subject_id=? AND predicate=? AND object_kind=? AND object_text IS ?
+                      AND object_entity_id IS ? AND scope=? AND valid_from IS ? AND valid_to IS ? AND state='active'
+                    ORDER BY created_at ASC, id ASC LIMIT 1""", (
+                    subject_id, predicate, object_kind, object_text, object_entity_id, scope, valid_from, valid_to,
+                )).fetchone()
+                if current:
+                    ident = current["id"]
+
+            ident = ident or f"{prefix}:" + uuid.uuid4().hex
+            has_evidence = bool(source_id and self.db.execute(
+                "SELECT 1 FROM assertion_evidence WHERE assertion_id=? AND source_kind='episode' AND source_id=?",
+                (ident, source_id),
+            ).fetchone())
+            if current:
+                identity = (subject_id, predicate, object_kind, object_text, object_entity_id, scope)
+                current_identity = (current["subject_id"], current["predicate"], current["object_kind"], current["object_text"], current["object_entity_id"], current["scope"])
+                if identity != current_identity:
+                    raise ValueError("断言 id 已属于其他内容")
+                merged_confidence = max(float(current["confidence"]), confidence)
+                if source_id and not has_evidence:
+                    merged_confidence += (1.0 - merged_confidence) * .1
+                self.db.execute("""UPDATE assertions SET subject_id=?, predicate=?, object_kind=?, object_text=?,
+                    object_entity_id=?, scope=?, confidence=?, importance=?, valid_from=?, valid_to=?, state=?,
+                    supersedes_id=?, updated_at=? WHERE id=?""", (
+                    subject_id, predicate, object_kind, object_text, object_entity_id, scope,
+                    min(1.0, merged_confidence), max(float(current["importance"]), importance), valid_from, valid_to,
+                    state, supersedes_id, now, ident,
+                ))
+            else:
+                self.db.execute("""INSERT INTO assertions(
+                    id, subject_id, predicate, object_kind, object_text, object_entity_id, scope,
+                    confidence, importance, valid_from, valid_to, state, supersedes_id, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                    ident, subject_id, predicate, object_kind, object_text, object_entity_id, scope,
+                    confidence, importance, valid_from, valid_to, state, supersedes_id, now, now,
+                ))
+
+            if superseded:
+                self.db.execute("UPDATE assertions SET state='superseded', valid_to=?, updated_at=? WHERE id=?", (valid_from, now, supersedes_id))
+            if source_id:
+                observed_at = self._episode_time(source_id) or now
+                self.db.execute("INSERT OR IGNORE INTO assertion_evidence VALUES(?,?,?,?,?)", (ident, "episode", source_id, observed_at, "supports"))
+        return {"id": ident}
 
     def list_events(self, limit: Any = 30) -> list[dict[str, Any]]:
         rows = self.db.execute("SELECT id, type, occurred_at, source, privacy, payload_json FROM events ORDER BY occurred_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
@@ -240,10 +464,21 @@ class MemoryStore:
 
     def delete_by_source(self, source_id: str) -> int:
         with self.db:
-            count = self.db.execute("DELETE FROM facts WHERE source_id=?", (source_id,)).rowcount
-            count += self.db.execute("DELETE FROM edges WHERE source_id=?", (source_id,)).rowcount
+            assertion_ids = [row["assertion_id"] for row in self.db.execute("SELECT assertion_id FROM assertion_evidence WHERE source_kind='episode' AND source_id=?", (source_id,)).fetchall()]
+            self.db.execute("DELETE FROM assertion_evidence WHERE source_kind='episode' AND source_id=?", (source_id,))
+            count = 0
+            for assertion_id in assertion_ids:
+                if not self.db.execute("SELECT 1 FROM assertion_evidence WHERE assertion_id=? LIMIT 1", (assertion_id,)).fetchone():
+                    count += self.db.execute("DELETE FROM assertions WHERE id=?", (assertion_id,)).rowcount
+
+            # Remove compatibility rows and raw conversation messages without double-counting them.
+            self.db.execute("DELETE FROM facts WHERE source_id=?", (source_id,))
+            self.db.execute("DELETE FROM edges WHERE source_id=?", (source_id,))
+            self.db.execute("DELETE FROM conversation_messages WHERE conversation_id=?", (source_id,))
             count += self.db.execute("DELETE FROM episodes WHERE id=?", (source_id,)).rowcount
             count += self.db.execute("DELETE FROM events WHERE id=?", (source_id,)).rowcount
+            for table in ("thoughts", "dreams", "reflections", "memory_vectors"):
+                self._remove_source_from_json_column(table, "source_ids_json", source_id)
             # 素材快照可随时由尚存来源重建；删除它们不会删除原始记忆。
             if count:
                 count += self.db.execute("DELETE FROM daily_journals").rowcount
@@ -315,7 +550,9 @@ class MemoryStore:
     def stats(self) -> dict[str, int]:
         def count(table: str) -> int:
             return int(self.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
-        return {"episodes": count("episodes"), "messages": count("conversation_messages"), "facts": count("facts"), "profiles": count("profiles"), "edges": count("edges"), "events": count("events"), "vectors": count("memory_vectors"), "thoughts": count("thoughts"), "dreams": count("dreams"), "reflections": count("reflections"), "dailyJournals": count("daily_journals"), "weeklyJournals": count("weekly_journals")}
+        facts = int(self.db.execute("SELECT COUNT(*) FROM assertions WHERE object_kind='literal'").fetchone()[0])
+        edges = int(self.db.execute("SELECT COUNT(*) FROM assertions WHERE object_kind='entity'").fetchone()[0])
+        return {"episodes": count("episodes"), "messages": count("conversation_messages"), "facts": facts, "profiles": count("profiles"), "edges": edges, "events": count("events"), "vectors": count("memory_vectors"), "thoughts": count("thoughts"), "dreams": count("dreams"), "reflections": count("reflections"), "dailyJournals": count("daily_journals"), "weeklyJournals": count("weekly_journals")}
 
     def close(self) -> None:
         if self.db is not None:
@@ -373,6 +610,20 @@ class MemoryStore:
     def _source_ids(self, values: Any) -> list[str]:
         if not isinstance(values, list): raise ValueError("来源必须是数组")
         return [self._required_text(value, "来源 id 不合法", 120) for value in values[:50] if isinstance(value, str) and value.strip()]
+
+    def _remove_source_from_json_column(self, table: str, column: str, source_id: str) -> None:
+        for row in self.db.execute(f"SELECT id, {column} FROM {table}").fetchall():
+            try:
+                sources = json.loads(row[column])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(sources, list) or source_id not in sources:
+                continue
+            remaining = [item for item in sources if item != source_id]
+            if table == "memory_vectors" and not remaining:
+                self.db.execute("DELETE FROM memory_vectors WHERE id=?", (row["id"],))
+            else:
+                self.db.execute(f"UPDATE {table} SET {column}=? WHERE id=?", (json.dumps(remaining, ensure_ascii=False), row["id"]))
 
     @staticmethod
     def _thought_row(row: sqlite3.Row) -> dict[str, Any]:
@@ -439,6 +690,16 @@ class MemoryStore:
     def _optional_text(value: Any, maximum: int) -> str | None:
         return value.strip()[:maximum] if isinstance(value, str) and value.strip() else None
 
+    def _optional_time(self, value: Any) -> str | None:
+        result = self._optional_text(value, 64)
+        if result:
+            self._parse_time(result)
+        return result
+
+    def _validate_interval(self, valid_from: str | None, valid_to: str | None) -> None:
+        if valid_from and valid_to and self._parse_time(valid_to) < self._parse_time(valid_from):
+            raise ValueError("validTo 不能早于 validFrom")
+
     @staticmethod
     def _score(value: Any, default: float) -> float:
         try: return max(0.0, min(1.0, float(default if value is None else value)))
@@ -447,7 +708,7 @@ class MemoryStore:
     @staticmethod
     def _state(value: Any) -> str:
         state = value if isinstance(value, str) else "active"
-        if state not in ("active", "archived", "forgotten", "invalidated"): raise ValueError("记忆状态不合法")
+        if state not in ("active", "archived", "forgotten", "invalidated", "superseded"): raise ValueError("记忆状态不合法")
         return state
 
     @staticmethod
@@ -464,3 +725,7 @@ class MemoryStore:
     @staticmethod
     def _fact_row(row: sqlite3.Row) -> dict[str, Any]:
         return {"id": row["id"], "subjectId": row["subject_id"], "predicate": row["predicate"], "objectText": row["object_text"], "confidence": row["confidence"], "importance": row["importance"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "sourceId": row["source_id"], "state": row["state"]}
+
+    @staticmethod
+    def _edge_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {"id": row["id"], "fromId": row["subject_id"], "predicate": row["predicate"], "toId": row["object_entity_id"], "sourceId": row["source_id"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "state": row["state"]}

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from core import CompanionCore, CoreError
+from memory_store import MemoryStore
 from server import handle_request
 
 
@@ -167,6 +169,113 @@ class CompanionCoreTest(unittest.TestCase):
             core = CompanionCore(); core.bootstrap(directory)
             with self.assertRaisesRegex(CoreError, "ISO 8601"):
                 core.memory_add_episode([{"role": "user", "content": "测试"}], "not-a-time")
+
+    def test_memory_schema_v2_migrates_legacy_facts_and_edges_idempotently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "memory.db"
+            legacy = sqlite3.connect(database)
+            legacy.executescript("""
+                PRAGMA foreign_keys=ON;
+                CREATE TABLE episodes(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL);
+                CREATE TABLE facts(id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, predicate TEXT NOT NULL, object_text TEXT NOT NULL, confidence REAL NOT NULL, importance REAL NOT NULL, valid_from TEXT, valid_to TEXT, source_id TEXT REFERENCES episodes(id), state TEXT NOT NULL DEFAULT 'active');
+                CREATE TABLE edges(id TEXT PRIMARY KEY, from_id TEXT NOT NULL, predicate TEXT NOT NULL, to_id TEXT NOT NULL, source_id TEXT REFERENCES episodes(id), valid_from TEXT, valid_to TEXT, state TEXT NOT NULL DEFAULT 'active');
+                INSERT INTO episodes VALUES('episode:legacy', '2026-08-01T08:00:00Z', '主人喜欢旧网页', 'chat');
+                INSERT INTO facts VALUES('fact:legacy', 'owner:default', 'likes', '旧网页', .8, .9, NULL, NULL, 'episode:legacy', 'active');
+                INSERT INTO edges VALUES('edge:legacy', 'character:mirai', 'cares_for', 'owner:default', 'episode:legacy', NULL, NULL, 'active');
+                PRAGMA user_version=1;
+            """)
+            legacy.close()
+
+            store = MemoryStore(database)
+            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(store.list_facts()[0]["id"], "fact:legacy")
+            self.assertEqual(store.list_edges()[0]["id"], "edge:legacy")
+            self.assertEqual(store.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
+            self.assertEqual(store.db.execute("SELECT kind FROM entities WHERE id='character:mirai'").fetchone()[0], "character")
+            store.close()
+
+            reopened = MemoryStore(database)
+            self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertions").fetchone()[0], 2)
+            self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
+            reopened.close()
+
+    def test_duplicate_fact_collects_evidence_and_forgets_one_source_at_a_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "我喜欢草莓蛋糕"}], "2026-08-17T08:00:00Z")
+            first_source = core.memory_search("草莓蛋糕")[0]["id"]
+            first = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "草莓蛋糕",
+                "confidence": .6, "sourceId": first_source,
+            })
+            core.memory_add_episode([{"role": "user", "content": "还是很喜欢草莓蛋糕"}], "2026-08-18T08:00:00Z")
+            second_source = core.memory_search("还是很喜欢")[0]["id"]
+            second = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "草莓蛋糕",
+                "confidence": .6, "sourceId": second_source,
+            })
+
+            self.assertEqual(first["id"], second["id"])
+            self.assertEqual(core.memory_stats()["facts"], 1)
+            self.assertGreater(core.memory_find_facts("草莓蛋糕")[0]["confidence"], .6)
+            self.assertEqual(core.memory.db.execute("SELECT COUNT(*) FROM assertion_evidence WHERE assertion_id=?", (first["id"],)).fetchone()[0], 2)
+            self.assertEqual(core.memory_forget_source(first_source), 1)
+            self.assertEqual(core.memory_find_facts("草莓蛋糕")[0]["id"], first["id"])
+            self.assertEqual(core.memory.db.execute("SELECT COUNT(*) FROM assertion_evidence WHERE assertion_id=?", (first["id"],)).fetchone()[0], 1)
+            self.assertEqual(core.memory_forget_source(second_source), 2)
+            self.assertEqual(core.memory_find_facts("草莓蛋糕"), [])
+
+    def test_temporal_supersession_closes_old_assertion_and_graph_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "以前喜欢咖啡"}], "2026-07-01T08:00:00Z")
+            old_source = core.memory_search("咖啡")[0]["id"]
+            old_fact = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "咖啡",
+                "validFrom": "2026-07-01T08:00:00Z", "sourceId": old_source,
+            })
+            old_edge = core.memory_upsert_edge({
+                "fromId": "character:mirai", "predicate": "studies_at", "toId": "place:old-school",
+                "validFrom": "2026-07-01T08:00:00Z", "sourceId": old_source,
+            })
+            core.memory_add_episode([{"role": "user", "content": "现在喜欢红茶"}], "2026-08-01T08:00:00Z")
+            new_source = core.memory_search("红茶")[0]["id"]
+            new_fact = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "红茶",
+                "validFrom": "2026-08-01T08:00:00Z", "sourceId": new_source, "supersedesId": old_fact["id"],
+            })
+            new_edge = core.memory_upsert_edge({
+                "fromId": "character:mirai", "predicate": "studies_at", "toId": "place:new-school",
+                "validFrom": "2026-08-01T08:00:00Z", "sourceId": new_source, "supersedesId": old_edge["id"],
+            })
+
+            facts = {row["id"]: row for row in core.memory_list("facts")}
+            self.assertEqual(facts[old_fact["id"]]["state"], "superseded")
+            self.assertEqual(facts[old_fact["id"]]["validTo"], "2026-08-01T08:00:00Z")
+            self.assertEqual(core.memory_find_facts("红茶")[0]["id"], new_fact["id"])
+            graph = core.memory_graph()
+            self.assertEqual([edge["id"] for edge in graph["edges"]], [new_edge["id"]])
+            self.assertNotIn("place:old-school", [node["id"] for node in graph["nodes"]])
+            self.assertEqual(core.memory_forget_source(old_source), 3)
+            self.assertEqual(core.memory_find_facts("红茶")[0]["id"], new_fact["id"])
+            self.assertIsNone(core.memory.db.execute("SELECT supersedes_id FROM assertions WHERE id=?", (new_fact["id"],)).fetchone()[0])
+
+            with self.assertRaisesRegex(CoreError, "其他主体"):
+                core.memory_upsert_fact({
+                    "subjectId": "character:mirai", "predicate": "likes", "objectText": "红茶",
+                    "supersedesId": new_fact["id"],
+                })
+            with self.assertRaisesRegex(CoreError, "ISO 8601"):
+                core.memory_upsert_fact({"subjectId": "owner:default", "predicate": "likes", "objectText": "测试", "validFrom": "tomorrow"})
+            with self.assertRaisesRegex(CoreError, "validTo"):
+                core.memory_upsert_fact({
+                    "subjectId": "owner:default", "predicate": "likes", "objectText": "测试",
+                    "validFrom": "2026-08-02T00:00:00Z", "validTo": "2026-08-01T00:00:00Z",
+                })
+            with self.assertRaisesRegex(CoreError, "其他内容"):
+                core.memory_upsert_fact({
+                    "id": new_fact["id"], "subjectId": "owner:default", "predicate": "likes", "objectText": "被悄悄改写",
+                })
 
     def test_life_state_advances_offline_and_performs_virtual_activity(self):
         with tempfile.TemporaryDirectory() as directory:
