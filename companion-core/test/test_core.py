@@ -277,6 +277,50 @@ class CompanionCoreTest(unittest.TestCase):
                     "id": new_fact["id"], "subjectId": "owner:default", "predicate": "likes", "objectText": "被悄悄改写",
                 })
 
+    def test_bounded_memory_frame_blends_current_facts_episodes_and_one_hop_graph(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "主人最近很喜欢草莓蛋糕"}], "2026-08-17T08:00:00Z")
+            source_id = core.memory_search("草莓蛋糕")[0]["id"]
+            fact = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "草莓蛋糕",
+                "importance": .9, "confidence": .85, "validFrom": "2026-08-01T00:00:00Z", "sourceId": source_id,
+            })
+            edge = core.memory_upsert_edge({
+                "fromId": "owner:default", "predicate": "visits", "toId": "place:bakery",
+                "importance": .7, "sourceId": source_id,
+            })
+            expired = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "planned", "objectText": "过期的草莓蛋糕聚会",
+                "validFrom": "2026-07-01T00:00:00Z", "validTo": "2026-08-01T00:00:00Z", "sourceId": source_id,
+            })
+            future = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "planned", "objectText": "未来的草莓蛋糕课程",
+                "validFrom": "2026-09-01T00:00:00Z", "sourceId": source_id,
+            })
+
+            frame = core.memory_retrieve("草莓蛋糕", 8, "2026-08-18T12:00:00Z")
+            item_ids = [item["id"] for item in frame["items"]]
+            self.assertEqual(frame["capacity"], 8)
+            self.assertLessEqual(len(frame["items"]), 8)
+            self.assertIn(fact["id"], item_ids)
+            self.assertIn(source_id, item_ids)
+            self.assertIn(edge["id"], item_ids)
+            self.assertNotIn(expired["id"], item_ids)
+            self.assertNotIn(future["id"], item_ids)
+            self.assertEqual(frame["channels"]["vector"], 0)
+            self.assertGreaterEqual(frame["channels"]["graph"], 1)
+            self.assertEqual(core.memory_retrieve("草莓蛋糕", 1, "2026-08-18T12:00:00Z")["capacity"], 1)
+            response, should_stop = handle_request(core, {
+                "id": "retrieve:1", "method": "memory.retrieve",
+                "params": {"query": "草莓蛋糕", "limit": 2, "currentAt": "2026-08-18T12:00:00Z"},
+            })
+            self.assertTrue(response["ok"])
+            self.assertFalse(should_stop)
+            self.assertEqual(response["result"]["capacity"], 2)
+            with self.assertRaisesRegex(CoreError, "非空"):
+                core.memory_retrieve("   ")
+
     def test_life_state_advances_offline_and_performs_virtual_activity(self):
         with tempfile.TemporaryDirectory() as directory:
             core = CompanionCore(); core.bootstrap(directory)

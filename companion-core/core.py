@@ -167,6 +167,13 @@ class CompanionCore:
         if not isinstance(query, str): raise CoreError("query 必须是字符串")
         return self.memory.search(query)
 
+    def memory_retrieve(self, query: Any, limit: Any = 8, current_at: Any = None) -> dict[str, Any]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        if not isinstance(query, str) or (current_at is not None and not isinstance(current_at, str)):
+            raise CoreError("记忆检索参数不合法")
+        try: return self.memory.retrieve(query, limit, current_at)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_import_messages(self, messages: Any) -> int:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         try: return self.memory.import_messages(messages)

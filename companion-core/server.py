@@ -54,6 +54,8 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
+        elif method == "memory.retrieve":
+            result = core.memory_retrieve(params.get("query"), params.get("limit", 8), params.get("currentAt"))
         elif method == "memory.import_messages":
             result = {"inserted": core.memory_import_messages(params.get("messages"))}
         elif method == "memory.list":

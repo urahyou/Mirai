@@ -9,7 +9,7 @@
  *   5. 聊天输入窗        —— open/close/resize/syncChatInputWithMain
  *   6. 菜单窗 + 各设置面板 —— 已拆 panel.js
  *   7. 聊天调度          —— 已拆 chat.js（handleUserUtterance / generateChat / 单句点击回应 / 聊天 IPC / 上下文预算）
- *   8. 长期记忆          —— Python Core SQLite search(注入)+add(回写)
+ *   8. 长期记忆          —— Python Core SQLite retrieve(有界混合注入)+add(回写)
  *   9. 语音桥接          —— 已拆 voice.js（朗读/识别/打断/语音 IPC）
  *   10. IPC 能力         —— 已拆 src/subsystems/*.js（personality/display/voice/provider/context/memory/balloon/window/menu），本文件仅 mountIpc 装配
  *   11. IPC 校验         —— guarded/validatePayload 集中在 ipc-validation.js

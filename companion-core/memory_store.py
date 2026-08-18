@@ -1,6 +1,6 @@
 """本地分层记忆 SQLite 仓储。只用标准库，不依赖图数据库或向量服务。"""
 from __future__ import annotations
-import json, sqlite3, uuid
+import json, re, sqlite3, uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -167,6 +167,79 @@ class MemoryStore:
         values = [f"%{term}%" for term in terms] if terms else [f"%{query.strip()}%"]
         rows = self.db.execute(f"SELECT id, content, created_at FROM episodes WHERE {clause} ORDER BY created_at DESC LIMIT ?", (*values, limit)).fetchall()
         return [{"id": row["id"], "content": row["content"], "created_at": row["created_at"]} for row in rows]
+
+    def retrieve(self, query: str, limit: Any = 8, current_at: str | None = None) -> dict[str, Any]:
+        query = self._required_text(query, "query 必须是非空字符串", 2000)
+        capacity = min(12, self._limit(limit))
+        now = self._parse_time(current_at) if current_at else datetime.now(timezone.utc)
+        terms = self._query_terms(query)
+        candidates: dict[str, dict[str, Any]] = {}
+        seed_entities: dict[str, float] = {}
+        keyword_count = 0
+        graph_count = 0
+
+        episodes = self.db.execute("SELECT id, content, created_at FROM episodes ORDER BY created_at DESC LIMIT 200").fetchall()
+        for row in episodes:
+            match = self._match_score(query, terms, row["content"])
+            if match <= 0:
+                continue
+            keyword_count += 1
+            score = .78 * match + .22 * self._recency_score(row["created_at"], now)
+            candidates[row["id"]] = {
+                "id": row["id"], "kind": "episode", "content": row["content"],
+                "createdAt": row["created_at"], "score": round(score, 4),
+            }
+
+        assertions = self.db.execute("""SELECT a.*,
+            (SELECT source_id FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS source_id,
+            (SELECT observed_at FROM assertion_evidence e WHERE e.assertion_id=a.id ORDER BY e.observed_at DESC, e.source_id ASC LIMIT 1) AS observed_at
+            FROM assertions a WHERE a.state='active' ORDER BY a.importance DESC, a.updated_at DESC LIMIT 500""").fetchall()
+        active_assertions = [row for row in assertions if self._assertion_is_current(row, now)]
+        for row in active_assertions:
+            if row["object_kind"] == "literal":
+                content = f"{row['subject_id']} {row['predicate']} {row['object_text']}"
+                match = self._match_score(query, terms, content)
+                if match <= 0:
+                    continue
+                keyword_count += 1
+                score = .55 * match + .2 * float(row["importance"]) + .2 * float(row["confidence"]) + .05 * self._recency_score(row["observed_at"] or row["updated_at"], now)
+                candidates[row["id"]] = {
+                    "id": row["id"], "kind": "fact", "content": content,
+                    "subjectId": row["subject_id"], "predicate": row["predicate"], "objectText": row["object_text"],
+                    "confidence": row["confidence"], "importance": row["importance"], "validFrom": row["valid_from"],
+                    "validTo": row["valid_to"], "sourceId": row["source_id"], "score": round(score, 4),
+                }
+                seed_entities[row["subject_id"]] = max(seed_entities.get(row["subject_id"], 0.0), score)
+                continue
+
+            content = f"{row['subject_id']} {row['predicate']} {row['object_entity_id']}"
+            match = self._match_score(query, terms, content)
+            if match <= 0:
+                continue
+            graph_count += 1
+            score = .65 * match + .2 * float(row["importance"]) + .15 * float(row["confidence"])
+            candidates[row["id"]] = self._graph_candidate(row, content, score, "keyword")
+            seed_entities[row["subject_id"]] = max(seed_entities.get(row["subject_id"], 0.0), score)
+            seed_entities[row["object_entity_id"]] = max(seed_entities.get(row["object_entity_id"], 0.0), score)
+
+        for row in active_assertions:
+            if row["object_kind"] != "entity" or row["id"] in candidates:
+                continue
+            seed_score = max(seed_entities.get(row["subject_id"], 0.0), seed_entities.get(row["object_entity_id"], 0.0))
+            if seed_score <= 0:
+                continue
+            graph_count += 1
+            content = f"{row['subject_id']} {row['predicate']} {row['object_entity_id']}"
+            score = .18 + .22 * seed_score + .1 * float(row["importance"]) + .05 * float(row["confidence"])
+            candidates[row["id"]] = self._graph_candidate(row, content, score, "one-hop")
+
+        items = sorted(candidates.values(), key=lambda item: (-item["score"], item["kind"], item["id"]))[:capacity]
+        return {
+            "query": query,
+            "capacity": capacity,
+            "items": items,
+            "channels": {"keyword": keyword_count, "graph": graph_count, "vector": 0},
+        }
 
     def list_episodes(self, limit: Any = 30) -> list[dict[str, Any]]:
         rows = self.db.execute("SELECT id, content, created_at, source FROM episodes ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
@@ -699,6 +772,64 @@ class MemoryStore:
     def _validate_interval(self, valid_from: str | None, valid_to: str | None) -> None:
         if valid_from and valid_to and self._parse_time(valid_to) < self._parse_time(valid_from):
             raise ValueError("validTo 不能早于 validFrom")
+
+    @staticmethod
+    def _query_terms(query: str) -> list[str]:
+        ignored = {"主人", "小未来", "今天", "现在", "什么", "怎么", "可以", "这个", "那个", "我们", "你们", "还是"}
+        terms: list[str] = []
+        for token in re.findall(r"[a-z0-9_:-]+|[\u3400-\u9fff]+", query.lower()):
+            if re.fullmatch(r"[\u3400-\u9fff]+", token):
+                token = token[:40]
+                if 2 <= len(token) <= 12 and token not in ignored:
+                    terms.append(token)
+                for size in range(2, min(4, len(token)) + 1):
+                    terms.extend(token[index:index + size] for index in range(len(token) - size + 1))
+            elif len(token) >= 2:
+                terms.append(token)
+        return list(dict.fromkeys(term for term in terms if term not in ignored))[:120]
+
+    @staticmethod
+    def _match_score(query: str, terms: list[str], content: str) -> float:
+        haystack = re.sub(r"\s+", "", str(content).lower())
+        needle = re.sub(r"\s+", "", query.lower())
+        if len(needle) >= 2 and (needle in haystack or (len(haystack) >= 4 and haystack in needle)):
+            return 1.0
+        matches = [term for term in terms if term in haystack]
+        if not matches:
+            return 0.0
+        total = sum(len(term) for term in terms) or 1
+        coverage = sum(len(term) for term in matches) / total
+        longest = max(len(term) for term in matches) / max(1, max(len(term) for term in terms))
+        score = min(1.0, .55 * coverage + .45 * longest)
+        return score if score >= .12 else 0.0
+
+    def _assertion_is_current(self, row: sqlite3.Row, now: datetime) -> bool:
+        try:
+            if row["valid_from"] and self._parse_time(row["valid_from"]) > now:
+                return False
+            if row["valid_to"] and self._parse_time(row["valid_to"]) <= now:
+                return False
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def _recency_score(self, timestamp: str | None, now: datetime) -> float:
+        if not timestamp:
+            return 0.0
+        try:
+            age_days = max(0.0, (now - self._parse_time(timestamp)).total_seconds() / 86400)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, 1.0 - age_days / 365.0)
+
+    @staticmethod
+    def _graph_candidate(row: sqlite3.Row, content: str, score: float, match: str) -> dict[str, Any]:
+        return {
+            "id": row["id"], "kind": "edge", "content": content,
+            "fromId": row["subject_id"], "predicate": row["predicate"], "toId": row["object_entity_id"],
+            "confidence": row["confidence"], "importance": row["importance"], "validFrom": row["valid_from"],
+            "validTo": row["valid_to"], "sourceId": row["source_id"], "match": match, "score": round(score, 4),
+        }
 
     @staticmethod
     def _score(value: Any, default: float) -> float:

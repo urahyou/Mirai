@@ -58,8 +58,8 @@ module.exports = function createChat({
   }
 
   async function generateChat(input, emit, speechLead) {
-    const memoryResults = await memory.search(input);
-    const memoryContext = memory.formatContext(memoryResults);
+    const memoryFrame = await memory.retrieve(input);
+    const memoryContext = memory.formatContext(memoryFrame);
     const contextMaxTokens = contextSettings.getSettings(state.cachedModelMaxTokens).maxContextTokens;
     for (const provider of generic.providerChain()) {
       try {
