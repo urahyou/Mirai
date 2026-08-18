@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Mirai 语音「一键启动」：探测 9880 -> 没跑就拉起 managed GPT-SoVITS 并等就绪 -> 再启动 Electron。
 // 退出时，若 GPT-SoVITS 是本脚本拉起的，一并退出；复用已跑的服务则不碰。
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
@@ -30,6 +30,30 @@ function isListening(port) {
     sock.once('error', () => resolve(false));
   });
 }
+
+function ensureNltkTagger(root) {
+  const python = path.join(root, '.venv', 'bin', 'python3');
+  if (!fs.existsSync(python)) return false;
+  const verify = "import nltk; nltk.data.find('taggers/averaged_perceptron_tagger_eng')";
+  try {
+    execFileSync(python, ['-c', verify], { cwd: root, stdio: 'ignore' });
+    return true;
+  } catch {
+    console.log('[start-voice] 补齐 GPT-SoVITS 所需的 NLTK 词性资源...');
+    try {
+      execFileSync(python, ['-c', "import nltk; raise SystemExit(0 if nltk.download('averaged_perceptron_tagger_eng') else 1)"], {
+        cwd: root,
+        env: { ...process.env, NLTK_ALLOW_PROXIED_URLOPEN: '1' },
+        stdio: 'inherit',
+      });
+      execFileSync(python, ['-c', verify], { cwd: root, stdio: 'ignore' });
+      return true;
+    } catch {
+      console.error('[start-voice] NLTK 词性资源安装失败，语音启动已中止。');
+      return false;
+    }
+  }
+}
 async function waitReady(timeoutMs = 120000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -41,9 +65,10 @@ async function waitReady(timeoutMs = 120000) {
 
 async function main() {
   const alreadyUp = await isListening(PORT);
+  const root = locateGptSovits();
+  if (root && !ensureNltkTagger(root)) process.exit(1);
   let ttsChild = null;
   if (!alreadyUp) {
-    const root = locateGptSovits();
     const venvPy = root ? path.join(root, '.venv', 'bin', 'python3') : null;
     const config = root ? path.join(root, 'GPT_SoVITS', 'configs', 'tts_infer_mac.yaml') : null;
     if (!root || !venvPy || !fs.existsSync(venvPy) || !fs.existsSync(config)) {
