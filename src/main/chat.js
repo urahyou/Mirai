@@ -112,11 +112,9 @@ module.exports = function createChat({
     const speechLead = createSpeechLead({ speak: (text) => voice.speak(text) });
     const reply = await enqueueChat(() => generateChat(input, emit, speechLead));
     const assistantMessage = chatHistory.appendMessage('assistant', reply);
-    const episode = [
-      { role: 'user', content: input },
-      { role: 'assistant', content: reply },
-    ];
-    void memory.add(episode, new Date(userMessage.createdAt).toISOString());
+    // Full chat messages are the canonical evidence. Episode archiving is a separate,
+    // bounded process and must never duplicate a turn's transcript.
+    void memory.importMessages([userMessage, assistantMessage]);
     sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
     broadcastChatDelta({ chunk: '', full: reply, cues: latestCues, done: true, turnId });
     // 首句在流式输出时已抢跑，结束时只继续播放尚未朗读的部分。

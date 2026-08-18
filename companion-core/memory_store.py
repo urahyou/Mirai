@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 class MemoryStore:
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, file: Path) -> None:
         self.db = sqlite3.connect(file)
@@ -47,6 +47,9 @@ class MemoryStore:
             version = 1
         if version < 2:
             self._migrate_v2()
+            version = 2
+        if version < 3:
+            self._migrate_v3()
 
     def _migrate_v2(self) -> None:
         self.db.executescript("""
@@ -116,6 +119,61 @@ class MemoryStore:
                 self._backfill_evidence(row["id"], row["source_id"], created_at)
             self.db.execute("PRAGMA user_version=2")
 
+    def _migrate_v3(self) -> None:
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(episodes)").fetchall()}
+        additions = {
+            "started_at": "TEXT",
+            "ended_at": "TEXT",
+            "summary": "TEXT",
+            "topics_json": "TEXT NOT NULL DEFAULT '[]'",
+            "emotion_json": "TEXT NOT NULL DEFAULT '{}'",
+            "importance": "REAL NOT NULL DEFAULT 0.5",
+            "recall_state": "TEXT NOT NULL DEFAULT 'active'",
+            "retention_policy": "TEXT NOT NULL DEFAULT 'standard'",
+            "archived_at": "TEXT",
+        }
+        with self.db:
+            for name, definition in additions.items():
+                if name not in columns:
+                    self.db.execute(f"ALTER TABLE episodes ADD COLUMN {name} {definition}")
+            self.db.executescript("""
+                CREATE TABLE IF NOT EXISTS episode_sources(
+                    episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                    source_kind TEXT NOT NULL CHECK(source_kind IN ('message', 'event')),
+                    source_id TEXT NOT NULL,
+                    sequence_no INTEGER NOT NULL,
+                    PRIMARY KEY(episode_id, source_kind, source_id)
+                );
+                CREATE INDEX IF NOT EXISTS episode_source_lookup
+                    ON episode_sources(source_kind, source_id);
+                CREATE TABLE IF NOT EXISTS memory_lifecycle(
+                    id TEXT PRIMARY KEY,
+                    target_kind TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    from_state TEXT,
+                    to_state TEXT NOT NULL CHECK(to_state IN ('active', 'faded', 'archived', 'erased')),
+                    reason TEXT NOT NULL,
+                    effective_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS memory_lifecycle_target
+                    ON memory_lifecycle(target_kind, target_id, effective_at DESC);
+            """)
+            self.db.execute("""UPDATE episodes SET
+                started_at=COALESCE(started_at, created_at),
+                ended_at=COALESCE(ended_at, created_at),
+                summary=COALESCE(NULLIF(summary, ''), content),
+                archived_at=COALESCE(archived_at, created_at)
+            """)
+            has_messages = self.db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='conversation_messages'""").fetchone()
+            if has_messages:
+                self.db.execute("""INSERT OR IGNORE INTO episode_sources(episode_id, source_kind, source_id, sequence_no)
+                    SELECT conversation_id, 'message', id, sequence_no
+                    FROM conversation_messages
+                    WHERE conversation_id IN (SELECT id FROM episodes)
+                """)
+            self.db.execute("PRAGMA user_version=3")
+
     def _ensure_entity(self, ident: str, timestamp: str) -> None:
         self.db.execute("INSERT OR IGNORE INTO entities VALUES(?,?,?,?)", (ident, self._entity_kind(ident), timestamp, timestamp))
 
@@ -144,29 +202,81 @@ class MemoryStore:
         return {"id": ident}
 
     def add_episode(self, messages: list[dict[str, Any]], created_at: str) -> bool:
+        """Compatibility helper for tests and legacy callers; runtime chat no longer uses this path."""
         self._parse_time(self._required_text(created_at, "episode 时间不合法", 64))
-        rows = []
-        for item in messages[:20]:
-            if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"): continue
-            text = str(item.get("content", "")).strip()[:4000]
-            if text: rows.append(("主人" if item["role"] == "user" else "小未来") + "：" + text)
-        if not rows: return False
-        episode_id = "episode:" + uuid.uuid4().hex
-        self.db.execute("INSERT INTO episodes VALUES(?,?,?,?)", (episode_id, created_at, "\n".join(rows), "chat"))
+        normalized = []
         for sequence_no, item in enumerate(messages[:20]):
-            if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"): continue
+            if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"):
+                continue
             content = str(item.get("content", "")).strip()[:4000]
-            if not content: continue
-            self.db.execute("INSERT INTO conversation_messages VALUES(?,?,?,?,?,?,?)", ("message:" + uuid.uuid4().hex, episode_id, sequence_no, created_at, item["role"], content, "chat"))
-        self.db.commit(); return True
+            if not content:
+                continue
+            normalized.append({
+                "id": item.get("id") or f"legacy:{uuid.uuid4().hex}",
+                "role": item["role"], "content": content, "createdAt": created_at,
+                "sequence": sequence_no,
+            })
+        if not normalized:
+            return False
+        self.import_messages(normalized)
+        summary = "\n".join(("主人" if item["role"] == "user" else "小未来") + "：" + item["content"] for item in normalized)
+        self.create_episode({
+            "startedAt": created_at, "endedAt": created_at, "summary": summary,
+            "messageIds": [f"message:history:{item['id'][:80]}" for item in normalized],
+            "source": "legacy-helper",
+        })
+        return True
+
+    def create_episode(self, episode: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(episode, dict):
+            raise ValueError("Episode 必须是对象")
+        started_at = self._required_text(episode.get("startedAt"), "Episode 缺少开始时间", 64)
+        ended_at = self._required_text(episode.get("endedAt") or started_at, "Episode 缺少结束时间", 64)
+        self._validate_interval(started_at, ended_at)
+        summary = self._required_text(episode.get("summary"), "Episode 摘要不能为空", 4000)
+        message_ids = list(dict.fromkeys(self._source_ids(episode.get("messageIds", []))))[:100]
+        event_ids = list(dict.fromkeys(self._source_ids(episode.get("eventIds", []))))[:100]
+        if not message_ids and not event_ids:
+            raise ValueError("Episode 至少需要一个消息或事件来源")
+        topics = episode.get("topics", [])
+        emotion = episode.get("emotion", {})
+        if not isinstance(topics, list) or not isinstance(emotion, dict):
+            raise ValueError("Episode 主题或情绪格式不正确")
+        for message_id in message_ids:
+            if not self.db.execute("SELECT 1 FROM conversation_messages WHERE id=?", (message_id,)).fetchone():
+                raise ValueError("Episode 引用了不存在的消息")
+        for event_id in event_ids:
+            if not self.db.execute("SELECT 1 FROM events WHERE id=?", (event_id,)).fetchone():
+                raise ValueError("Episode 引用了不存在的事件")
+        ident = "episode:" + uuid.uuid4().hex
+        archived_at = datetime.now(timezone.utc).isoformat()
+        with self.db:
+            self.db.execute("""INSERT INTO episodes(
+                id, created_at, content, source, started_at, ended_at, summary, topics_json,
+                emotion_json, importance, recall_state, retention_policy, archived_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                ident, started_at, summary, str(episode.get("source", "archive"))[:80],
+                started_at, ended_at, summary,
+                json.dumps([str(item)[:80] for item in topics[:20]], ensure_ascii=False),
+                json.dumps(emotion, ensure_ascii=False), self._score(episode.get("importance"), .5),
+                "active", str(episode.get("retentionPolicy", "standard"))[:40], archived_at,
+            ))
+            sequence = 0
+            for source_kind, source_ids in (("message", message_ids), ("event", event_ids)):
+                for source_id in source_ids:
+                    self.db.execute("INSERT INTO episode_sources VALUES(?,?,?,?)", (ident, source_kind, source_id, sequence))
+                    sequence += 1
+        return self.get_episode(ident) or {}
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
         terms = [term for term in query.strip().split() if term][:5]
         if not query.strip(): return []
-        clause = " AND ".join("content LIKE ?" for _ in terms) if terms else "content LIKE ?"
+        clause = " AND ".join("COALESCE(NULLIF(summary, ''), content) LIKE ?" for _ in terms) if terms else "COALESCE(NULLIF(summary, ''), content) LIKE ?"
         values = [f"%{term}%" for term in terms] if terms else [f"%{query.strip()}%"]
-        rows = self.db.execute(f"SELECT id, content, created_at FROM episodes WHERE {clause} ORDER BY created_at DESC LIMIT ?", (*values, limit)).fetchall()
-        return [{"id": row["id"], "content": row["content"], "created_at": row["created_at"]} for row in rows]
+        rows = self.db.execute(f"""SELECT id, COALESCE(NULLIF(summary, ''), content) AS content, started_at
+            FROM episodes WHERE recall_state='active' AND {clause}
+            ORDER BY started_at DESC, created_at DESC LIMIT ?""", (*values, limit)).fetchall()
+        return [{"id": row["id"], "content": row["content"], "created_at": row["started_at"]} for row in rows]
 
     def retrieve(self, query: str, limit: Any = 8, current_at: str | None = None) -> dict[str, Any]:
         query = self._required_text(query, "query 必须是非空字符串", 2000)
@@ -178,13 +288,16 @@ class MemoryStore:
         keyword_count = 0
         graph_count = 0
 
-        episodes = self.db.execute("SELECT id, content, created_at FROM episodes ORDER BY created_at DESC LIMIT 200").fetchall()
+        episodes = self.db.execute("""SELECT id, COALESCE(NULLIF(summary, ''), content) AS content,
+            COALESCE(started_at, created_at) AS created_at, importance
+            FROM episodes WHERE recall_state='active'
+            ORDER BY COALESCE(started_at, created_at) DESC LIMIT 200""").fetchall()
         for row in episodes:
             match = self._match_score(query, terms, row["content"])
             if match <= 0:
                 continue
             keyword_count += 1
-            score = .78 * match + .22 * self._recency_score(row["created_at"], now)
+            score = .68 * match + .2 * self._recency_score(row["created_at"], now) + .12 * float(row["importance"])
             candidates[row["id"]] = {
                 "id": row["id"], "kind": "episode", "content": row["content"],
                 "createdAt": row["created_at"], "score": round(score, 4),
@@ -241,9 +354,17 @@ class MemoryStore:
             "channels": {"keyword": keyword_count, "graph": graph_count, "vector": 0},
         }
 
+    def get_episode(self, ident: str) -> dict[str, Any] | None:
+        row = self.db.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM episode_sources s WHERE s.episode_id=e.id) AS source_count
+            FROM episodes e WHERE e.id=?""", (ident,)).fetchone()
+        return self._episode_row(row) if row else None
+
     def list_episodes(self, limit: Any = 30) -> list[dict[str, Any]]:
-        rows = self.db.execute("SELECT id, content, created_at, source FROM episodes ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
-        return [{"id": row["id"], "content": row["content"], "createdAt": row["created_at"], "source": row["source"]} for row in rows]
+        rows = self.db.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM episode_sources s WHERE s.episode_id=e.id) AS source_count
+            FROM episodes e ORDER BY COALESCE(e.started_at, e.created_at) DESC LIMIT ?""", (self._limit(limit),)).fetchall()
+        return [self._episode_row(row) for row in rows]
 
     def upsert_fact(self, fact: dict[str, Any]) -> dict[str, Any]:
         required = ("subjectId", "predicate", "objectText")
@@ -637,7 +758,9 @@ class MemoryStore:
         self.close()
 
     def _episodes_for_day(self, day: date, tz: timezone) -> list[dict[str, Any]]:
-        rows = self.db.execute("SELECT id, content, created_at FROM episodes ORDER BY created_at ASC").fetchall()
+        rows = self.db.execute("""SELECT id, COALESCE(NULLIF(summary, ''), content) AS content,
+            COALESCE(started_at, created_at) AS created_at
+            FROM episodes WHERE recall_state != 'erased' ORDER BY COALESCE(started_at, created_at) ASC""").fetchall()
         result = []
         for row in rows:
             if self._parse_time(row["created_at"]).astimezone(tz).date() == day:
@@ -697,6 +820,19 @@ class MemoryStore:
                 self.db.execute("DELETE FROM memory_vectors WHERE id=?", (row["id"],))
             else:
                 self.db.execute(f"UPDATE {table} SET {column}=? WHERE id=?", (json.dumps(remaining, ensure_ascii=False), row["id"]))
+
+    @staticmethod
+    def _episode_row(row: sqlite3.Row) -> dict[str, Any]:
+        summary = row["summary"] or row["content"]
+        return {
+            "id": row["id"], "content": summary, "summary": summary,
+            "createdAt": row["created_at"], "startedAt": row["started_at"] or row["created_at"],
+            "endedAt": row["ended_at"] or row["created_at"], "source": row["source"],
+            "topics": json.loads(row["topics_json"] or "[]"), "emotion": json.loads(row["emotion_json"] or "{}"),
+            "importance": row["importance"], "recallState": row["recall_state"],
+            "retentionPolicy": row["retention_policy"], "sourceCount": row["source_count"],
+            "archivedAt": row["archived_at"],
+        }
 
     @staticmethod
     def _thought_row(row: sqlite3.Row) -> dict[str, Any]:

@@ -170,7 +170,7 @@ class CompanionCoreTest(unittest.TestCase):
             with self.assertRaisesRegex(CoreError, "ISO 8601"):
                 core.memory_add_episode([{"role": "user", "content": "测试"}], "not-a-time")
 
-    def test_memory_schema_v2_migrates_legacy_facts_and_edges_idempotently(self):
+    def test_memory_schema_v3_migrates_legacy_facts_and_edges_idempotently(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "memory.db"
             legacy = sqlite3.connect(database)
@@ -187,17 +187,46 @@ class CompanionCoreTest(unittest.TestCase):
             legacy.close()
 
             store = MemoryStore(database)
-            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 3)
             self.assertEqual(store.list_facts()[0]["id"], "fact:legacy")
             self.assertEqual(store.list_edges()[0]["id"], "edge:legacy")
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
             self.assertEqual(store.db.execute("SELECT kind FROM entities WHERE id='character:mirai'").fetchone()[0], "character")
+            episode = store.list_episodes()[0]
+            self.assertEqual(episode["summary"], "主人喜欢旧网页")
+            self.assertEqual(episode["recallState"], "active")
             store.close()
 
             reopened = MemoryStore(database)
             self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertions").fetchone()[0], 2)
             self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
             reopened.close()
+
+    def test_structured_episode_references_canonical_messages_without_copying_transcript(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            messages = [
+                {"id": "turn-user", "role": "user", "content": "今天想喝红茶", "createdAt": "2026-08-18T12:00:00Z"},
+                {"id": "turn-assistant", "role": "assistant", "content": "我陪主人泡一杯。", "createdAt": "2026-08-18T12:00:01Z"},
+            ]
+            self.assertEqual(core.memory_import_messages(messages), 2)
+            episode = core.memory_create_episode({
+                "startedAt": "2026-08-18T12:00:00Z",
+                "endedAt": "2026-08-18T12:00:01Z",
+                "summary": "午间主人想喝红茶，小未来准备陪伴。",
+                "topics": ["红茶", "陪伴"],
+                "importance": .7,
+                "messageIds": ["message:history:turn-user", "message:history:turn-assistant"],
+            })
+
+            self.assertEqual(episode["sourceCount"], 2)
+            self.assertEqual(episode["summary"], "午间主人想喝红茶，小未来准备陪伴。")
+            self.assertEqual(core.memory_stats()["messages"], 2)
+            self.assertEqual(core.memory_stats()["episodes"], 1)
+            linked = core.memory.db.execute(
+                "SELECT source_id FROM episode_sources WHERE episode_id=? ORDER BY sequence_no", (episode["id"],)
+            ).fetchall()
+            self.assertEqual([row["source_id"] for row in linked], ["message:history:turn-user", "message:history:turn-assistant"])
 
     def test_duplicate_fact_collects_evidence_and_forgets_one_source_at_a_time(self):
         with tempfile.TemporaryDirectory() as directory:

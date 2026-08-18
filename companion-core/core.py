@@ -162,6 +162,11 @@ class CompanionCore:
         try: return self.memory.add_episode(messages, created_at)
         except ValueError as error: raise CoreError(str(error)) from error
 
+    def memory_create_episode(self, episode: Any) -> dict[str, Any]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        try: return self.memory.create_episode(episode)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_search(self, query: Any) -> list[dict[str, Any]]:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         if not isinstance(query, str): raise CoreError("query 必须是字符串")

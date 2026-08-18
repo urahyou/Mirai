@@ -28,11 +28,11 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       };
     } catch { return emptyFrame(normalizedQuery, capacity); }
   }
-  async function add(messages, referenceTime) {
+  async function createEpisode(episode) {
     if (!pythonBackend.getStatus().ready) return false;
     try {
-      const result = await pythonBackend.request('memory.add_episode', { messages, createdAt: referenceTime });
-      return Boolean(result?.stored);
+      const result = await pythonBackend.request('memory.create_episode', { episode });
+      return result?.episode || null;
     } catch { return false; }
   }
   async function importMessages(messages) {
@@ -155,5 +155,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       }),
     ].join('\n').slice(0, 4400);
   }
-  return { search, retrieve, add, importMessages, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, retrieve, createEpisode, importMessages, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

@@ -13,7 +13,7 @@ test('Companion Core is the only memory backend when unavailable', async () => {
   assert.deepEqual(await memory.retrieve('旧服务不能回退'), {
     query: '旧服务不能回退', capacity: 8, items: [], channels: { keyword: 0, graph: 0, vector: 0 },
   });
-  assert.equal(await memory.add([{ role: 'user', content: '测试' }], '2026-08-17T00:00:00Z'), false);
+  assert.equal(await memory.createEpisode({ summary: '测试' }), false);
   assert.equal((await memory.getStatus()).backend, 'python-core');
 });
 
