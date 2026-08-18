@@ -116,6 +116,15 @@ test('Given the diary and memory readers When they are inspected Then they are s
   assert.doesNotMatch(script, /innerHTML/);
 });
 
+test('Given a streamed reply When it contains a stage direction Then only the cue reaches Live2D', () => {
+  const chat = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'chat.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'), 'utf8');
+  assert.match(chat, /parseResponseMarkup\(full\)/);
+  assert.match(chat, /cues: latestCues/);
+  assert.match(renderer, /applyStateCues\(data\.cues\)/);
+  assert.match(renderer, /playMotion\('Tap'/);
+});
+
 test('Given a long reply When the balloon is inspected Then its text area can receive scroll input', () => {
   const style = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'balloon.css'), 'utf8');
 

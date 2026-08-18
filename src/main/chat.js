@@ -11,6 +11,7 @@
 const IPC = require('../contracts/ipc');
 const E = require('../contracts/events');
 const createSpeechLead = require('../services/speech-lead');
+const { parseResponseMarkup } = require('../services/response-markup');
 module.exports = function createChat({
   ipcMain, state, generic, chatHistory, memory, contextSettings, probeMaxContext,
   voice, sendToChatInput, petState, lifeState, emotionState, systemSense,
@@ -47,7 +48,8 @@ module.exports = function createChat({
       try {
         if (!(await generic.isAvailable(provider))) continue;
         const line = await generic.generatePetLine({ provider, purpose, state: ctxState });
-        if (line.trim()) return line.trim();
+        const parsed = parseResponseMarkup(line);
+        if (parsed.text) return parsed.text;
       } catch {
         // Try the next configured provider.
       }
@@ -62,16 +64,18 @@ module.exports = function createChat({
     for (const provider of generic.providerChain()) {
       try {
         if (!(await generic.isAvailable(provider))) continue;
-        return await generic.generateReply(input, {
+        const reply = await generic.generateReply(input, {
           provider,
           onDelta: (chunk, full) => {
-            emit(chunk, full);
-            speechLead?.observe(full);
+            const parsed = parseResponseMarkup(full);
+            emit(chunk, parsed.text, parsed.cues);
+            speechLead?.observe(parsed.text);
           },
           memoryContext,
           contextMaxTokens,
           state: buildState(),
         });
+        return parseResponseMarkup(reply).text;
       } catch {
         // Try the next configured provider.
       }
@@ -100,8 +104,10 @@ module.exports = function createChat({
     const userMessage = chatHistory.appendMessage('user', input);
     sendToChatInput(IPC.ChatHistory, { message: userMessage, turnId });
     broadcastChatDelta({ started: true, done: false, turnId });
-    const emit = (chunk, full) => {
-      broadcastChatDelta({ chunk, full, done: false, turnId });
+    let latestCues = [];
+    const emit = (chunk, full, cues = []) => {
+      latestCues = Array.isArray(cues) ? cues : [];
+      broadcastChatDelta({ chunk, full, cues: latestCues, done: false, turnId });
     };
     const speechLead = createSpeechLead({ speak: (text) => voice.speak(text) });
     const reply = await enqueueChat(() => generateChat(input, emit, speechLead));
@@ -112,7 +118,7 @@ module.exports = function createChat({
     ];
     void memory.add(episode, new Date(userMessage.createdAt).toISOString());
     sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
-    broadcastChatDelta({ chunk: '', full: reply, done: true, turnId });
+    broadcastChatDelta({ chunk: '', full: reply, cues: latestCues, done: true, turnId });
     // 首句在流式输出时已抢跑，结束时只继续播放尚未朗读的部分。
     speechLead.finish(reply);
     // 喂养 pet 状态：一次真实对话 → 好感/情绪/养成(e.g. CONVERSATION 事件)

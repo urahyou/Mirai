@@ -20,3 +20,12 @@ test('speech lead falls back to the complete reply when no sentence arrives duri
   lead.finish('短句');
   assert.deepEqual(spoken, ['短句']);
 });
+
+test('speech lead does not split a short acknowledgement into a queued second TTS request', () => {
+  const spoken = [];
+  const lead = createSpeechLead({ speak: (text) => spoken.push(text) });
+  lead.observe('嗯嗯！他家的奶油面包可好吃了！');
+  assert.deepEqual(spoken, ['嗯嗯！他家的奶油面包可好吃了！']);
+  lead.finish('嗯嗯！他家的奶油面包可好吃了！');
+  assert.deepEqual(spoken, ['嗯嗯！他家的奶油面包可好吃了！']);
+});

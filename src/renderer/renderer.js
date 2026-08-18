@@ -122,6 +122,15 @@ function setFace(state) {
   live2dAvatar?.setState(face);
 }
 
+function applyStateCues(cues) {
+  const text = Array.isArray(cues) ? cues.join(' ') : String(cues || '');
+  if (!text) return;
+  if (/兴奋|开心|高兴|微笑|笑|点头|excited|happy|smile/i.test(text)) setFace('happy');
+  else if (/难过|伤心|哭|生气|害怕|低头|sad|cry|angry/i.test(text)) setFace('sad');
+  if (/点头|兴奋|开心|nod|excited|happy/i.test(text)) live2dAvatar?.playMotion('Tap', 0);
+  else if (/低头|难过|哭|sad|cry/i.test(text)) live2dAvatar?.playMotion('FlickDown', 0);
+}
+
 async function initLive2D() {
   const canvas = $('#character-canvas');
   if (!canvas || !window.Live2DAvatar) return;
@@ -177,9 +186,10 @@ function updateStreamBalloon(full) {
   window.desktopPet.balloon.update(String(full || ''));
 }
 
-function finishStreamBalloon(full) {
+function finishStreamBalloon(full, cues = []) {
   const value = String(full || '');
   setFace(detectFace(value));
+  applyStateCues(cues);
   document.body.classList.add('speaking');
   window.desktopPet.balloon.finish({ text: value, face: detectFace(value) });
   clearTimeout(balloonTimer);
@@ -210,11 +220,12 @@ function handleChatDelta(data) {
   }
   if (activeChatTurnId !== data.turnId) return;
   if (!data.done) {
+    applyStateCues(data.cues);
     updateStreamBalloon(data.full);
     return;
   }
   formalChatActive = false;
-  finishStreamBalloon(data.full);
+  finishStreamBalloon(data.full, data.cues);
   activeChatTurnId = null;
 }
 
