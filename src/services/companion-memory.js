@@ -46,6 +46,13 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       return Number.isFinite(result?.inserted) ? result.inserted : 0;
     } catch { return 0; }
   }
+  async function archivePending({ currentAt = new Date().toISOString(), force = false } = {}) {
+    if (!pythonBackend.getStatus().ready) return [];
+    try {
+      const result = await pythonBackend.request('memory.archive_pending', { currentAt, force: Boolean(force) });
+      return Array.isArray(result?.archived) ? result.archived : [];
+    } catch { return []; }
+  }
   async function list(kind, limit = 30) {
     if (!pythonBackend.getStatus().ready) return [];
     try {
@@ -155,5 +162,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       }),
     ].join('\n').slice(0, 4400);
   }
-  return { search, retrieve, createEpisode, importMessages, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, retrieve, createEpisode, importMessages, archivePending, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

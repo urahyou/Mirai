@@ -114,7 +114,8 @@ module.exports = function createChat({
     const assistantMessage = chatHistory.appendMessage('assistant', reply);
     // Full chat messages are the canonical evidence. Episode archiving is a separate,
     // bounded process and must never duplicate a turn's transcript.
-    void memory.importMessages([userMessage, assistantMessage]);
+    void memory.importMessages([userMessage, assistantMessage])
+      .then(() => memory.archivePending({ currentAt: new Date().toISOString() }));
     sendToChatInput(IPC.ChatHistory, { message: assistantMessage, turnId });
     broadcastChatDelta({ chunk: '', full: reply, cues: latestCues, done: true, turnId });
     // 首句在流式输出时已抢跑，结束时只继续播放尚未朗读的部分。

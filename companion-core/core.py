@@ -167,6 +167,13 @@ class CompanionCore:
         try: return self.memory.create_episode(episode)
         except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
 
+    def memory_archive_pending(self, current_at: Any, force: Any = False) -> list[dict[str, Any]]:
+        if not self.memory: raise CoreError("Core 尚未 bootstrap")
+        if not isinstance(current_at, str) or not isinstance(force, bool):
+            raise CoreError("归档参数不合法")
+        try: return self.memory.archive_pending_messages(current_at, force)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_search(self, query: Any) -> list[dict[str, Any]]:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         if not isinstance(query, str): raise CoreError("query 必须是字符串")

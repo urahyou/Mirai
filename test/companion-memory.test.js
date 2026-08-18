@@ -79,3 +79,19 @@ test('Companion memory retrieves a bounded frame and renders safe context', asyn
   assert.ok(oversized.length <= 4400);
   assert.equal((oversized.match(/\[相处片段\]/g) || []).length, 6);
 });
+
+test('Companion memory archives pending canonical messages through Python Core', async () => {
+  const calls = [];
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        calls.push([method, params]);
+        return { archived: [{ id: 'episode:1', summary: '一次相处' }], count: 1 };
+      },
+    },
+  });
+  const result = await memory.archivePending({ currentAt: '2026-08-18T12:00:00Z', force: true });
+  assert.equal(result[0].id, 'episode:1');
+  assert.deepEqual(calls, [['memory.archive_pending', { currentAt: '2026-08-18T12:00:00Z', force: true }]]);
+});

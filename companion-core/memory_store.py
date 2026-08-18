@@ -164,6 +164,10 @@ class MemoryStore:
                 summary=COALESCE(NULLIF(summary, ''), content),
                 archived_at=COALESCE(archived_at, created_at)
             """)
+            # v1/v2 created one transcript-copy episode per turn. Preserve those rows
+            # for audit, but keep them out of active retrieval after structured episodes exist.
+            self.db.execute("""UPDATE episodes SET recall_state='archived', retention_policy='legacy'
+                WHERE source='chat'""")
             has_messages = self.db.execute("""SELECT 1 FROM sqlite_master
                 WHERE type='table' AND name='conversation_messages'""").fetchone()
             if has_messages:
@@ -267,6 +271,76 @@ class MemoryStore:
                     self.db.execute("INSERT INTO episode_sources VALUES(?,?,?,?)", (ident, source_kind, source_id, sequence))
                     sequence += 1
         return self.get_episode(ident) or {}
+
+    def archive_pending_messages(self, current_at: str, force: bool = False) -> list[dict[str, Any]]:
+        now = self._parse_time(self._required_text(current_at, "归档时间不合法", 64))
+        rows = self.db.execute("""SELECT m.id, m.role, m.content, m.created_at
+            FROM conversation_messages m
+            WHERE m.source='chat-history'
+              AND NOT EXISTS(
+                SELECT 1 FROM episode_sources s
+                WHERE s.source_kind='message' AND s.source_id=m.id
+              )
+            ORDER BY m.created_at ASC, m.sequence_no ASC, m.id ASC""").fetchall()
+        if not rows:
+            return []
+
+        groups: list[tuple[list[sqlite3.Row], bool]] = []
+        current: list[sqlite3.Row] = []
+        previous_at: datetime | None = None
+        for row in rows:
+            occurred_at = self._parse_time(row["created_at"])
+            gap_closed = previous_at is not None and occurred_at - previous_at >= timedelta(minutes=20)
+            if current and (gap_closed or len(current) >= 12):
+                groups.append((current, gap_closed))
+                current = []
+            current.append(row)
+            previous_at = occurred_at
+        if current:
+            idle_closed = now - self._parse_time(current[-1]["created_at"]) >= timedelta(minutes=20)
+            groups.append((current, idle_closed))
+
+        archived = []
+        for group, closed in groups:
+            if len(group) < 6 and not closed and not force:
+                continue
+            archived.append(self.create_episode({
+                "startedAt": group[0]["created_at"],
+                "endedAt": group[-1]["created_at"],
+                "summary": self._episode_summary(group),
+                "topics": self._episode_topics(group),
+                "importance": self._episode_importance(group),
+                "messageIds": [row["id"] for row in group],
+                "source": "conversation-archive",
+            }))
+        return archived
+
+    def _episode_summary(self, rows: list[sqlite3.Row]) -> str:
+        user_points = [self._compact_excerpt(row["content"]) for row in rows if row["role"] == "user"]
+        assistant_points = [self._compact_excerpt(row["content"]) for row in rows if row["role"] == "assistant"]
+        parts = []
+        if user_points:
+            parts.append("主人谈到" + "、".join(f"“{text}”" for text in user_points[:3]))
+        if assistant_points:
+            parts.append("小未来回应了" + "、".join(f"“{text}”" for text in assistant_points[:2]))
+        parts.append(f"这段相处包含 {len(rows)} 条消息")
+        return "；".join(parts) + "。"
+
+    def _episode_topics(self, rows: list[sqlite3.Row]) -> list[str]:
+        user_text = " ".join(row["content"] for row in rows if row["role"] == "user")
+        terms = self._query_terms(user_text)
+        return [term for term in terms if len(term) >= 2][:8]
+
+    @staticmethod
+    def _episode_importance(rows: list[sqlite3.Row]) -> float:
+        user_text = " ".join(row["content"] for row in rows if row["role"] == "user")
+        signals = ("记住", "喜欢", "讨厌", "以后", "不要", "生日", "重要", "承诺", "必须")
+        return min(1.0, .45 + .05 * min(4, len(rows) // 2) + (.2 if any(signal in user_text for signal in signals) else 0.0))
+
+    @staticmethod
+    def _compact_excerpt(content: str) -> str:
+        text = re.sub(r"\s+", " ", str(content)).strip()
+        return text[:72] + ("…" if len(text) > 72 else "")
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
         terms = [term for term in query.strip().split() if term][:5]

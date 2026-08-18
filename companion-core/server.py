@@ -54,6 +54,9 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"stored": core.memory_add_episode(params.get("messages"), params.get("createdAt"))}
         elif method == "memory.create_episode":
             result = {"episode": core.memory_create_episode(params.get("episode"))}
+        elif method == "memory.archive_pending":
+            archived = core.memory_archive_pending(params.get("currentAt"), params.get("force", False))
+            result = {"archived": archived, "count": len(archived)}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
         elif method == "memory.retrieve":

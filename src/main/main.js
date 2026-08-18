@@ -214,6 +214,8 @@ app.whenReady().then(() => {
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
     const importedMessages = await companionMemory.importMessages(chatHistory.getMessages());
     if (importedMessages) console.log('[companion-core] imported %d existing chat messages', importedMessages);
+    const archivedEpisodes = await companionMemory.archivePending({ currentAt: new Date().toISOString(), force: true });
+    if (archivedEpisodes.length) console.log('[companion-core] archived %d structured episodes', archivedEpisodes.length);
     await companionPetState.seedFromLegacy();
     await companionLife.advance(Date.now());
     await companionEmotion.refresh(Date.now());

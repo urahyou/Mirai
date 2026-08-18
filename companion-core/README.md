@@ -27,6 +27,6 @@
 - Memory：情景 `memory.add_episode`/`memory.search`，有界混合检索 `memory.retrieve`，语义事实 `memory.upsert_fact`/`memory.find_facts`，画像 `memory.upsert_profile`/`memory.get_profile`，关系图 `memory.upsert_edge`/`memory.neighbors`，以及来源级删除 `memory.forget_source`。
 - Journal：`journal.build_daily_material`/`journal.get_daily_material`、`journal.save_daily_prose` 与对应的 weekly 方法。素材仅汇总已保存聊天、明确互动事件和完成的虚拟活动，并保留来源 ID；日记正文只能在事实素材已落库后由用户触发生成并回写。
 
-`memory.db` 当前 schema 版本为 2。语义事实和关系边统一存为带有效期的 assertion，关系图只是实体型 assertion 的投影；一条 assertion 可以由多条情景证据共同支撑。删除一个来源时只移除对应证据，最后一条证据消失后才删除该 assertion。
+`memory.db` 当前 schema 版本为 3。原始聊天统一落在 `conversation_messages`，情景记忆 `episodes` 只保存摘要和来源引用，不复制逐句转录；旧版复制型聊天 Episode 会保留为 `archived/legacy` 供审计。语义事实和关系边统一存为带有效期的 assertion，关系图只是实体型 assertion 的投影；一条 assertion 可以由多条情景证据共同支撑。删除一个来源时只移除对应证据，最后一条证据消失后才删除该 assertion。
 
 `memory.retrieve` 会把关键词命中的当前事实、聊天情景和最多一跳的图关系合并评分，最多返回 12 条；Electron 实际注入模型时进一步限制为 6 条、约 4.4k 字符。向量通道目前保持关闭，不需要 embedding 模型或网络服务。协议版本由后续共享契约文件统一管理；任何不兼容修改都必须提升版本。

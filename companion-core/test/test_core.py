@@ -194,7 +194,8 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(store.db.execute("SELECT kind FROM entities WHERE id='character:mirai'").fetchone()[0], "character")
             episode = store.list_episodes()[0]
             self.assertEqual(episode["summary"], "主人喜欢旧网页")
-            self.assertEqual(episode["recallState"], "active")
+            self.assertEqual(episode["recallState"], "archived")
+            self.assertEqual(episode["retentionPolicy"], "legacy")
             store.close()
 
             reopened = MemoryStore(database)
@@ -227,6 +228,42 @@ class CompanionCoreTest(unittest.TestCase):
                 "SELECT source_id FROM episode_sources WHERE episode_id=? ORDER BY sequence_no", (episode["id"],)
             ).fetchall()
             self.assertEqual([row["source_id"] for row in linked], ["message:history:turn-user", "message:history:turn-assistant"])
+
+    def test_pending_messages_archive_in_bounded_idempotent_episodes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            messages = []
+            for index in range(7):
+                messages.append({
+                    "id": f"message-{index}",
+                    "role": "user" if index % 2 == 0 else "assistant",
+                    "content": f"第 {index + 1} 条关于红茶的消息",
+                    "createdAt": f"2026-08-18T12:00:0{index}Z",
+                })
+            self.assertEqual(core.memory_import_messages(messages), 7)
+            archived = core.memory_archive_pending("2026-08-18T12:00:10Z")
+            self.assertEqual(len(archived), 1)
+            self.assertEqual(archived[0]["sourceCount"], 7)
+            self.assertIn("这段相处包含 7 条消息", archived[0]["summary"])
+            self.assertEqual(core.memory_stats()["messages"], 7)
+            self.assertEqual(core.memory_archive_pending("2026-08-18T12:00:11Z"), [])
+
+    def test_idle_or_forced_archive_closes_a_short_episode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_import_messages([
+                {"id": "short-user", "role": "user", "content": "晚点再聊", "createdAt": "2026-08-18T12:00:00Z"},
+                {"id": "short-assistant", "role": "assistant", "content": "好，我会等主人。", "createdAt": "2026-08-18T12:00:01Z"},
+            ])
+            self.assertEqual(core.memory_archive_pending("2026-08-18T12:10:00Z"), [])
+            idle = core.memory_archive_pending("2026-08-18T12:20:01Z")
+            self.assertEqual(len(idle), 1)
+
+            core.memory_import_messages([
+                {"id": "restart-user", "role": "user", "content": "重新打开应用", "createdAt": "2026-08-18T13:00:00Z"},
+            ])
+            forced = core.memory_archive_pending("2026-08-18T13:00:01Z", True)
+            self.assertEqual(len(forced), 1)
 
     def test_duplicate_fact_collects_evidence_and_forgets_one_source_at_a_time(self):
         with tempfile.TemporaryDirectory() as directory:
