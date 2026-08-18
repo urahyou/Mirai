@@ -21,11 +21,13 @@ h1 { margin: 0; font-size: 17px; font-weight: 680; letter-spacing: 0; }
 .protocol { padding: 5px 9px; border: 1px solid #fff268; border-radius: 0; color: #6a2379; background: #fff268; font-size: 11px; }
 
 .workspace { display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 0; }
-.sidebar { min-width: 0; background-color: var(--sidebar); background-image: repeating-linear-gradient(-45deg, rgba(69,198,227,.13) 0 5px, transparent 5px 10px); border-right: 2px solid var(--line); }
+.sidebar { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; background-color: var(--sidebar); background-image: repeating-linear-gradient(-45deg, rgba(69,198,227,.13) 0 5px, transparent 5px 10px); border-right: 2px solid var(--line); }
 .sidebar-head { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 14px 0 18px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .icon-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid rgba(255, 79, 158, .35); border-radius: 6px; background: #fff; color: var(--accent); font-size: 18px; line-height: 1; }
 .icon-button:hover { border-color: var(--accent); color: var(--accent); }
-.provider-list { display: grid; gap: 3px; padding: 0 8px; }
+.provider-list { display: grid; flex: 1 1 0; min-height: 0; gap: 3px; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px; scrollbar-color: var(--mint-deep) transparent; scrollbar-width: thin; }
+.provider-list::-webkit-scrollbar { width: 7px; }
+.provider-list::-webkit-scrollbar-thumb { border-radius: 0; background: var(--mint-deep); }
 .provider-item { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 9px; width: 100%; min-height: 48px; padding: 8px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: inherit; text-align: left; }
 .provider-item:hover { background: rgba(255,255,255,.74); }
 .provider-item.selected { border-color: var(--accent); background: #fff; box-shadow: inset 2px 0 0 var(--accent); }
