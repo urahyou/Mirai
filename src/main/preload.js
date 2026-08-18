@@ -132,6 +132,17 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     openPanel: () => ipcRenderer.invoke('debug:openPanel'),
     closePanel: () => ipcRenderer.invoke('debug:closePanel'),
   }),
+  agent: Object.freeze({
+    getStatus: () => ipcRenderer.invoke('agent:getStatus'),
+    requestDraft: (description) => ipcRenderer.invoke('agent:requestDraft', description),
+    listTasks: () => ipcRenderer.invoke('agent:listTasks'),
+    approve: (taskId) => ipcRenderer.invoke('agent:approve', taskId),
+    reject: (taskId) => ipcRenderer.invoke('agent:reject', taskId),
+    listAudit: () => ipcRenderer.invoke('agent:listAudit'),
+    openDrafts: () => ipcRenderer.invoke('agent:openDrafts'),
+    openPanel: () => ipcRenderer.invoke('agent:openPanel'),
+    closePanel: () => ipcRenderer.invoke('agent:closePanel'),
+  }),
   petState: Object.freeze({
     get: () => ipcRenderer.invoke('petState:get'),
   }),

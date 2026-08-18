@@ -100,6 +100,17 @@ module.exports = {
   DebugOpenPanel: 'debug:openPanel',
   DebugClosePanel: 'debug:closePanel',
 
+  // Agent Gateway（仅草稿提案 + 精确审批，不暴露通用执行入口）
+  AgentGetStatus: 'agent:getStatus',
+  AgentRequestDraft: 'agent:requestDraft',
+  AgentListTasks: 'agent:listTasks',
+  AgentApprove: 'agent:approve',
+  AgentReject: 'agent:reject',
+  AgentListAudit: 'agent:listAudit',
+  AgentOpenDrafts: 'agent:openDrafts',
+  AgentOpenPanel: 'agent:openPanel',
+  AgentClosePanel: 'agent:closePanel',
+
   // 语音设置 .env（main.js）
   VoiceSettingsGet: 'voiceSettings:get',
   VoiceSettingsSet: 'voiceSettings:set',

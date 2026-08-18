@@ -11,6 +11,7 @@ const routes = {
   cardPersonality: () => window.desktopPet.openPersonalityPanel(),
   cardVoice: () => window.desktopPet.openVoiceSettingsPanel(),
   cardModel: () => window.desktopPet.openProviderPanel(),
+  cardAgent: () => window.desktopPet.agent.openPanel(),
   cardDebug: () => window.desktopPet.debug.openPanel(),
 };
 

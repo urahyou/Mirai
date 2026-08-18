@@ -1,0 +1,27 @@
+html, body { min-width: 0; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.agent-status { flex: 0 0 auto; padding: 3px 8px; border: 1px solid var(--line-strong); color: var(--muted); background: var(--paper); font-size: 11px; }
+.agent-status.ready { border-color: var(--mint-deep); color: var(--ink); background: var(--mint-pale); }
+.agent-content { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; overflow-y: auto; margin-top: 9px; }
+.agent-section { padding: 10px; border: 2px solid var(--line); background: rgba(255, 253, 242, .95); }
+.agent-section > label, .agent-section h2 { display: block; margin: 0 0 7px; color: var(--pink-deep); font-size: 12px; font-weight: 750; }
+.agent-section textarea { width: 100%; min-height: 74px; resize: vertical; padding: 7px; border: 1px solid var(--line-strong); border-radius: 0; color: var(--ink); background: #fff; font: inherit; line-height: 1.45; }
+.action-row, .section-head, .task-actions { display: flex; align-items: center; gap: 7px; }
+.action-row { justify-content: flex-end; margin-top: 7px; }
+.action-row .hint { margin-right: auto; }
+.section-head { justify-content: space-between; }
+.section-head h2 { margin: 0; }
+.grow { min-height: 150px; }
+.task-list, .audit-list { display: grid; gap: 7px; margin-top: 8px; }
+.task-item { padding: 8px; border: 1px solid var(--line); background: #fff; }
+.task-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.task-title { min-width: 0; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.task-state { flex: 0 0 auto; color: var(--mint-deep); font-size: 11px; }
+.task-summary { margin: 6px 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.task-proposal { max-height: 100px; overflow: auto; margin: 0 0 7px; padding: 6px; border-left: 3px solid var(--butter); white-space: pre-wrap; word-break: break-word; color: var(--ink); background: #fffdf5; font: 11px/1.4 ui-monospace, monospace; }
+.task-actions { justify-content: flex-end; }
+.audit-section { flex: 0 0 auto; }
+.audit-list { max-height: 110px; overflow-y: auto; }
+.audit-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; gap: 8px; color: var(--muted); font-size: 10px; }
+.audit-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { padding: 10px 0; color: var(--muted); font-size: 11px; text-align: center; }

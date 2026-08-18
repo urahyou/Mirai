@@ -21,6 +21,7 @@ const schedule = require('./schedule');
 const diary = require('./diary');
 const settingsNav = require('./settings-nav');
 const debug = require('./debug');
+const agent = require('./agent');
 
 module.exports = function mountAll(api) {
   personality(api);
@@ -39,4 +40,5 @@ module.exports = function mountAll(api) {
   diary(api);
   settingsNav(api);
   debug(api);
+  agent(api);
 };

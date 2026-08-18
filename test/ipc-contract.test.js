@@ -65,6 +65,8 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /playbackFinished/);
   assert.match(preload, /memory:\s*Object\.freeze/);
   assert.match(preload, /debug:\s*Object\.freeze/);
+  assert.match(preload, /agent:\s*Object\.freeze/);
+  assert.doesNotMatch(preload, /agent:execute|agent\.execute|request\s*:\s*\([^)]*capability/);
   assert.match(preload, /setMousePassthrough/);
 });
 
@@ -90,6 +92,16 @@ test('Given weather location IPC When validation runs Then coordinates remain bo
     ok: true, data: [{ latitude: null, longitude: null }],
   });
   assertRejected('weather:set', [{ city: 'Shanghai' }]);
+});
+
+test('Given Agent draft and approval IPC When validation runs Then no generic capability is accepted', () => {
+  assert.deepEqual(validatePayload('agent:requestDraft', ['写一份问候草稿']), { ok: true, data: ['写一份问候草稿'] });
+  const id = 'agent-task:123e4567-e89b-12d3-a456-426614174000';
+  assert.deepEqual(validatePayload('agent:approve', [id]), { ok: true, data: [id] });
+  assert.deepEqual(validatePayload('agent:reject', [id]), { ok: true, data: [id] });
+  assertRejected('agent:requestDraft', [{ capability: 'terminal.command' }]);
+  assertRejected('agent:approve', ['agent-task:../../secret']);
+  assertRejected('agent:execute', [{ capability: 'terminal.command' }]);
 });
 
 test('Given chat expansion IPC When validation receives a boolean Then it accepts only that boolean', () => {
@@ -318,6 +330,16 @@ test('Given IPC subsystems use actual module paths, they can all be required', (
   assert.ok(m, 'main.js 应 require subsystems');
   const resolved = require.resolve(path.join(__dirname, '..', 'src', 'main', m[1]));
   assert.ok(fs.existsSync(resolved), `main.js 引用的子系统模块不存在: ${m[1]}`);
+});
+
+test('Given the Agent panel When inspected Then it only exposes draft proposal approval', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'agent-panel.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'agent-panel.js'), 'utf8');
+  assert.match(html, /id="draftRequest"/);
+  assert.match(script, /agent\.requestDraft\(description\)/);
+  assert.match(script, /agent\.approve\(task\.id\)/);
+  assert.match(script, /agent\.reject\(task\.id\)/);
+  assert.doesNotMatch(script, /innerHTML|terminal\.command|file\.write|message\.send/);
 });
 
 test('Given the debug panel When inspected Then it reads runtime entries without injecting model content as HTML', () => {

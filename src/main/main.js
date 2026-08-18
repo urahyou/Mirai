@@ -39,6 +39,7 @@ const createEmbeddingAdapter = require('../services/embedding-adapter');
 const createMemoryVectorIndexer = require('../services/memory-vector-indexer');
 const createAgentAudit = require('../services/agent-audit');
 const createAgentGateway = require('../services/agent-gateway');
+const createAgentActions = require('../services/agent-actions');
 const createPiExecutionProvider = require('../services/pi-execution-provider');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
@@ -82,7 +83,8 @@ const agentAudit = createAgentAudit({
     }).catch(() => {});
   },
 });
-const agentGateway = createAgentGateway({ providers: { pi: piExecutionProvider }, audit: agentAudit });
+const agentActions = createAgentActions({ getUserData: () => app.getPath('userData') });
+const agentGateway = createAgentGateway({ providers: { pi: piExecutionProvider }, actions: agentActions, audit: agentAudit });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });

@@ -101,6 +101,14 @@ function validateWeatherPatch(args) {
   return Object.keys(patch).length ? args : null;
 }
 
+function validateDraftRequest(args) {
+  return args.length === 1 && typeof args[0] === 'string' && args[0].trim().length > 0 && args[0].length <= 2000 ? [args[0].trim()] : null;
+}
+
+function validateAgentTaskId(args) {
+  return args.length === 1 && typeof args[0] === 'string' && /^agent-task:[a-f0-9-]{36}$/.test(args[0]) ? args : null;
+}
+
 function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
@@ -134,6 +142,10 @@ function validatePayload(channel, args, ctx = {}) {
               ? validatePerceptionId(values)
             : channel === 'weather:set'
               ? validateWeatherPatch(values)
+            : channel === 'agent:requestDraft'
+              ? validateDraftRequest(values)
+            : channel === 'agent:approve' || channel === 'agent:reject'
+              ? validateAgentTaskId(values)
           : channel === 'context:set'
             ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
             : null;

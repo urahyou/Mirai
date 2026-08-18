@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · Agent 提案</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="agent-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="drag-bar">
+      <span class="drag-grip">⠿⠿</span><span class="drag-title">Agent 提案</span>
+      <button class="drag-close" id="dragClose" type="button" aria-label="关闭">✕</button>
+    </div>
+    <header class="panel-header">
+      <div><h1 class="panel-title">Agent 提案</h1><p class="panel-desc">Pi 只生成提案，批准后由小未来执行固定领域动作</p></div>
+      <span class="agent-status" id="agentStatus">未启用</span>
+    </header>
+    <main class="agent-content">
+      <section class="agent-section">
+        <label for="draftRequest">本地草稿</label>
+        <textarea id="draftRequest" maxlength="2000" placeholder="描述要创建的草稿内容"></textarea>
+        <div class="action-row"><span class="hint" id="requestHint"></span><button class="btn primary" id="requestBtn" type="button">生成提案</button></div>
+      </section>
+      <section class="agent-section grow">
+        <div class="section-head"><h2>任务</h2><button class="btn small ghost" id="openDraftsBtn" type="button">打开草稿目录</button></div>
+        <div class="task-list" id="taskList"></div>
+      </section>
+      <section class="agent-section audit-section">
+        <h2>审计</h2><div class="audit-list" id="auditList"></div>
+      </section>
+    </main>
+    <footer class="panel-footer"><button class="btn small ghost" id="backBtn" type="button">← 设置中心</button><div class="spacer"></div><button class="btn ghost" id="closeBtn" type="button">关闭</button></footer>
+  </div>
+  <script src="agent-panel.js"></script>
+</body>
+</html>

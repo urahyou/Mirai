@@ -63,6 +63,17 @@ function safeSnapshot(value) {
 
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 
+function validateProposalParameters(capability, parameters) {
+  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) throw new TypeError('Provider 提案参数不合法');
+  if (capability === 'draft.create') {
+    if (!Object.keys(parameters).every((key) => key === 'title' || key === 'body')) throw new TypeError('草稿提案字段不合法');
+    if (typeof parameters.title !== 'string' || !parameters.title.trim() || typeof parameters.body !== 'string' || !parameters.body.trim()) {
+      throw new TypeError('草稿提案内容不合法');
+    }
+  }
+  return sanitize(parameters);
+}
+
 function normalizeResult(value, task) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Provider 结果必须是对象');
   if (!Object.keys(value).every((key) => key === 'summary' || key === 'proposal')) throw new TypeError('Provider 结果包含未授权字段');
@@ -73,7 +84,7 @@ function normalizeResult(value, task) {
     if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) throw new TypeError('Provider 提案不合法');
     if (!Object.keys(proposal).every((key) => key === 'capability' || key === 'parameters')) throw new TypeError('Provider 提案包含未授权字段');
     if (proposal.capability !== task.capability) throw new TypeError('Provider 提案能力与任务不一致');
-    result.proposal = { capability: task.capability, parameters: sanitize(proposal.parameters || {}) };
+    result.proposal = { capability: task.capability, parameters: validateProposalParameters(task.capability, proposal.parameters || {}) };
   }
   return result;
 }

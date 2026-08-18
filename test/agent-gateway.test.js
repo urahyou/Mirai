@@ -134,6 +134,10 @@ test('agent gateway contains provider and action failures', async () => {
   assert.equal(absent.state, 'failed');
   assert.match(absent.error, /Provider/);
 
+  const invalidDraft = createAgentGateway({ providers: { pi: { propose: async () => ({ summary: 'bad', proposal: { capability: 'draft.create', parameters: { path: '../escape' } } }) } } });
+  const invalid = await invalidDraft.request({ capability: 'draft.create', objective: 'bad', snapshot: { request: 'bad' } });
+  assert.equal(invalid.state, 'failed');
+
   const noAction = createAgentGateway({ providers: { pi: { propose: async () => ({ summary: 'ready', proposal: { capability: 'web.open', parameters: { url: 'https://example.com' } } }) } } });
   const pending = await noAction.request({ capability: 'web.open', objective: 'open', snapshot: { request: 'https://example.com' } });
   const actionResult = await noAction.approve(pending.id);
