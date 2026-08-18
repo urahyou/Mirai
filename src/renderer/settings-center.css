@@ -13,6 +13,19 @@
   font-weight: 700;
 }
 
+/* 设置入口会持续增加；只让中间卡片区滚动，标题与关闭按钮始终留在视野内。 */
+.center-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 5px 6px 0;
+  scrollbar-color: var(--pink) rgba(255, 255, 255, .35);
+  scrollbar-width: thin;
+}
+.center-content::-webkit-scrollbar { width: 8px; }
+.center-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, .35); }
+.center-content::-webkit-scrollbar-thumb { border: 2px solid rgba(255, 255, 255, .35); border-radius: 0; background: var(--pink); }
+
 .card {
   display: flex;
   align-items: center;

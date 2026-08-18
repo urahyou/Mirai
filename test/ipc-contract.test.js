@@ -303,3 +303,8 @@ test('Given the debug panel When inspected Then it reads runtime entries without
   assert.match(script, /textContent = JSON\.stringify/);
   assert.doesNotMatch(script, /innerHTML/);
 });
+
+test('Given more settings cards than the initial viewport When the settings center is inspected Then its card area scrolls independently', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'settings-center.css'), 'utf8');
+  assert.match(css, /\.center-content\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?min-height:\s*0[\s\S]*?overflow-y:\s*auto/);
+});
