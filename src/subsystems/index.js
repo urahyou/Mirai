@@ -16,6 +16,7 @@ const windowCtl = require('./window');
 const menu = require('./menu');
 const petState = require('./pet-state');
 const proactive = require('./proactive');
+const perception = require('./perception');
 const schedule = require('./schedule');
 const diary = require('./diary');
 const settingsNav = require('./settings-nav');
@@ -33,6 +34,7 @@ module.exports = function mountAll(api) {
   menu(api);
   petState(api);
   proactive(api);
+  perception(api);
   schedule(api);
   diary(api);
   settingsNav(api);

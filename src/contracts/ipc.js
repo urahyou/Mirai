@@ -76,6 +76,9 @@ module.exports = {
   DiaryOpenPanel: 'diary:openPanel',
   DiaryClosePanel: 'diary:closePanel',
   SystemSenseGet: 'systemSense:get',
+  PerceptionList: 'perception:list',
+  PerceptionSet: 'perception:set',
+  PerceptionClear: 'perception:clear',
   InitiativeGet: 'initiative:get',
   InitiativeSet: 'initiative:set',
 

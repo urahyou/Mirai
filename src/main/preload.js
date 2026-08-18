@@ -151,6 +151,11 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   systemSense: Object.freeze({
     get: () => ipcRenderer.invoke('systemSense:get'),
   }),
+  perception: Object.freeze({
+    list: () => ipcRenderer.invoke('perception:list'),
+    set: (id, patch) => ipcRenderer.invoke('perception:set', id, patch),
+    clear: (id) => ipcRenderer.invoke('perception:clear', id),
+  }),
   voiceSettings: Object.freeze({
     get: () => ipcRenderer.invoke('voiceSettings:get'),
     set: (patch) => ipcRenderer.invoke('voiceSettings:set', patch),

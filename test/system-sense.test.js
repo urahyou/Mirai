@@ -58,6 +58,45 @@ test('未联网时意识文案提示离线', async () => {
   assert.ok(a.includes('电量 20%') === false, '无电量信息则不写电量');
 });
 
+test('disabled source performs no collection and clears its snapshot', async () => {
+  let calls = 0;
+  sys.init({ now: () => 1000, battery: async () => { calls += 1; return { level: 50, charging: false }; }, network: async () => true });
+  await sys.poll();
+  assert.equal(sys.getSnapshot().battery.level, 50);
+  sys.setEnabled(false);
+  await sys.poll();
+  sys.start();
+  assert.equal(calls, 1);
+  assert.equal(sys.isRunning(), false);
+  assert.equal(sys.getSnapshot().updatedAt, null);
+  assert.equal(sys.getAwareness(), '');
+});
+
+test('clear invalidates an in-flight collection result', async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  sys.init({ now: () => 1000, battery: async () => pending, network: async () => true });
+  const polling = sys.poll();
+  sys.clear();
+  release({ level: 99, charging: false });
+  await polling;
+  assert.equal(sys.getSnapshot().updatedAt, null);
+  assert.equal(sys.getSnapshot().battery.level, null);
+});
+
+test('expired snapshot no longer exposes battery or network data', async () => {
+  let clock = 1000;
+  sys.init({ now: () => clock, battery: async () => ({ level: 20, charging: false }), network: async () => false });
+  sys.setTtl(30000);
+  await sys.poll();
+  clock = 31001;
+  const snapshot = sys.getSnapshot();
+  assert.equal(snapshot.stale, true);
+  assert.equal(snapshot.battery.level, null);
+  assert.equal(snapshot.online, null);
+  assert.doesNotMatch(sys.getAwareness(), /电量|联网/);
+});
+
 test('start 自动首轮拉取；stop 停止', async () => {
   let calls = 0;
   sys.init({ now: () => Date.now(), battery: async () => { calls++; return { level: 50, charging: false }; }, network: async () => true });

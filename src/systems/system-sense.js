@@ -17,6 +17,9 @@ let batteryP = defaultBattery;
 let networkP = defaultNetwork;
 let nowFn = () => Date.now();
 let pollMs = 5 * 60 * 1000;
+let ttlMs = 15 * 60 * 1000;
+let enabled = true;
+let collectionGeneration = 0;
 let timer = null;
 let snapshot = { battery: { level: null, charging: null }, online: null, updatedAt: null, idleSince: null };
 
@@ -63,34 +66,71 @@ function formatLocalClock(timestamp) {
 }
 
 async function poll() {
-  try { snapshot.battery = await batteryP(); } catch { snapshot.battery = { level: null, charging: null }; }
-  try { snapshot.online = await networkP(); } catch { snapshot.online = null; }
-  snapshot.updatedAt = nowFn();
+  if (!enabled) return getSnapshot();
+  const generation = collectionGeneration;
+  const [battery, online] = await Promise.all([
+    Promise.resolve().then(() => batteryP()).catch(() => ({ level: null, charging: null })),
+    Promise.resolve().then(() => networkP()).catch(() => null),
+  ]);
+  if (!enabled || generation !== collectionGeneration) return getSnapshot();
+  snapshot = { battery, online, updatedAt: nowFn(), idleSince: null };
+  return getSnapshot();
 }
 
 function start() {
-  if (timer) return;
+  if (!enabled || timer) return;
   void poll();
   timer = setInterval(() => { void poll(); }, pollMs);
 }
 
 function stop() { if (timer) { clearInterval(timer); timer = null; } }
 
+function clear() {
+  collectionGeneration += 1;
+  snapshot = { battery: { level: null, charging: null }, online: null, updatedAt: null, idleSince: null };
+}
+
+function setEnabled(value) {
+  enabled = Boolean(value);
+  if (!enabled) { stop(); clear(); }
+}
+
+function setTtl(value) {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed)) ttlMs = Math.max(30000, Math.min(86400000, Math.round(parsed)));
+}
+
+function isRunning() { return Boolean(timer); }
+function getPermissionStatus() { return 'granted'; }
+function isFresh() { return Number.isFinite(snapshot.updatedAt) && nowFn() - snapshot.updatedAt < ttlMs; }
+
 // 一句自然语言：此刻时刻 + 电量 + 联网状态
 function getAwareness() {
+  if (!enabled) return '';
   const timestamp = nowFn();
   const h = new Date(timestamp).getHours();
   // 给模型准确的本机钟点，避免仅凭“中午/下午”自行猜测具体时间。
   const parts = [`此刻本机时间：${formatLocalClock(timestamp)}`, `时段：${timeOfDay(h)}`];
-  const b = snapshot.battery;
-  if (b && typeof b.level === 'number') {
-    parts.push(`电量 ${b.level}%${b.charging ? '（充电中）' : ''}`);
+  if (isFresh()) {
+    const b = snapshot.battery;
+    if (b && typeof b.level === 'number') {
+      parts.push(`电量 ${b.level}%${b.charging ? '（充电中）' : ''}`);
+    }
+    if (snapshot.online === true) parts.push('联网正常');
+    if (snapshot.online === false) parts.push('未联网');
   }
-  parts.push(snapshot.online === false ? '未联网' : '联网正常');
   return parts.join('；');
 }
 
-function getSnapshot() { return { ...snapshot, battery: { ...snapshot.battery } }; }
+function getSnapshot() {
+  const stale = Number.isFinite(snapshot.updatedAt) && !isFresh();
+  return {
+    ...snapshot,
+    battery: stale ? { level: null, charging: null } : { ...snapshot.battery },
+    online: stale ? null : snapshot.online,
+    stale,
+  };
+}
 
 function init({ battery, network, now, pollMs: ms } = {}) {
   if (battery) batteryP = battery;
@@ -101,8 +141,8 @@ function init({ battery, network, now, pollMs: ms } = {}) {
 
 function _reset() {
   batteryP = defaultBattery; networkP = defaultNetwork;
-  nowFn = () => Date.now(); pollMs = 5 * 60 * 1000; timer = null;
+  nowFn = () => Date.now(); pollMs = 5 * 60 * 1000; ttlMs = 15 * 60 * 1000; enabled = true; collectionGeneration = 0; timer = null;
   snapshot = { battery: { level: null, charging: null }, online: null, updatedAt: null, idleSince: null };
 }
 
-module.exports = { init, start, stop, poll, getAwareness, getSnapshot, timeOfDay, formatLocalClock, _reset };
+module.exports = { init, start, stop, poll, clear, setEnabled, setTtl, isRunning, getPermissionStatus, getAwareness, getSnapshot, timeOfDay, formatLocalClock, _reset };

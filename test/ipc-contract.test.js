@@ -68,6 +68,18 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /setMousePassthrough/);
 });
 
+test('Given perception settings IPC When validation runs Then source ids and TTL are bounded', () => {
+  assert.deepEqual(validatePayload('perception:set', ['system', { enabled: false, ttlSeconds: 900 }]), {
+    ok: true, data: ['system', { enabled: false, ttlSeconds: 900 }],
+  });
+  assert.deepEqual(validatePayload('perception:clear', ['screen']), { ok: true, data: ['screen'] });
+  assertRejected('perception:set', ['system', { enabled: 'no' }]);
+  assertRejected('perception:set', ['screen', { ttlSeconds: 10 }]);
+  assertRejected('perception:set', ['camera', { enabled: true }]);
+  assertRejected('perception:set', ['system', { enabled: true, command: 'whoami' }]);
+  assertRejected('perception:clear', ['../../secret']);
+});
+
 test('Given chat expansion IPC When validation receives a boolean Then it accepts only that boolean', () => {
   assert.deepEqual(validatePayload('chat:setExpanded', [true]), { ok: true, data: [true] });
   assertRejected('chat:setExpanded', ['true']);

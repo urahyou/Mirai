@@ -41,6 +41,8 @@ const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
 const createCompanionEmotion = require('../services/companion-emotion');
 const initiativeSettings = require('../services/initiative-settings');
+const perceptionSettings = require('../services/perception-settings');
+const createPerceptionManager = require('../services/perception-manager');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
 const createPythonBackend = require('../services/python-backend');
@@ -64,6 +66,7 @@ const memoryVectorIndexer = createMemoryVectorIndexer({ memory: companionMemory,
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
+const perceptionManager = createPerceptionManager({ settings: perceptionSettings, sources: { system: systemSense } });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -147,7 +150,7 @@ mountIpc({
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
   contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
-  initiativeSettings,
+  initiativeSettings, perceptionManager,
 });
 
 // 一次性数据迁移：把旧目录名 haruhana-quest 下的数据搬到当前 userData（Mirai），
@@ -215,6 +218,7 @@ app.whenReady().then(() => {
   // 统一持久化根目录（JSON 起底，schema 见 src/services/storage.js）
   storage.setRuntimeDir(app.getPath('userData'));
   initiativeSettings.init({ storage });
+  perceptionSettings.init({ storage });
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
     const importedMessages = await companionMemory.importMessages(chatHistory.getMessages());
@@ -254,7 +258,7 @@ app.whenReady().then(() => {
   sensing.start();
   // 系统状态感知（P1）：电池/联网/时刻 → 注入对话意识
   systemSense.init();
-  systemSense.start();
+  perceptionManager.start();
   // 启动后异步探测模型最大上下文（不阻塞启动）
   void chat.refreshModelMaxTokens();
   // 启动语音侧车
@@ -282,7 +286,7 @@ app.on('will-quit', () => {
   lifeRoutine.stop(); // 停止生活活动编排
   mindRoutine.stop(); // 停止低频内心活动/夜间梦境编排
   memoryVectorIndexer.stop(); // 停止接收新的可选向量索引任务
-  try { systemSense.stop(); } catch {} // 停系统状态轮询
+  try { perceptionManager.stop(); } catch {} // 停止所有受管感知源
   voiceBridge.stop(); // 退出时回收侧车子进程
   void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程
 });

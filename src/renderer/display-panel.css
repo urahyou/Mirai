@@ -122,6 +122,14 @@
   color: #41343c;
   line-height: 1.4;
 }
+.perception-list { display: grid; gap: 6px; margin-top: 8px; }
+.perception-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+.perception-copy { min-width: 0; display: grid; gap: 2px; }
+.perception-copy strong { font-size: 12px; color: var(--ink); }
+.perception-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.perception-controls select { min-height: 26px; max-width: 104px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
+.perception-controls input { accent-color: var(--mint-deep); }
+.perception-controls .btn:disabled { opacity: .45; cursor: default; }
 .diary-box {
   border-radius: 12px;
   background: #fff;
@@ -167,3 +175,4 @@
 .stat, .diary-box { border-color: var(--line); border-radius: 0; background: rgba(255, 255, 255, .9); }
 .chip { border-radius: 0; background: var(--pink); }
 .sensing-row { border-color: var(--mint-deep); border-radius: 0; background: var(--mint-pale); }
+.perception-item { border-color: var(--line); }

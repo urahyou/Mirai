@@ -76,6 +76,21 @@ function validateDay(args) {
   return args.length === 1 && typeof args[0] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args[0]) ? args : null;
 }
 
+function validatePerceptionPatch(args) {
+  const sources = new Set(['system', 'weather', 'screen']);
+  if (args.length !== 2 || !sources.has(args[0])) return null;
+  const patch = args[1];
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
+  if (!Object.keys(patch).every((key) => key === 'enabled' || key === 'ttlSeconds')) return null;
+  if ('enabled' in patch && typeof patch.enabled !== 'boolean') return null;
+  if ('ttlSeconds' in patch && (typeof patch.ttlSeconds !== 'number' || !Number.isFinite(patch.ttlSeconds) || patch.ttlSeconds < 30 || patch.ttlSeconds > 86400)) return null;
+  return Object.keys(patch).length ? args : null;
+}
+
+function validatePerceptionId(args) {
+  return args.length === 1 && new Set(['system', 'weather', 'screen']).has(args[0]) ? args : null;
+}
+
 function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
@@ -103,6 +118,10 @@ function validatePayload(channel, args, ctx = {}) {
               ? validateMindList(values)
             : channel === 'memory:getDailyJournal'
               ? validateDay(values)
+            : channel === 'perception:set'
+              ? validatePerceptionPatch(values)
+            : channel === 'perception:clear'
+              ? validatePerceptionId(values)
           : channel === 'context:set'
             ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
             : null;

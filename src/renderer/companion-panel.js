@@ -40,14 +40,59 @@ async function renderPetState() {
   } catch {}
 }
 
+function perceptionLabel(item) {
+  if (item.id === 'system') return '系统状态';
+  if (item.id === 'weather') return '天气';
+  if (item.id === 'screen') return '屏幕观察';
+  return item.label || item.id;
+}
+
+function renderPerceptions(items) {
+  const root = $('perceptionList');
+  root.textContent = '';
+  for (const item of Array.isArray(items) ? items : []) {
+    const row = document.createElement('div');
+    row.className = 'perception-item';
+    const text = document.createElement('div');
+    text.className = 'perception-copy';
+    const title = document.createElement('strong');
+    title.textContent = perceptionLabel(item);
+    const meta = document.createElement('span');
+    meta.className = 'hint';
+    meta.textContent = item.available ? (item.stale ? '数据已过期' : (item.hasData ? '数据有效' : '等待首次采集')) : '当前不可用';
+    text.append(title, meta);
+    const controls = document.createElement('div');
+    controls.className = 'perception-controls';
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox'; toggle.checked = Boolean(item.enabled); toggle.disabled = !item.available;
+    toggle.addEventListener('change', async () => {
+      try { await window.desktopPet.perception.set(item.id, { enabled: toggle.checked }); await renderPerceptionSettings(); } catch { toggle.checked = !toggle.checked; }
+    });
+    const ttl = document.createElement('select');
+    for (const [seconds, label] of [[60, '1 分钟'], [300, '5 分钟'], [900, '15 分钟'], [1800, '30 分钟'], [3600, '1 小时'], [86400, '24 小时']]) {
+      const option = document.createElement('option'); option.value = String(seconds); option.textContent = `${label}有效`;
+      ttl.appendChild(option);
+    }
+    ttl.value = String(item.ttlSeconds); ttl.disabled = !item.available;
+    ttl.addEventListener('change', async () => { await window.desktopPet.perception.set(item.id, { ttlSeconds: Number(ttl.value) }); await renderPerceptionSettings(); });
+    const clear = document.createElement('button');
+    clear.className = 'btn tiny ghost'; clear.type = 'button'; clear.textContent = '清除'; clear.disabled = !item.hasData;
+    clear.addEventListener('click', async () => { await window.desktopPet.perception.clear(item.id); await renderPerceptionSettings(); });
+    controls.append(toggle, ttl, clear);
+    row.append(text, controls);
+    root.appendChild(row);
+  }
+}
+
+async function renderPerceptionSettings() {
+  try { renderPerceptions(await window.desktopPet.perception.list()); } catch { renderPerceptions([]); }
+}
+
 async function renderSensing() {
   try {
     const r = await window.desktopPet.systemSense.get();
     if (!r) return;
-    const b = (r.snapshot && r.snapshot.battery) || {};
-    const bits = [r.awareness || '—'];
-    if (typeof b.level === 'number') bits.push(`电量 ${b.level}%（${b.charging ? '充电中' : '使用中'}）`);
-    $('awareLine').textContent = bits.join(' · ');
+    $('awareLine').textContent = r.awareness || '暂无有效感知数据';
   } catch {}
 }
 
@@ -56,8 +101,8 @@ function init() {
   $('dragClose')?.addEventListener('click', () => window.desktopPet.closeCompanionPanel());
   $('backBtn').addEventListener('click', () => { window.desktopPet.closeCompanionPanel(); window.desktopPet.openSettingsCenter(); });
   $('diaryOpenBtn').addEventListener('click', () => window.desktopPet.diary.openPanel());
-  renderPetState(); renderSensing();
-  setInterval(() => { renderPetState(); renderSensing(); }, 5000);
+  renderPetState(); renderSensing(); renderPerceptionSettings();
+  setInterval(() => { renderPetState(); renderSensing(); renderPerceptionSettings(); }, 5000);
 }
 
 init();
