@@ -63,7 +63,7 @@ function validateChatExpanded(args) {
 }
 
 function validateMemoryList(args) {
-  const kinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'profiles', 'edges', 'events']);
+  const kinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'candidates', 'profiles', 'edges', 'events']);
   return args.length === 1 && kinds.has(args[0]) ? args : null;
 }
 

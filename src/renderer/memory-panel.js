@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 let activeKind = 'messages';
 let rows = [];
 let graph = { nodes: [], edges: [] };
-const memoryKinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'edges', 'profiles', 'events']);
+const memoryKinds = new Set(['messages', 'episodes', 'vectors', 'facts', 'candidates', 'edges', 'profiles', 'events']);
 const mindKinds = new Set(['thoughts', 'dreams', 'reflections']);
 function text(value) { return value == null || value === '' ? '—' : String(value); }
 function time(value) { const date = new Date(value); return !value || Number.isNaN(date.valueOf()) ? text(value) : date.toLocaleString('zh-CN', { hour12: false }); }
@@ -35,6 +35,7 @@ function summary(row) {
   if (activeKind === 'episodes') return { title: time(row.createdAt), body: row.content };
   if (activeKind === 'vectors') return { title: `${row.model} · ${row.dimensions} 维`, body: row.content };
   if (activeKind === 'facts') return { title: `${text(row.subjectId)} · ${text(row.predicate)}`, body: row.objectText };
+  if (activeKind === 'candidates') return { title: `${text(row.subjectId)} · ${text(row.predicate)}`, body: `${text(row.objectText)} · ${row.status}` };
   if (activeKind === 'edges') return { title: `${text(row.fromId)} → ${text(row.toId)}`, body: row.predicate };
   if (activeKind === 'profiles') return { title: row.id, body: row.role };
   if (activeKind === 'thoughts') return { title: `${row.kind} · ${time(row.createdAt)}`, body: row.content };
@@ -47,6 +48,7 @@ function detail(row) {
   if (activeKind === 'episodes') return { kicker: '相处片段', title: time(row.createdAt), body: row.content, meta: [['来源', row.source], ['编号', row.id]] };
   if (activeKind === 'vectors') return { kicker: `向量记忆 · ${row.state}`, title: `${row.model} (${row.dimensions} 维)`, body: row.content, meta: [['区块', row.chunkId], ['来源', row.sourceIds?.join(', ')], ['建立时间', time(row.createdAt)]] };
   if (activeKind === 'facts') return { kicker: `事实 · ${row.state}`, title: `${row.subjectId} ${row.predicate}`, body: row.objectText, meta: [['重要度', row.importance], ['置信度', row.confidence], ['来源', row.sourceId]] };
+  if (activeKind === 'candidates') return { kicker: `候选事实 · ${row.status}`, title: `${row.subjectId} ${row.predicate}`, body: row.objectText, meta: [['置信度', row.confidence], ['观察时间', time(row.observedAt)], ['来源 Episode', row.sourceEpisodeId], ['冲突断言', row.conflicts?.join(', ') || '无'], ['提取方式', row.extraction?.method]] };
   if (activeKind === 'edges') return { kicker: `图关系 · ${row.state}`, title: `${row.fromId}  ${row.predicate}  ${row.toId}`, body: '关系必须能追溯到来源片段，图谱本身不产生新的事实。', meta: [['来源', row.sourceId], ['编号', row.id]] };
   if (activeKind === 'profiles') return { kicker: `人格画像 · ${row.role}`, title: row.id, body: json({ core: row.core, learned: row.learned }), meta: [['更新时间', time(row.updatedAt)]] };
   if (activeKind === 'thoughts') return { kicker: `内心活动 · ${row.state}`, title: `${row.kind} · ${time(row.createdAt)}`, body: row.content, meta: [['确定性', row.certainty], ['情绪快照', json(row.emotion)], ['来源', row.sourceIds?.join(', ')], ['过期时间', time(row.expiresAt)]] };
