@@ -109,6 +109,7 @@ test('Given the diary and memory readers When they are inspected Then they are s
   assert.doesNotMatch(html, /diaryList|diaryView|日记册/);
   assert.match(html, /id="memoryList"/);
   assert.match(html, /data-kind="vectors"/);
+  assert.match(html, /data-kind="candidates"/);
   assert.match(html, /data-kind="graph"/);
   assert.match(html, /data-kind="thoughts"/);
   assert.match(script, /memory\.list\(kind\)/);
