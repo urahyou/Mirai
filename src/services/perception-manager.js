@@ -46,7 +46,8 @@ module.exports = function createPerceptionManager({ settings, sources = {}, now 
   }
 
   function set(id, patch) {
-    if (patch?.enabled === true && !known.has(id)) throw new Error('感知来源当前不可用');
+    const source = known.get(id);
+    if (patch?.enabled === true && (!source || source.getPermissionStatus?.() === 'not-configured')) throw new Error('感知来源当前不可用');
     settings.setSource(id, patch);
     return apply(id);
   }

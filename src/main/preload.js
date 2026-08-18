@@ -156,6 +156,10 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
     set: (id, patch) => ipcRenderer.invoke('perception:set', id, patch),
     clear: (id) => ipcRenderer.invoke('perception:clear', id),
   }),
+  weather: Object.freeze({
+    get: () => ipcRenderer.invoke('weather:get'),
+    set: (patch) => ipcRenderer.invoke('weather:set', patch),
+  }),
   voiceSettings: Object.freeze({
     get: () => ipcRenderer.invoke('voiceSettings:get'),
     set: (patch) => ipcRenderer.invoke('voiceSettings:set', patch),

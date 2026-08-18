@@ -91,6 +91,16 @@ function validatePerceptionId(args) {
   return args.length === 1 && new Set(['system', 'weather', 'screen']).has(args[0]) ? args : null;
 }
 
+function validateWeatherPatch(args) {
+  if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
+  const patch = args[0];
+  if (!Object.keys(patch).every((key) => key === 'latitude' || key === 'longitude')) return null;
+  for (const [key, minimum, maximum] of [['latitude', -90, 90], ['longitude', -180, 180]]) {
+    if (key in patch && patch[key] !== null && (typeof patch[key] !== 'number' || !Number.isFinite(patch[key]) || patch[key] < minimum || patch[key] > maximum)) return null;
+  }
+  return Object.keys(patch).length ? args : null;
+}
+
 function validateContextSettingsPatch(args, upper = 131072) {
   if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) return null;
   const patch = args[0];
@@ -122,6 +132,8 @@ function validatePayload(channel, args, ctx = {}) {
               ? validatePerceptionPatch(values)
             : channel === 'perception:clear'
               ? validatePerceptionId(values)
+            : channel === 'weather:set'
+              ? validateWeatherPatch(values)
           : channel === 'context:set'
             ? validateContextSettingsPatch(values, ctx.contextMaxTokens)
             : null;

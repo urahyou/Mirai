@@ -80,6 +80,18 @@ test('Given perception settings IPC When validation runs Then source ids and TTL
   assertRejected('perception:clear', ['../../secret']);
 });
 
+test('Given weather location IPC When validation runs Then coordinates remain bounded', () => {
+  assert.deepEqual(validatePayload('weather:set', [{ latitude: 31.2304, longitude: 121.4737 }]), {
+    ok: true, data: [{ latitude: 31.2304, longitude: 121.4737 }],
+  });
+  assertRejected('weather:set', [{ latitude: 91 }]);
+  assertRejected('weather:set', [{ longitude: '121.4737' }]);
+  assert.deepEqual(validatePayload('weather:set', [{ latitude: null, longitude: null }]), {
+    ok: true, data: [{ latitude: null, longitude: null }],
+  });
+  assertRejected('weather:set', [{ city: 'Shanghai' }]);
+});
+
 test('Given chat expansion IPC When validation receives a boolean Then it accepts only that boolean', () => {
   assert.deepEqual(validatePayload('chat:setExpanded', [true]), { ok: true, data: [true] });
   assertRejected('chat:setExpanded', ['true']);

@@ -42,6 +42,7 @@ const createCompanionLife = require('../services/companion-life');
 const createCompanionEmotion = require('../services/companion-emotion');
 const initiativeSettings = require('../services/initiative-settings');
 const perceptionSettings = require('../services/perception-settings');
+const weatherSettings = require('../services/weather-settings');
 const createPerceptionManager = require('../services/perception-manager');
 const storage = require('../services/storage');
 const { createEventBus } = require('../services/event-bus');
@@ -52,6 +53,7 @@ const sensing = require('../systems/sensing');
 const lifeRoutine = require('../systems/life-routine');
 const mindRoutine = require('../systems/mind-routine');
 const systemSense = require('../systems/system-sense');
+const createWeatherSense = require('../systems/weather-sense');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
@@ -66,7 +68,8 @@ const memoryVectorIndexer = createMemoryVectorIndexer({ memory: companionMemory,
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
-const perceptionManager = createPerceptionManager({ settings: perceptionSettings, sources: { system: systemSense } });
+const weatherSense = createWeatherSense({ settings: weatherSettings });
+const perceptionManager = createPerceptionManager({ settings: perceptionSettings, sources: { system: systemSense, weather: weatherSense } });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -130,7 +133,9 @@ const chat = createChat({
   petState: companionPetState,
   lifeState: companionLife,
   emotionState: companionEmotion,
-  systemSense,
+  systemSense: {
+    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness()].filter(Boolean).join('\n'),
+  },
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
     openChatInputWindow: windows.openChatInputWindow,
@@ -149,8 +154,12 @@ mountIpc({
   ipcMain, app, BrowserWindow,
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
-  contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing, systemSense,
-  initiativeSettings, perceptionManager,
+  contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing,
+  initiativeSettings, perceptionManager, weatherSettings, weatherSense,
+  systemSense: {
+    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness()].filter(Boolean).join('\n'),
+    getSnapshot: () => ({ ...systemSense.getSnapshot(), weather: weatherSense.getSnapshot() }),
+  },
 });
 
 // 一次性数据迁移：把旧目录名 haruhana-quest 下的数据搬到当前 userData（Mirai），
@@ -219,6 +228,7 @@ app.whenReady().then(() => {
   storage.setRuntimeDir(app.getPath('userData'));
   initiativeSettings.init({ storage });
   perceptionSettings.init({ storage });
+  weatherSettings.init({ storage });
   // Core 后台启动失败只降级自主能力，不能阻塞桌宠窗口与普通聊天。
   void pythonBackend.start({ dataDir: app.getPath('userData') }).then(async () => {
     const importedMessages = await companionMemory.importMessages(chatHistory.getMessages());

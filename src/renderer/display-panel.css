@@ -130,6 +130,8 @@
 .perception-controls select { min-height: 26px; max-width: 104px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
 .perception-controls input { accent-color: var(--mint-deep); }
 .perception-controls .btn:disabled { opacity: .45; cursor: default; }
+.weather-location { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin: -2px 0 5px; }
+.weather-location input { width: 82px; min-height: 26px; padding: 2px 5px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
 .diary-box {
   border-radius: 12px;
   background: #fff;

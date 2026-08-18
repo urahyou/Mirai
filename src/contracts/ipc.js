@@ -79,6 +79,8 @@ module.exports = {
   PerceptionList: 'perception:list',
   PerceptionSet: 'perception:set',
   PerceptionClear: 'perception:clear',
+  WeatherGet: 'weather:get',
+  WeatherSet: 'weather:set',
   InitiativeGet: 'initiative:get',
   InitiativeSet: 'initiative:set',
 

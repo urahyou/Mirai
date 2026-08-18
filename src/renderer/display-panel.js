@@ -132,11 +132,7 @@ async function renderSensing() {
   try {
     const r = await window.desktopPet.systemSense.get();
     if (!r) return;
-    const snap = r.snapshot || {};
-    const b = snap.battery || {};
-    const bits = [r.awareness || '—'];
-    if (typeof b.level === 'number') bits.push(`电量 ${b.level}%（${b.charging ? '充电中' : '使用中'}）`);
-    $('awareLine').textContent = bits.join(' · ');
+    $('awareLine').textContent = r.awareness || '暂无有效感知数据';
   } catch { /* 保持占位 */ }
 }
 

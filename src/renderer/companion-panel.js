@@ -47,6 +47,33 @@ function perceptionLabel(item) {
   return item.label || item.id;
 }
 
+function weatherLocationControls(item) {
+  const row = document.createElement('div');
+  row.className = 'weather-location';
+  const latitude = document.createElement('input');
+  latitude.type = 'number'; latitude.step = '0.0001'; latitude.placeholder = '纬度'; latitude.min = '-90'; latitude.max = '90';
+  const longitude = document.createElement('input');
+  longitude.type = 'number'; longitude.step = '0.0001'; longitude.placeholder = '经度'; longitude.min = '-180'; longitude.max = '180';
+  const save = document.createElement('button');
+  save.className = 'btn tiny ghost'; save.type = 'button'; save.textContent = '保存位置';
+  const clear = document.createElement('button');
+  clear.className = 'btn tiny ghost'; clear.type = 'button'; clear.textContent = '清除位置';
+  window.desktopPet.weather.get().then((value) => {
+    if (typeof value?.latitude === 'number') latitude.value = String(value.latitude);
+    if (typeof value?.longitude === 'number') longitude.value = String(value.longitude);
+  }).catch(() => {});
+  save.addEventListener('click', async () => {
+    if (!latitude.value.trim() || !longitude.value.trim()) return;
+    const patch = { latitude: Number(latitude.value), longitude: Number(longitude.value) };
+    try { await window.desktopPet.weather.set(patch); await renderPerceptionSettings(); } catch {}
+  });
+  clear.addEventListener('click', async () => {
+    try { await window.desktopPet.weather.set({ latitude: null, longitude: null }); await renderPerceptionSettings(); } catch {}
+  });
+  row.append(latitude, longitude, save, clear);
+  return row;
+}
+
 function renderPerceptions(items) {
   const root = $('perceptionList');
   root.textContent = '';
@@ -59,12 +86,13 @@ function renderPerceptions(items) {
     title.textContent = perceptionLabel(item);
     const meta = document.createElement('span');
     meta.className = 'hint';
-    meta.textContent = item.available ? (item.stale ? '数据已过期' : (item.hasData ? '数据有效' : '等待首次采集')) : '当前不可用';
+    meta.textContent = item.permission === 'not-configured' ? '需先填写位置' : (item.available ? (item.stale ? '数据已过期' : (item.hasData ? '数据有效' : '等待首次采集')) : '当前不可用');
     text.append(title, meta);
     const controls = document.createElement('div');
     controls.className = 'perception-controls';
     const toggle = document.createElement('input');
-    toggle.type = 'checkbox'; toggle.checked = Boolean(item.enabled); toggle.disabled = !item.available;
+    const unavailable = !item.available || item.permission === 'not-configured';
+    toggle.type = 'checkbox'; toggle.checked = Boolean(item.enabled); toggle.disabled = unavailable;
     toggle.addEventListener('change', async () => {
       try { await window.desktopPet.perception.set(item.id, { enabled: toggle.checked }); await renderPerceptionSettings(); } catch { toggle.checked = !toggle.checked; }
     });
@@ -73,7 +101,7 @@ function renderPerceptions(items) {
       const option = document.createElement('option'); option.value = String(seconds); option.textContent = `${label}有效`;
       ttl.appendChild(option);
     }
-    ttl.value = String(item.ttlSeconds); ttl.disabled = !item.available;
+    ttl.value = String(item.ttlSeconds); ttl.disabled = unavailable;
     ttl.addEventListener('change', async () => { await window.desktopPet.perception.set(item.id, { ttlSeconds: Number(ttl.value) }); await renderPerceptionSettings(); });
     const clear = document.createElement('button');
     clear.className = 'btn tiny ghost'; clear.type = 'button'; clear.textContent = '清除'; clear.disabled = !item.hasData;
@@ -81,6 +109,7 @@ function renderPerceptions(items) {
     controls.append(toggle, ttl, clear);
     row.append(text, controls);
     root.appendChild(row);
+    if (item.id === 'weather') root.appendChild(weatherLocationControls(item));
   }
 }
 
