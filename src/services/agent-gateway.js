@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getCapability, RISK } = require('../contracts/agent');
+const E = require('../contracts/events');
 
 const MAX_TASKS = 100;
 const MAX_SNAPSHOT_BYTES = 16 * 1024;
@@ -110,11 +111,11 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     const provider = providerMap.get(task.provider);
     if (!provider || typeof provider.execute !== 'function') {
       task.state = 'failed'; task.error = '执行 Provider 不可用'; task.updatedAt = timestamp();
-      record('agent.execution.failed', task, task.error);
+      record(E.AGENT.EXECUTION_FAILED, task, task.error);
       return publicTask(task);
     }
     task.state = 'running'; task.updatedAt = timestamp();
-    record('agent.execution.started', task);
+    record(E.AGENT.EXECUTION_STARTED, task);
     let controller = null;
     try {
       controller = new AbortController();
@@ -132,11 +133,11 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
       const normalized = normalizeResult(result, task);
       task.result = normalized;
       task.state = 'completed'; task.updatedAt = timestamp();
-      record('agent.execution.completed', task);
+      record(E.AGENT.EXECUTION_COMPLETED, task);
     } catch (error) {
       const timedOut = controller?.signal?.aborted;
       task.state = 'failed'; task.error = timedOut ? '执行超时' : 'Provider 执行失败'; task.updatedAt = timestamp();
-      record('agent.execution.failed', task, task.error);
+      record(E.AGENT.EXECUTION_FAILED, task, task.error);
     }
     return publicTask(task);
   }
@@ -160,15 +161,15 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
       createdAt: timestamp(), updatedAt: timestamp(),
     };
     remember(task);
-    record('agent.task.proposed', task);
+    record(E.AGENT.TASK_PROPOSED, task);
     if (capability.risk === RISK.FORBIDDEN) {
       task.state = 'blocked'; task.error = '该能力被安全策略禁止'; task.updatedAt = timestamp();
-      record('agent.task.blocked', task, task.error);
+      record(E.AGENT.TASK_BLOCKED, task, task.error);
       return publicTask(task);
     }
     if (task.requiresApproval) {
       task.state = 'pending-approval'; task.updatedAt = timestamp();
-      record('agent.approval.required', task);
+      record(E.AGENT.APPROVAL_REQUIRED, task);
       return publicTask(task);
     }
     return execute(task);
@@ -179,7 +180,7 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     if (!task) throw new TypeError('Agent 任务不存在');
     if (task.state !== 'pending-approval') throw new Error('Agent 任务当前不可审批');
     task.state = 'approved'; task.updatedAt = timestamp();
-    record('agent.approval.granted', task);
+    record(E.AGENT.APPROVAL_GRANTED, task);
     return execute(task);
   }
 
@@ -188,7 +189,7 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     if (!task) throw new TypeError('Agent 任务不存在');
     if (task.state !== 'pending-approval') throw new Error('Agent 任务当前不可拒绝');
     task.state = 'rejected'; task.error = String(reason || 'user-rejected').slice(0, 300); task.updatedAt = timestamp();
-    record('agent.approval.rejected', task, task.error);
+    record(E.AGENT.APPROVAL_REJECTED, task, task.error);
     return publicTask(task);
   }
 

@@ -23,7 +23,7 @@ Electron 桌宠「小未来」——类似伪春菜 (Ukagaka) 的透明悬浮桌
   - `src/contracts/ipc.js` IPC 通道常量**单一事实源**（68 通道）；preload 因渲染沙箱无法 require 本地文件仍以字符串暴露，一致性由 `test/ipc-contract.test.js` 双向断言守住（并守卫 main.js 不再直接注册 IPC）
   - `src/services/dotenv.js` `.env` 解析/读写**唯一实现**（generic/sidecar-env/voice-bridge 均委托它；写策略=改已有 `KEY=` 行、追加新键、保留注释）
   - **自主体地基（P0）**：`src/services/storage.js` 统一 JSON 持久化（多 key、schema 版本+迁移、原子写、坏文件回退；各领域系统经它读写，勿再散落 JSON）；`src/services/event-bus.js` 事件总线（感知源仅 emit、系统仅 on，事件类型单源见 `src/contracts/events.js`）；`src/services/perception-settings.js` + `perception-manager.js` 统一管理感知源开关、敏感级别、TTL、权限状态与清除，采集器不得自行绕过；天气实现位于 `src/systems/weather-sense.js`，仅本地位置配置且显式开启时联网；屏幕实现位于 `src/systems/screen-sense.js`，只输出脱敏活动类别，绝不长期保存原始应用名/窗口内容。设计蓝图见 `docs/自主桌宠架构与路线图.md`
-  - **Agent 安全内核**：`src/contracts/agent.js` 是能力/风险单源，`src/services/agent-gateway.js` 只向 Provider 下发最小快照并强制审批状态机，`agent-audit.js` 只记录有界元数据。任何 Provider 都不得绕过 Gateway 或直接写领域状态。
+  - **Agent 安全内核**：`src/contracts/agent.js` 是能力/风险单源，`src/services/agent-gateway.js` 只向 Provider 下发最小快照并强制审批状态机，`agent-audit.js` 只记录有界元数据。任何 Provider 都不得绕过 Gateway 或直接写领域状态。Pi Provider 在 `src/services/pi-execution-provider.js`，每任务独立 RPC 子进程且只加载 `scripts/agent/mirai-proposal.ts`；不得恢复内置 bash/edit/write 或继承项目密钥环境变量。
 - 渲染进程 `src/renderer/`：纯 Live2D 角色 Canvas、气泡、拖拽、**右键 HTML 菜单**（托盘已移除，勿再加 Tray）
 - 安全桥接 `src/main/preload.js`：所有 IPC 经 `desktopPet.*` 暴露，渲染进程不直接 require。
 

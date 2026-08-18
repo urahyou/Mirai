@@ -11,6 +11,18 @@ module.exports = Object.freeze({
     ACTIVITY_COMPLETED: 'life:activity_completed',
   }),
 
+  // —— Agent Gateway（只记录审批与执行元数据，不含任务快照）——
+  AGENT: Object.freeze({
+    TASK_PROPOSED: 'agent.task.proposed',
+    TASK_BLOCKED: 'agent.task.blocked',
+    APPROVAL_REQUIRED: 'agent.approval.required',
+    APPROVAL_GRANTED: 'agent.approval.granted',
+    APPROVAL_REJECTED: 'agent.approval.rejected',
+    EXECUTION_STARTED: 'agent.execution.started',
+    EXECUTION_COMPLETED: 'agent.execution.completed',
+    EXECUTION_FAILED: 'agent.execution.failed',
+  }),
+
   // —— pet 状态系统（pet-state）——
   // 状态触发事件（deltas 表 key，见 src/systems/pet-state.js 的 DELTAS）
   PET: Object.freeze({

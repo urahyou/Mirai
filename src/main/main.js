@@ -37,6 +37,9 @@ const contextSettings = require('../services/context-budget');
 const createCompanionMemory = require('../services/companion-memory');
 const createEmbeddingAdapter = require('../services/embedding-adapter');
 const createMemoryVectorIndexer = require('../services/memory-vector-indexer');
+const createAgentAudit = require('../services/agent-audit');
+const createAgentGateway = require('../services/agent-gateway');
+const createPiExecutionProvider = require('../services/pi-execution-provider');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
 const createCompanionEmotion = require('../services/companion-emotion');
@@ -66,6 +69,20 @@ const pythonBackend = createPythonBackend();
 const embeddingAdapter = createEmbeddingAdapter();
 const companionMemory = createCompanionMemory({ pythonBackend, embedding: embeddingAdapter });
 const memoryVectorIndexer = createMemoryVectorIndexer({ memory: companionMemory, embedding: embeddingAdapter });
+const piExecutionProvider = createPiExecutionProvider();
+const agentAudit = createAgentAudit({
+  onRecord: (entry) => {
+    if (!pythonBackend.getStatus().ready) return;
+    return pythonBackend.ingest({
+      type: entry.type, occurredAt: entry.occurredAt, source: 'node.agent-gateway', privacy: 'local-only',
+      payload: {
+        auditId: entry.id, taskId: entry.taskId, capability: entry.capability,
+        state: entry.state, reason: entry.reason, provider: entry.provider,
+      },
+    }).catch(() => {});
+  },
+});
+const agentGateway = createAgentGateway({ providers: { pi: piExecutionProvider }, audit: agentAudit });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
@@ -158,6 +175,7 @@ mountIpc({
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
   contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing,
   initiativeSettings, perceptionManager, weatherSettings, weatherSense, screenSense,
+  agentGateway, agentAudit, piExecutionProvider,
   systemSense: {
     getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness(), screenSense.getAwareness()].filter(Boolean).join('\n'),
     getSnapshot: () => ({ ...systemSense.getSnapshot(), weather: weatherSense.getSnapshot(), screen: screenSense.getSnapshot() }),
