@@ -300,7 +300,8 @@ test('Given the debug panel When inspected Then it reads runtime entries without
   const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'debug-panel.js'), 'utf8');
   assert.match(html, /id="entryList"/);
   assert.match(script, /debug\.getEntries\(\)/);
-  assert.match(script, /textContent = JSON\.stringify/);
+  assert.match(script, /message-text/);
+  assert.match(script, /message\?\.content/);
   assert.doesNotMatch(script, /innerHTML/);
 });
 
