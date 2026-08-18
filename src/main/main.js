@@ -54,6 +54,7 @@ const lifeRoutine = require('../systems/life-routine');
 const mindRoutine = require('../systems/mind-routine');
 const systemSense = require('../systems/system-sense');
 const createWeatherSense = require('../systems/weather-sense');
+const createScreenSense = require('../systems/screen-sense');
 const { probeMaxContext } = require('../services/model-context');
 const voiceBridge = require('./voice-bridge');
 const createPanels = require('./panel');
@@ -69,7 +70,8 @@ const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petSt
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
 const weatherSense = createWeatherSense({ settings: weatherSettings });
-const perceptionManager = createPerceptionManager({ settings: perceptionSettings, sources: { system: systemSense, weather: weatherSense } });
+const screenSense = createScreenSense();
+const perceptionManager = createPerceptionManager({ settings: perceptionSettings, sources: { system: systemSense, weather: weatherSense, screen: screenSense } });
 let stopPythonEventMirror = null;
 const createVoice = require('./voice');
 const createBalloons = require('./balloon');
@@ -134,7 +136,7 @@ const chat = createChat({
   lifeState: companionLife,
   emotionState: companionEmotion,
   systemSense: {
-    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness()].filter(Boolean).join('\n'),
+    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness(), screenSense.getAwareness()].filter(Boolean).join('\n'),
   },
   sendToChatInput: windows.sendToChatInput,
   windowOps: {
@@ -155,10 +157,10 @@ mountIpc({
   state, windows, panels, voice, chat, balloons,
   generic, personalityConfig, personalityRuntime, displaySettings, voiceEnv,
   contextSettings, companionMemory, voiceBridge, eventBus, storage, petState: companionPetState, sensing,
-  initiativeSettings, perceptionManager, weatherSettings, weatherSense,
+  initiativeSettings, perceptionManager, weatherSettings, weatherSense, screenSense,
   systemSense: {
-    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness()].filter(Boolean).join('\n'),
-    getSnapshot: () => ({ ...systemSense.getSnapshot(), weather: weatherSense.getSnapshot() }),
+    getAwareness: () => [systemSense.getAwareness(), weatherSense.getAwareness(), screenSense.getAwareness()].filter(Boolean).join('\n'),
+    getSnapshot: () => ({ ...systemSense.getSnapshot(), weather: weatherSense.getSnapshot(), screen: screenSense.getSnapshot() }),
   },
 });
 

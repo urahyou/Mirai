@@ -11,7 +11,7 @@ module.exports = function createPerceptionManager({ settings, sources = {}, now 
     const stale = expiresAt !== null && expiresAt <= now();
     return {
       ...policy,
-      available: Boolean(source),
+      available: Boolean(source && (source.isAvailable?.() ?? true)),
       running: Boolean(source?.isRunning?.()),
       permission: source?.getPermissionStatus?.() || (source ? 'granted' : 'unavailable'),
       updatedAt,
@@ -42,12 +42,15 @@ module.exports = function createPerceptionManager({ settings, sources = {}, now 
   }
 
   function stop() {
-    for (const source of known.values()) source.stop?.();
+    for (const source of known.values()) {
+      source.setEnabled?.(false);
+      source.stop?.();
+    }
   }
 
   function set(id, patch) {
     const source = known.get(id);
-    if (patch?.enabled === true && (!source || source.getPermissionStatus?.() === 'not-configured')) throw new Error('感知来源当前不可用');
+    if (patch?.enabled === true && (!source || source.isAvailable?.() === false || source.getPermissionStatus?.() === 'not-configured')) throw new Error('感知来源当前不可用');
     settings.setSource(id, patch);
     return apply(id);
   }

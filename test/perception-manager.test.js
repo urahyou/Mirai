@@ -33,6 +33,8 @@ test('perception manager applies policy, reports TTL, and clears source data', (
   manager.set('system', { enabled: false });
   assert.equal(calls.at(-2)[0], 'enabled');
   assert.equal(calls.at(-1)[0], 'stop');
+  manager.stop();
+  assert.deepEqual(calls.slice(-2), [['enabled', false], ['stop']]);
 });
 
 test('perception manager reports unavailable registered policy without starting it', () => {
