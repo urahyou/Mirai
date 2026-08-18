@@ -67,6 +67,10 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
             result = {"results": core.memory_search(params.get("query"))}
         elif method == "memory.retrieve":
             result = core.memory_retrieve(params.get("query"), params.get("limit", 8), params.get("currentAt"))
+        elif method == "memory.vector_upsert":
+            result = {"vector": core.memory_vector_upsert(params.get("item"))}
+        elif method == "memory.vector_search":
+            result = core.memory_vector_search(params.get("vector"), params.get("model"), params.get("limit", 8), params.get("currentAt"))
         elif method == "memory.import_messages":
             result = {"inserted": core.memory_import_messages(params.get("messages"))}
         elif method == "memory.list":

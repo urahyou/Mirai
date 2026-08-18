@@ -28,6 +28,33 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       };
     } catch { return emptyFrame(normalizedQuery, capacity); }
   }
+  async function upsertVector(item) {
+    if (!pythonBackend.getStatus().ready) return null;
+    try {
+      const result = await pythonBackend.request('memory.vector_upsert', { item });
+      return result?.vector || null;
+    } catch { return null; }
+  }
+  async function searchVectors(vector, model, limit = 8) {
+    const capacity = Math.max(1, Math.min(12, Number.parseInt(limit, 10) || 8));
+    if (!pythonBackend.getStatus().ready || !Array.isArray(vector) || typeof model !== 'string' || !model.trim()) {
+      return { model: String(model || ''), dimensions: Array.isArray(vector) ? vector.length : 0, capacity, scanned: 0, items: [] };
+    }
+    try {
+      const result = await pythonBackend.request('memory.vector_search', {
+        vector, model: model.trim().slice(0, 160), limit: capacity, currentAt: new Date().toISOString(),
+      });
+      return {
+        model: typeof result?.model === 'string' ? result.model : model,
+        dimensions: Number.isFinite(result?.dimensions) ? result.dimensions : vector.length,
+        capacity: Number.isFinite(result?.capacity) ? result.capacity : capacity,
+        scanned: Number.isFinite(result?.scanned) ? result.scanned : 0,
+        items: Array.isArray(result?.items) ? result.items.slice(0, capacity) : [],
+      };
+    } catch {
+      return { model, dimensions: vector.length, capacity, scanned: 0, items: [] };
+    }
+  }
   async function createEpisode(episode) {
     if (!pythonBackend.getStatus().ready) return false;
     try {
@@ -197,5 +224,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       }),
     ].join('\n').slice(0, 4400);
   }
-  return { search, retrieve, createEpisode, importMessages, archivePending, extractCandidates, listCandidates, reviewCandidate, forgetSource, eraseSource, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, retrieve, upsertVector, searchVectors, createEpisode, importMessages, archivePending, extractCandidates, listCandidates, reviewCandidate, forgetSource, eraseSource, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

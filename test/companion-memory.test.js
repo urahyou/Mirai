@@ -14,6 +14,10 @@ test('Companion Core is the only memory backend when unavailable', async () => {
     query: '旧服务不能回退', capacity: 8, items: [], channels: { keyword: 0, graph: 0, vector: 0 },
   });
   assert.equal(await memory.createEpisode({ summary: '测试' }), false);
+  assert.equal(await memory.upsertVector({ chunkId: 'episode:1' }), null);
+  assert.deepEqual(await memory.searchVectors([1, 0], 'test-model'), {
+    model: 'test-model', dimensions: 2, capacity: 8, scanned: 0, items: [],
+  });
   assert.equal((await memory.getStatus()).backend, 'python-core');
 });
 
@@ -78,6 +82,29 @@ test('Companion memory retrieves a bounded frame and renders safe context', asyn
   });
   assert.ok(oversized.length <= 4400);
   assert.equal((oversized.match(/\[相处片段\]/g) || []).length, 6);
+});
+
+test('Companion memory exposes caller-provided vector upsert and bounded search', async () => {
+  const calls = [];
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        calls.push([method, params]);
+        if (method === 'memory.vector_upsert') return { vector: { id: 'vector:1', dimensions: 3 } };
+        return { model: params.model, dimensions: 3, capacity: params.limit, scanned: 2, items: [{ id: 'vector:1', score: 1 }] };
+      },
+    },
+  });
+  assert.equal((await memory.upsertVector({ chunkId: 'episode:1', vector: [1, 0, 0] })).id, 'vector:1');
+  const result = await memory.searchVectors([1, 0, 0], ' local-test ', 50);
+  assert.equal(result.capacity, 12);
+  assert.equal(result.items[0].id, 'vector:1');
+  assert.equal(calls[0][0], 'memory.vector_upsert');
+  assert.equal(calls[1][0], 'memory.vector_search');
+  assert.equal(calls[1][1].model, 'local-test');
+  assert.equal(calls[1][1].limit, 12);
+  assert.match(calls[1][1].currentAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test('Companion memory archives pending canonical messages through Python Core', async () => {

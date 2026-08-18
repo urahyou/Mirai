@@ -188,11 +188,15 @@ class CompanionCoreTest(unittest.TestCase):
             legacy.close()
 
             store = MemoryStore(database)
-            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 5)
             self.assertEqual(store.list_facts()[0]["id"], "fact:legacy")
             self.assertEqual(store.list_edges()[0]["id"], "edge:legacy")
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
             self.assertEqual(store.db.execute("SELECT kind FROM entities WHERE id='character:mirai'").fetchone()[0], "character")
+            vector_columns = {row["name"] for row in store.db.execute("PRAGMA table_info(memory_vectors)").fetchall()}
+            self.assertTrue({"valid_from", "valid_to", "updated_at"}.issubset(vector_columns))
+            vector_indexes = {row["name"] for row in store.db.execute("PRAGMA index_list(memory_vectors)").fetchall()}
+            self.assertIn("vector_search", vector_indexes)
             episode = store.list_episodes()[0]
             self.assertEqual(episode["summary"], "主人喜欢旧网页")
             self.assertEqual(episode["recallState"], "archived")
@@ -417,6 +421,77 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(response["result"]["capacity"], 2)
             with self.assertRaisesRegex(CoreError, "非空"):
                 core.memory_retrieve("   ")
+
+    def test_pluggable_vectors_are_bounded_and_lifecycle_aware(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_add_episode([{"role": "user", "content": "主人喜欢草莓蛋糕"}], "2026-08-17T08:00:00Z")
+            source_id = core.memory_search("草莓蛋糕")[0]["id"]
+            first = core.memory_vector_upsert({
+                "chunkId": source_id, "model": "test-embedding-v1", "content": "草莓蛋糕相处片段",
+                "vector": [1, 0, 0], "sourceIds": [source_id],
+                "validFrom": "2026-08-01T00:00:00Z", "validTo": "2026-09-01T00:00:00Z",
+            })
+            second = core.memory_vector_upsert({
+                "chunkId": "chunk:dessert", "model": "test-embedding-v1", "content": "一起吃甜点",
+                "vector": [0.8, 0.2, 0], "sourceIds": [source_id],
+            })
+            archived = core.memory_vector_upsert({
+                "chunkId": "chunk:archived", "model": "test-embedding-v1", "content": "已归档向量",
+                "vector": [1, 0, 0], "sourceIds": [source_id], "state": "archived",
+            })
+            future = core.memory_vector_upsert({
+                "chunkId": "chunk:future", "model": "test-embedding-v1", "content": "未来向量",
+                "vector": [1, 0, 0], "sourceIds": [source_id], "validFrom": "2026-09-01T00:00:00Z",
+            })
+            expired = core.memory_vector_upsert({
+                "chunkId": "chunk:expired", "model": "test-embedding-v1", "content": "过期向量",
+                "vector": [1, 0, 0], "sourceIds": [source_id], "validTo": "2026-08-01T00:00:00Z",
+            })
+            old_fact = core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "草莓蛋糕",
+                "validFrom": "2026-08-01T00:00:00Z", "sourceId": source_id,
+            })
+            old_fact_vector = core.memory_vector_upsert({
+                "chunkId": old_fact["id"], "model": "test-embedding-v1", "content": "主人喜欢草莓蛋糕",
+                "vector": [1, 0, 0], "sourceIds": [source_id],
+            })
+            core.memory_upsert_fact({
+                "subjectId": "owner:default", "predicate": "likes", "objectText": "红茶",
+                "validFrom": "2026-08-10T00:00:00Z", "sourceId": source_id, "supersedesId": old_fact["id"],
+            })
+
+            frame = core.memory_vector_search([1, 0, 0], "test-embedding-v1", 99, "2026-08-18T00:00:00Z")
+            item_ids = [item["id"] for item in frame["items"]]
+            self.assertEqual(frame["capacity"], 12)
+            self.assertEqual(item_ids, [first["id"], second["id"]])
+            self.assertNotIn(archived["id"], item_ids)
+            self.assertNotIn(future["id"], item_ids)
+            self.assertNotIn(expired["id"], item_ids)
+            self.assertNotIn(old_fact_vector["id"], item_ids)
+            self.assertGreater(frame["items"][0]["score"], frame["items"][1]["score"])
+            self.assertAlmostEqual(core.memory._cosine_similarity([1e308, 1e308], [1e308, 1e308]), 1.0)
+            self.assertEqual(core.memory_vector_search([1, 0], "test-embedding-v1")["items"], [])
+            self.assertEqual(core.memory_vector_search([1, 0, 0], "other-model")["items"], [])
+            self.assertNotIn("vector_json", core.memory_list("vectors")[0].keys())
+
+            response, should_stop = handle_request(core, {
+                "id": "vector:search", "method": "memory.vector_search",
+                "params": {"vector": [1, 0, 0], "model": "test-embedding-v1", "limit": 1, "currentAt": "2026-08-18T00:00:00Z"},
+            })
+            self.assertTrue(response["ok"])
+            self.assertFalse(should_stop)
+            self.assertEqual(response["result"]["capacity"], 1)
+            self.assertEqual(core.memory_forget_source(source_id), 2)
+            self.assertEqual(core.memory_vector_search([1, 0, 0], "test-embedding-v1", 8, "2026-08-18T00:00:00Z")["items"], [])
+
+            with self.assertRaisesRegex(CoreError, "零向量"):
+                core.memory_vector_search([0, 0, 0], "test-embedding-v1")
+            with self.assertRaisesRegex(CoreError, "不存在"):
+                core.memory_vector_upsert({
+                    "chunkId": "missing", "model": "test", "content": "无来源",
+                    "vector": [1], "sourceIds": ["episode:missing"],
+                })
 
     def test_life_state_advances_offline_and_performs_virtual_activity(self):
         with tempfile.TemporaryDirectory() as directory:

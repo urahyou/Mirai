@@ -1,12 +1,15 @@
 """本地分层记忆 SQLite 仓储。只用标准库，不依赖图数据库或向量服务。"""
 from __future__ import annotations
-import json, re, sqlite3, uuid
+import json, math, re, sqlite3, uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 class MemoryStore:
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
+    VECTOR_MAX_DIMENSIONS = 4096
+    VECTOR_SCAN_LIMIT = 1000
+    VECTOR_RESULT_LIMIT = 12
 
     def __init__(self, file: Path) -> None:
         self.db = sqlite3.connect(file)
@@ -53,6 +56,40 @@ class MemoryStore:
             version = 3
         if version < 4:
             self._migrate_v4()
+            version = 4
+        if version < 5:
+            self._migrate_v5()
+
+    def _migrate_v5(self) -> None:
+        with self.db:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS memory_vectors(
+                id TEXT PRIMARY KEY,
+                chunk_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                dimensions INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                vector_json TEXT NOT NULL,
+                source_ids_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'active',
+                valid_from TEXT,
+                valid_to TEXT,
+                updated_at TEXT
+            )""")
+            columns = {row["name"] for row in self.db.execute("PRAGMA table_info(memory_vectors)").fetchall()}
+            additions = {
+                "valid_from": "TEXT",
+                "valid_to": "TEXT",
+                "updated_at": "TEXT",
+            }
+            for name, definition in additions.items():
+                if name not in columns:
+                    self.db.execute(f"ALTER TABLE memory_vectors ADD COLUMN {name} {definition}")
+            self.db.execute("UPDATE memory_vectors SET updated_at=COALESCE(updated_at, created_at)")
+            self.db.execute("CREATE INDEX IF NOT EXISTS vector_created ON memory_vectors(created_at DESC)")
+            self.db.execute("""CREATE INDEX IF NOT EXISTS vector_search
+                ON memory_vectors(model, dimensions, state, updated_at DESC)""")
+            self.db.execute("PRAGMA user_version=5")
 
     def _migrate_v4(self) -> None:
         with self.db:
@@ -890,8 +927,99 @@ class MemoryStore:
         raise ValueError("未知内心活动类别")
 
     def list_vectors(self, limit: Any = 30) -> list[dict[str, Any]]:
-        rows = self.db.execute("SELECT id, chunk_id, model, dimensions, content, source_ids_json, created_at, state FROM memory_vectors ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
-        return [{"id": row["id"], "chunkId": row["chunk_id"], "model": row["model"], "dimensions": row["dimensions"], "content": row["content"], "sourceIds": json.loads(row["source_ids_json"]), "createdAt": row["created_at"], "state": row["state"]} for row in rows]
+        rows = self.db.execute("""SELECT id, chunk_id, model, dimensions, content, source_ids_json,
+            created_at, valid_from, valid_to, updated_at, state
+            FROM memory_vectors ORDER BY created_at DESC LIMIT ?""", (self._limit(limit),)).fetchall()
+        return [self._vector_row(row) for row in rows]
+
+    def upsert_vector(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Store a caller-produced embedding without selecting or installing an embedding model."""
+        if not isinstance(item, dict):
+            raise ValueError("向量记录必须是对象")
+        chunk_id = self._required_text(item.get("chunkId"), "向量记录缺少 chunkId", 120)
+        model = self._required_text(item.get("model"), "向量记录缺少 model", 160)
+        content = self._required_text(item.get("content"), "向量记录内容不能为空", 4000)
+        vector = self._vector(item.get("vector"))
+        dimensions = item.get("dimensions", len(vector))
+        try:
+            dimensions = int(dimensions)
+        except (TypeError, ValueError) as error:
+            raise ValueError("向量维数不合法") from error
+        if dimensions != len(vector):
+            raise ValueError("向量维数与数据长度不一致")
+        source_ids = list(dict.fromkeys(self._source_ids(item.get("sourceIds", []))))
+        if not source_ids:
+            raise ValueError("向量记录至少需要一个 Episode 来源")
+        for source_id in source_ids:
+            if not self.db.execute("SELECT 1 FROM episodes WHERE id=?", (source_id,)).fetchone():
+                raise ValueError("向量记录引用了不存在的 Episode")
+        valid_from = self._optional_time(item.get("validFrom"))
+        valid_to = self._optional_time(item.get("validTo"))
+        self._validate_interval(valid_from, valid_to)
+        state = self._state(item.get("state"))
+        now = datetime.now(timezone.utc).isoformat()
+        created_at = self._optional_time(item.get("createdAt")) or now
+        ident = self._optional_text(item.get("id"), 120) or "vector:" + uuid.uuid5(
+            uuid.NAMESPACE_URL, f"{model}|{chunk_id}"
+        ).hex
+        existing = self.db.execute("SELECT chunk_id, model FROM memory_vectors WHERE id=?", (ident,)).fetchone()
+        if existing and (existing["chunk_id"] != chunk_id or existing["model"] != model):
+            raise ValueError("向量 id 已属于其他区块或模型")
+        self.db.execute("""INSERT INTO memory_vectors(
+            id, chunk_id, model, dimensions, content, vector_json, source_ids_json,
+            created_at, state, valid_from, valid_to, updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET dimensions=excluded.dimensions, content=excluded.content,
+            vector_json=excluded.vector_json, source_ids_json=excluded.source_ids_json,
+            state=excluded.state, valid_from=excluded.valid_from, valid_to=excluded.valid_to,
+            updated_at=excluded.updated_at""", (
+                ident, chunk_id, model, dimensions, content,
+                json.dumps(vector, separators=(",", ":")), json.dumps(source_ids, ensure_ascii=False),
+                created_at, state, valid_from, valid_to, now,
+            ))
+        self.db.commit()
+        row = self.db.execute("""SELECT id, chunk_id, model, dimensions, content, source_ids_json,
+            created_at, valid_from, valid_to, updated_at, state FROM memory_vectors WHERE id=?""", (ident,)).fetchone()
+        return self._vector_row(row)
+
+    def search_vectors(
+        self,
+        vector: Any,
+        model: Any,
+        limit: Any = 8,
+        current_at: str | None = None,
+    ) -> dict[str, Any]:
+        query_vector = self._vector(vector)
+        query_model = self._required_text(model, "向量检索缺少 model", 160)
+        capacity = min(self.VECTOR_RESULT_LIMIT, self._limit(limit))
+        now = self._parse_time(current_at) if current_at else datetime.now(timezone.utc)
+        rows = self.db.execute("""SELECT id, chunk_id, model, dimensions, content, vector_json,
+            source_ids_json, created_at, valid_from, valid_to, updated_at, state
+            FROM memory_vectors
+            WHERE model=? AND dimensions=? AND state='active'
+            ORDER BY updated_at DESC, created_at DESC LIMIT ?""", (
+                query_model, len(query_vector), self.VECTOR_SCAN_LIMIT,
+            )).fetchall()
+        items = []
+        for row in rows:
+            if not self._vector_is_current(row, now) or not self._vector_target_is_active(row, now):
+                continue
+            try:
+                stored_vector = self._vector(json.loads(row["vector_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            score = self._cosine_similarity(query_vector, stored_vector)
+            item = self._vector_row(row)
+            item["score"] = round(score, 6)
+            items.append(item)
+        items.sort(key=lambda item: (-item["score"], item["id"]))
+        return {
+            "model": query_model,
+            "dimensions": len(query_vector),
+            "capacity": capacity,
+            "scanned": len(rows),
+            "items": items[:capacity],
+        }
 
     def forget_by_source(self, source_id: str, to_state: str = "faded", reason: str = "user-request") -> int:
         source_id = self._required_text(source_id, "sourceId 不合法", 120)
@@ -1219,6 +1347,72 @@ class MemoryStore:
             return False
         return True
 
+    def _vector_is_current(self, row: sqlite3.Row, now: datetime) -> bool:
+        try:
+            if row["valid_from"] and self._parse_time(row["valid_from"]) > now:
+                return False
+            if row["valid_to"] and self._parse_time(row["valid_to"]) <= now:
+                return False
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def _vector_target_is_active(self, row: sqlite3.Row, now: datetime) -> bool:
+        assertion = self.db.execute("SELECT state, valid_from, valid_to FROM assertions WHERE id=?", (row["chunk_id"],)).fetchone()
+        if assertion:
+            return assertion["state"] == "active" and self._assertion_is_current(assertion, now) and self._has_active_vector_source(row)
+        episode = self.db.execute("SELECT recall_state FROM episodes WHERE id=?", (row["chunk_id"],)).fetchone()
+        if episode:
+            return episode["recall_state"] == "active" and self._has_active_vector_source(row)
+        return self._has_active_vector_source(row)
+
+    def _has_active_vector_source(self, row: sqlite3.Row) -> bool:
+        try:
+            source_ids = json.loads(row["source_ids_json"])
+        except (TypeError, json.JSONDecodeError):
+            return False
+        if not isinstance(source_ids, list) or not source_ids:
+            return False
+        placeholders = ",".join("?" for _ in source_ids)
+        return bool(self.db.execute(
+            f"SELECT 1 FROM episodes WHERE id IN ({placeholders}) AND recall_state='active' LIMIT 1",
+            tuple(source_ids),
+        ).fetchone())
+
+    @classmethod
+    def _vector(cls, value: Any) -> list[float]:
+        if not isinstance(value, list) or not value or len(value) > cls.VECTOR_MAX_DIMENSIONS:
+            raise ValueError(f"向量必须是 1 到 {cls.VECTOR_MAX_DIMENSIONS} 维数组")
+        result = []
+        for component in value:
+            if isinstance(component, bool):
+                raise ValueError("向量分量必须是有限数字")
+            try:
+                number = float(component)
+            except (TypeError, ValueError) as error:
+                raise ValueError("向量分量必须是有限数字") from error
+            if not math.isfinite(number):
+                raise ValueError("向量分量必须是有限数字")
+            result.append(number)
+        if max(abs(component) for component in result) <= 0:
+            raise ValueError("向量不能是零向量")
+        return result
+
+    @staticmethod
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        if len(left) != len(right):
+            return 0.0
+        left_scale = max(abs(component) for component in left)
+        right_scale = max(abs(component) for component in right)
+        if left_scale <= 0 or right_scale <= 0:
+            return 0.0
+        scaled_left = [component / left_scale for component in left]
+        scaled_right = [component / right_scale for component in right]
+        left_norm = math.sqrt(math.fsum(component * component for component in scaled_left))
+        right_norm = math.sqrt(math.fsum(component * component for component in scaled_right))
+        score = math.fsum(a * b for a, b in zip(scaled_left, scaled_right)) / (left_norm * right_norm)
+        return max(-1.0, min(1.0, score))
+
     def _recency_score(self, timestamp: str | None, now: datetime) -> float:
         if not timestamp:
             return 0.0
@@ -1262,6 +1456,16 @@ class MemoryStore:
     @staticmethod
     def _fact_row(row: sqlite3.Row) -> dict[str, Any]:
         return {"id": row["id"], "subjectId": row["subject_id"], "predicate": row["predicate"], "objectText": row["object_text"], "confidence": row["confidence"], "importance": row["importance"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "sourceId": row["source_id"], "state": row["state"]}
+
+    @staticmethod
+    def _vector_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"], "chunkId": row["chunk_id"], "model": row["model"],
+            "dimensions": row["dimensions"], "content": row["content"],
+            "sourceIds": json.loads(row["source_ids_json"]), "createdAt": row["created_at"],
+            "validFrom": row["valid_from"], "validTo": row["valid_to"],
+            "updatedAt": row["updated_at"], "state": row["state"],
+        }
 
     @staticmethod
     def _candidate_row(row: sqlite3.Row) -> dict[str, Any]:

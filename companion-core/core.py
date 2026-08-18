@@ -202,6 +202,17 @@ class CompanionCore:
         try: return self.memory.retrieve(query, limit, current_at)
         except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
 
+    def memory_vector_upsert(self, item: Any) -> dict[str, Any]:
+        if not self.memory or not isinstance(item, dict): raise CoreError("向量记录必须是对象")
+        try: return self.memory.upsert_vector(item)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def memory_vector_search(self, vector: Any, model: Any, limit: Any = 8, current_at: Any = None) -> dict[str, Any]:
+        if not self.memory or not isinstance(model, str) or (current_at is not None and not isinstance(current_at, str)):
+            raise CoreError("向量检索参数不合法")
+        try: return self.memory.search_vectors(vector, model, limit, current_at)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_import_messages(self, messages: Any) -> int:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         try: return self.memory.import_messages(messages)
