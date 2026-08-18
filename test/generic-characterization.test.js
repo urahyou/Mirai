@@ -144,6 +144,21 @@ test('Given streamed provider output When generic chat runs Then it emits cumula
   assert.equal(JSON.parse(requests[0].options.body).stream, true);
 });
 
+test('Given a chat request When it finishes Then the runtime debug log contains its full body and completion without headers', async (t) => {
+  const originalFetch = global.fetch;
+  generic.clearDebugEntries();
+  global.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: '调试完成' } }] }), { status: 200 });
+  t.after(() => { global.fetch = originalFetch; generic.clearDebugEntries(); });
+
+  await generic.generateReply('调试输入', { state: '环境：此刻本机时间：2026-08-18 13:30:00（Asia/Shanghai）' });
+  const [entry] = generic.getDebugEntries();
+  assert.equal(entry.kind, 'chat');
+  assert.equal(entry.request.model, generic.getProviderConfig().providers[entry.provider].defaultModel);
+  assert.equal(entry.request.messages.at(-1).content, '调试输入');
+  assert.equal(entry.response.completion, '调试完成');
+  assert.equal(Object.hasOwn(entry, 'headers'), false);
+});
+
 test('Given a stream whose final SSE record has no trailing newline When generic chat runs Then the final delta is preserved', async (t) => {
   const originalFetch = global.fetch;
   const encoder = new TextEncoder();

@@ -49,10 +49,17 @@ function timeOfDay(h) {
   if (h < 5) return '深夜';
   if (h < 8) return '清晨';
   if (h < 12) return '上午';
-  if (h < 14) return '中午';
+  if (h < 13) return '中午';
   if (h < 18) return '下午';
   if (h < 23) return '晚上';
   return '深夜';
+}
+
+function formatLocalClock(timestamp) {
+  const date = new Date(timestamp);
+  const pad = (n) => String(n).padStart(2, '0');
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '本机时区';
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}（${zone}）`;
 }
 
 async function poll() {
@@ -71,8 +78,10 @@ function stop() { if (timer) { clearInterval(timer); timer = null; } }
 
 // 一句自然语言：此刻时刻 + 电量 + 联网状态
 function getAwareness() {
-  const h = new Date(nowFn()).getHours();
-  const parts = [`此刻：${timeOfDay(h)}`];
+  const timestamp = nowFn();
+  const h = new Date(timestamp).getHours();
+  // 给模型准确的本机钟点，避免仅凭“中午/下午”自行猜测具体时间。
+  const parts = [`此刻本机时间：${formatLocalClock(timestamp)}`, `时段：${timeOfDay(h)}`];
   const b = snapshot.battery;
   if (b && typeof b.level === 'number') {
     parts.push(`电量 ${b.level}%${b.charging ? '（充电中）' : ''}`);
@@ -96,4 +105,4 @@ function _reset() {
   snapshot = { battery: { level: null, charging: null }, online: null, updatedAt: null, idleSince: null };
 }
 
-module.exports = { init, start, stop, poll, getAwareness, getSnapshot, timeOfDay, _reset };
+module.exports = { init, start, stop, poll, getAwareness, getSnapshot, timeOfDay, formatLocalClock, _reset };

@@ -88,6 +88,13 @@ module.exports = {
   BehaviorClose: 'behavior:close',
   CompanionOpen: 'companion:open',
   CompanionClose: 'companion:close',
+
+  // 运行期调试记录（只读、本次运行内存）
+  DebugGetEntries: 'debug:getEntries',
+  DebugClearEntries: 'debug:clearEntries',
+  DebugOpenPanel: 'debug:openPanel',
+  DebugClosePanel: 'debug:closePanel',
+
   // 语音设置 .env（main.js）
   VoiceSettingsGet: 'voiceSettings:get',
   VoiceSettingsSet: 'voiceSettings:set',

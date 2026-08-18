@@ -19,6 +19,7 @@ const proactive = require('./proactive');
 const schedule = require('./schedule');
 const diary = require('./diary');
 const settingsNav = require('./settings-nav');
+const debug = require('./debug');
 
 module.exports = function mountAll(api) {
   personality(api);
@@ -35,4 +36,5 @@ module.exports = function mountAll(api) {
   schedule(api);
   diary(api);
   settingsNav(api);
+  debug(api);
 };

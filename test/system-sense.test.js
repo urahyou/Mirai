@@ -8,7 +8,8 @@ test('timeOfDay 分时段', () => {
   assert.strictEqual(sys.timeOfDay(2), '深夜');
   assert.strictEqual(sys.timeOfDay(7), '清晨');
   assert.strictEqual(sys.timeOfDay(10), '上午');
-  assert.strictEqual(sys.timeOfDay(13), '中午');
+  assert.strictEqual(sys.timeOfDay(12), '中午');
+  assert.strictEqual(sys.timeOfDay(13), '下午');
   assert.strictEqual(sys.timeOfDay(16), '下午');
   assert.strictEqual(sys.timeOfDay(20), '晚上');
   assert.strictEqual(sys.timeOfDay(23), '深夜');
@@ -34,9 +35,19 @@ test('getAwareness 拼接时刻+电量+联网', async () => {
   sys.init({ now: () => new Date(2026, 7, 17, 21).getTime(), battery: async () => ({ level: 20, charging: false }), network: async () => true });
   await sys.poll();
   const a = sys.getAwareness();
-  assert.ok(a.includes('此刻：晚上'), a);
+  assert.ok(a.includes('时段：晚上'), a);
+  assert.match(a, /此刻本机时间：2026-08-17 21:00:00/);
+  assert.match(a, /时段：晚上/);
   assert.ok(a.includes('电量 20%'), a);
   assert.ok(a.includes('联网正常'), a);
+});
+
+test('getAwareness 注入准确的小时分钟而不是模糊时段', async () => {
+  sys.init({ now: () => new Date(2026, 7, 18, 13, 30, 0).getTime(), battery: async () => ({}), network: async () => true });
+  await sys.poll();
+  const a = sys.getAwareness();
+  assert.match(a, /2026-08-18 13:30:00/);
+  assert.match(a, /时段：下午/);
 });
 
 test('未联网时意识文案提示离线', async () => {

@@ -37,6 +37,28 @@ let history = [];
 // 摘要缓存：当被压缩的早期对话内容不变时复用上次摘要，避免每个请求都多调一次 LLM
 let summaryCache = { key: null, value: null };
 
+// 调试面板只看本次运行的最近请求，避免把隐私对话写入磁盘或无限占用内存。
+const DEBUG_MAX_ENTRIES = 20;
+const DEBUG_VALUE_LIMIT = 200000;
+let debugEntries = [];
+
+function cloneDebugValue(value) {
+  if (typeof value === 'string') return value.length > DEBUG_VALUE_LIMIT ? `${value.slice(0, DEBUG_VALUE_LIMIT)}\n[…内容过长，已截断]` : value;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(cloneDebugValue);
+  const out = {};
+  for (const [key, item] of Object.entries(value)) out[key] = cloneDebugValue(item);
+  return out;
+}
+
+function recordDebugEntry(entry) {
+  debugEntries.unshift(cloneDebugValue({ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, ...entry }));
+  if (debugEntries.length > DEBUG_MAX_ENTRIES) debugEntries.length = DEBUG_MAX_ENTRIES;
+}
+
+function getDebugEntries() { return cloneDebugValue(debugEntries); }
+function clearDebugEntries() { debugEntries = []; return true; }
+
 const COMPRESSION_SYSTEM = '你是一个对话记忆压缩器。请把下面这段「小未来」（桌宠/伴侣）与主人的历史对话，压缩成一段紧凑的中文摘要，保留对后续回答有用的关键信息：人物的身份与关系、主人的重要个人情况、发生过的重要事件、主人的偏好与情绪、已经给过的承诺或约定。用简练的叙述句，不要罗列逐条对话，控制在 150 字以内。只输出摘要正文，不要任何额外前缀或解释。';
 
 /**
@@ -127,18 +149,39 @@ async function summarizeOldMessages(providerConf, old) {
     top_p: 0.9,
     stream: false,
   };
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`summary LLM responded ${res.status}`);
-  const data = await res.json();
-  const summary = (data.choices?.[0]?.message?.content || '').trim();
-  if (!summary) throw new Error('empty compression summary');
-  summaryCache = { key, value: summary };
-  return summary;
+  const startedAt = Date.now();
+  const entry = {
+    kind: 'history-summary', startedAt: new Date(startedAt).toISOString(), provider: providerConf.label,
+    endpoint: `${base}/chat/completions`, request: body,
+  };
+  try {
+    const res = await fetch(entry.endpoint, {
+      method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      entry.status = 'error';
+      entry.error = `HTTP ${res.status}: ${errText.slice(0, 300)}`;
+      throw new Error(`summary LLM responded ${res.status}`);
+    }
+    const data = await res.json();
+    const summary = (data.choices?.[0]?.message?.content || '').trim();
+    entry.status = summary ? 'ok' : 'error';
+    entry.response = { raw: data, completion: summary };
+    entry.durationMs = Date.now() - startedAt;
+    recordDebugEntry(entry);
+    if (!summary) throw new Error('empty compression summary');
+    summaryCache = { key, value: summary };
+    return summary;
+  } catch (error) {
+    if (!Object.hasOwn(entry, 'durationMs')) {
+      entry.status = 'error';
+      entry.error = entry.error || String(error?.message || error);
+      entry.durationMs = Date.now() - startedAt;
+      recordDebugEntry(entry);
+    }
+    throw error;
+  }
 }
 
 function resetConversationHistory() {
@@ -354,44 +397,64 @@ async function generateReply(userInput, options = {}) {
     stream,
   };
 
-  console.log(`[LLM] ${provider} chat request: ${base}/chat/completions model=${providerConf.defaultModel} history=${trimmedHistory.length} contextMax=${contextMaxTokens} stream=${stream}`);
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
-  });
+  const startedAt = Date.now();
+  const entry = {
+    kind: 'chat', startedAt: new Date(startedAt).toISOString(), provider, providerLabel: providerConf.label,
+    endpoint: `${base}/chat/completions`, request: body,
+    context: { maxTokens: contextMaxTokens, estimatedHistoryTokens: estimatedTotal, compressed, memoryContext, state: stateText },
+  };
+  console.log(`[LLM] ${provider} chat request: ${entry.endpoint} model=${providerConf.defaultModel} history=${trimmedHistory.length} contextMax=${contextMaxTokens} stream=${stream}`);
+  try {
+    const res = await fetch(entry.endpoint, {
+      method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    // 失败时 history 未改动，返回给调用方，由上层决定兜底
-    throw new Error(`LLM responded ${res.status}: ${errText.slice(0, 200)}`);
-  }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      entry.status = 'error';
+      entry.error = `HTTP ${res.status}: ${errText.slice(0, 300)}`;
+      // 失败时 history 未改动，返回给调用方，由上层决定兜底
+      throw new Error(`LLM responded ${res.status}: ${errText.slice(0, 200)}`);
+    }
 
-  let reply;
-  if (stream) {
-    reply = await consumeStream(res, options.onDelta);
-  } else {
-    const data = await res.json();
-    reply = (data.choices?.[0]?.message?.content || '').trim();
-  }
+    let reply;
+    let raw = null;
+    if (stream) {
+      reply = await consumeStream(res, options.onDelta);
+    } else {
+      raw = await res.json();
+      reply = (raw.choices?.[0]?.message?.content || '').trim();
+    }
 
-  // 只有成功获取回复后，才把 user+assistant 成对写入 history
-  history.push(userMessage, { role: 'assistant', content: reply || '(沉默)' });
-  if (history.length > HISTORY_MAX_TURNS * 2) {
-    history = history.slice(history.length - HISTORY_MAX_TURNS * 2);
+    // 只有成功获取回复后，才把 user+assistant 成对写入 history
+    history.push(userMessage, { role: 'assistant', content: reply || '(沉默)' });
+    if (history.length > HISTORY_MAX_TURNS * 2) {
+      history = history.slice(history.length - HISTORY_MAX_TURNS * 2);
+    }
+    entry.status = reply ? 'ok' : 'empty';
+    entry.response = { completion: reply, ...(raw ? { raw } : {}) };
+    entry.durationMs = Date.now() - startedAt;
+    recordDebugEntry(entry);
+    console.log(`[LLM] ${provider} chat response: ${reply ? 'received' : 'empty'}`);
+    return reply;
+  } catch (error) {
+    if (!Object.hasOwn(entry, 'durationMs')) {
+      entry.status = 'error';
+      entry.error = entry.error || String(error?.message || error);
+      entry.durationMs = Date.now() - startedAt;
+      recordDebugEntry(entry);
+    }
+    throw error;
   }
-  console.log(`[LLM] ${provider} chat response: ${reply ? 'received' : 'empty'}`);
-  return reply;
 }
 
 // 生成一句不带上下文的点击回应，不进入多轮历史
-async function generatePetLine({ provider, purpose = 'click' } = {}) {
+async function generatePetLine({ provider, purpose = 'click', state = '' } = {}) {
   loadProviders();
   const name = provider || activeProviderName;
   const providerConf = providerCache.providers[name];
   if (!providerConf) throw new Error(`未找到 Provider: ${name}`);
-  const sys = prompts.buildPetLineSystemPrompt(loadConfig(), purpose, typeof options.state === 'string' ? options.state : '');
+  const sys = prompts.buildPetLineSystemPrompt(loadConfig(), purpose, typeof state === 'string' ? state : '');
 
   const base = providerConf.baseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
@@ -407,21 +470,31 @@ async function generatePetLine({ provider, purpose = 'click' } = {}) {
     stream: false,
   };
 
+  const startedAt = Date.now();
+  const entry = { kind: 'pet-line', purpose, startedAt: new Date(startedAt).toISOString(), provider: name, providerLabel: providerConf.label, endpoint: `${base}/chat/completions`, request: body };
   console.log(`[LLM] ${name} pet-line request purpose=${purpose} model=${providerConf.defaultModel}`);
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`LLM responded ${res.status}: ${errText.slice(0, 200)}`);
+  try {
+    const res = await fetch(entry.endpoint, {
+      method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      entry.status = 'error'; entry.error = `HTTP ${res.status}: ${errText.slice(0, 300)}`;
+      throw new Error(`LLM responded ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const reply = (data.choices?.[0]?.message?.content || '').trim();
+    entry.status = reply ? 'ok' : 'empty'; entry.response = { raw: data, completion: reply }; entry.durationMs = Date.now() - startedAt;
+    recordDebugEntry(entry);
+    console.log(`[LLM] ${name} pet-line response purpose=${purpose}: ${reply ? 'received' : 'empty'}`);
+    return reply;
+  } catch (error) {
+    if (!Object.hasOwn(entry, 'durationMs')) {
+      entry.status = 'error'; entry.error = entry.error || String(error?.message || error); entry.durationMs = Date.now() - startedAt;
+      recordDebugEntry(entry);
+    }
+    throw error;
   }
-  const data = await res.json();
-  const reply = (data.choices?.[0]?.message?.content || '').trim();
-  console.log(`[LLM] ${name} pet-line response purpose=${purpose}: ${reply ? 'received' : 'empty'}`);
-  return reply;
 }
 
 // 生成与聊天历史隔离的日记正文。调用者只传 Core 已保存的事实素材，避免将未经验证的推断写回长期记忆。
@@ -555,4 +628,6 @@ module.exports = {
   estimateTokens,
   truncateHistory,
   buildCompressedHistory,
+  getDebugEntries,
+  clearDebugEntries,
 };

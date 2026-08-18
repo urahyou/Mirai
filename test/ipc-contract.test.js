@@ -64,6 +64,7 @@ test('Given the preload bridge When its public surface is inspected Then it expo
   assert.match(preload, /setChatExpanded/);
   assert.match(preload, /playbackFinished/);
   assert.match(preload, /memory:\s*Object\.freeze/);
+  assert.match(preload, /debug:\s*Object\.freeze/);
   assert.match(preload, /setMousePassthrough/);
 });
 
@@ -292,4 +293,13 @@ test('Given IPC subsystems use actual module paths, they can all be required', (
   assert.ok(m, 'main.js 应 require subsystems');
   const resolved = require.resolve(path.join(__dirname, '..', 'src', 'main', m[1]));
   assert.ok(fs.existsSync(resolved), `main.js 引用的子系统模块不存在: ${m[1]}`);
+});
+
+test('Given the debug panel When inspected Then it reads runtime entries without injecting model content as HTML', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'debug-panel.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'debug-panel.js'), 'utf8');
+  assert.match(html, /id="entryList"/);
+  assert.match(script, /debug\.getEntries\(\)/);
+  assert.match(script, /textContent = JSON\.stringify/);
+  assert.doesNotMatch(script, /innerHTML/);
 });

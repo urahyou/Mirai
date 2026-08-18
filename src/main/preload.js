@@ -126,6 +126,12 @@ contextBridge.exposeInMainWorld('desktopPet', Object.freeze({
   closeBehaviorPanel: () => ipcRenderer.invoke('behavior:close'),
   openCompanionPanel: () => ipcRenderer.invoke('companion:open'),
   closeCompanionPanel: () => ipcRenderer.invoke('companion:close'),
+  debug: Object.freeze({
+    getEntries: () => ipcRenderer.invoke('debug:getEntries'),
+    clearEntries: () => ipcRenderer.invoke('debug:clearEntries'),
+    openPanel: () => ipcRenderer.invoke('debug:openPanel'),
+    closePanel: () => ipcRenderer.invoke('debug:closePanel'),
+  }),
   petState: Object.freeze({
     get: () => ipcRenderer.invoke('petState:get'),
   }),

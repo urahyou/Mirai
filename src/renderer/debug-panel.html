@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>小未来 · 调试记录</title>
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="panel.css" />
+  <link rel="stylesheet" href="debug-panel.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="panel-header">
+      <h1 class="panel-title">调试记录</h1>
+      <p class="panel-desc">查看实际发送给模型的完整 messages、参数、completion 和错误。</p>
+    </header>
+    <main class="debug-shell">
+      <aside class="request-list" aria-label="请求记录">
+        <div class="list-heading"><strong>本次运行</strong><span id="entryCount">0 条</span></div>
+        <div id="entryList" class="entry-scroll"></div>
+      </aside>
+      <section class="debug-detail" aria-live="polite">
+        <div class="detail-heading">
+          <div><strong id="detailTitle">尚无记录</strong><span id="detailMeta"></span></div>
+          <span id="detailStatus" class="status"></span>
+        </div>
+        <pre id="detailJson" class="debug-json">发送一条聊天后，这里会显示完整请求与返回内容。</pre>
+      </section>
+    </main>
+    <footer class="panel-footer">
+      <span class="hint">只保留内存中的最近 20 条；包含对话隐私，不写入磁盘，也不含 API Key。</span>
+      <div class="spacer"></div>
+      <button class="btn small ghost" id="refreshBtn" type="button" title="刷新记录">刷新</button>
+      <button class="btn small ghost" id="clearBtn" type="button">清空</button>
+      <button class="btn ghost" id="closeBtn" type="button">关闭</button>
+    </footer>
+  </div>
+  <script src="debug-panel.js"></script>
+</body>
+</html>
