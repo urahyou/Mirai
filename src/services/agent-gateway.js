@@ -93,8 +93,9 @@ function publicTask(task) {
   };
 }
 
-module.exports = function createAgentGateway({ providers = {}, audit, now = () => Date.now(), timeoutMs = EXECUTION_TIMEOUT_MS } = {}) {
+module.exports = function createAgentGateway({ providers = {}, actions = {}, audit, now = () => Date.now(), timeoutMs = EXECUTION_TIMEOUT_MS } = {}) {
   const providerMap = new Map(Object.entries(providers));
+  const actionMap = new Map(Object.entries(actions));
   const tasks = new Map();
   const deadline = Math.max(1000, Math.min(5 * 60_000, Number(timeoutMs) || EXECUTION_TIMEOUT_MS));
 
@@ -106,40 +107,75 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     tasks.set(task.id, task);
     while (tasks.size > MAX_TASKS) tasks.delete(tasks.keys().next().value);
   }
+  async function bounded(operation) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), deadline);
+    try {
+      return await Promise.race([
+        operation(controller.signal),
+        new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('timeout')), { once: true })),
+      ]);
+    } finally { clearTimeout(timer); }
+  }
 
-  async function execute(task) {
-    const provider = providerMap.get(task.provider);
-    if (!provider || typeof provider.execute !== 'function') {
-      task.state = 'failed'; task.error = '执行 Provider 不可用'; task.updatedAt = timestamp();
+  async function perform(task) {
+    const action = actionMap.get(task.capability);
+    if (typeof action !== 'function') {
+      task.state = 'failed'; task.error = '领域动作处理器不可用'; task.updatedAt = timestamp();
       record(E.AGENT.EXECUTION_FAILED, task, task.error);
       return publicTask(task);
     }
     task.state = 'running'; task.updatedAt = timestamp();
     record(E.AGENT.EXECUTION_STARTED, task);
-    let controller = null;
     try {
-      controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), deadline);
-      let result;
-      try {
-        result = await Promise.race([
-          provider.execute(Object.freeze({
-            id: task.id, capability: task.capability, objective: task.objective,
-            snapshot: clone(task.snapshot), signal: controller.signal,
-          })),
-          new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('执行超时')), { once: true })),
-        ]);
-      } finally { clearTimeout(timer); }
-      const normalized = normalizeResult(result, task);
-      task.result = normalized;
+      const result = await bounded((signal) => action(Object.freeze({
+        id: task.id, capability: task.capability, objective: task.objective,
+        proposal: clone(task.result?.proposal), snapshot: clone(task.snapshot), signal,
+      })));
+      if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.summary !== 'string') {
+        throw new TypeError('领域动作结果不合法');
+      }
+      task.result = { ...task.result, action: { summary: sanitize(result.summary) } };
       task.state = 'completed'; task.updatedAt = timestamp();
       record(E.AGENT.EXECUTION_COMPLETED, task);
-    } catch (error) {
-      const timedOut = controller?.signal?.aborted;
-      task.state = 'failed'; task.error = timedOut ? '执行超时' : 'Provider 执行失败'; task.updatedAt = timestamp();
+    } catch {
+      task.state = 'failed'; task.error = '领域动作执行失败'; task.updatedAt = timestamp();
       record(E.AGENT.EXECUTION_FAILED, task, task.error);
     }
     return publicTask(task);
+  }
+
+  async function propose(task) {
+    const provider = providerMap.get(task.provider);
+    const proposeFn = provider?.propose;
+    if (typeof proposeFn !== 'function') {
+      task.state = 'failed'; task.error = '提案 Provider 不可用'; task.updatedAt = timestamp();
+      record(E.AGENT.PROPOSAL_FAILED, task, task.error);
+      return publicTask(task);
+    }
+    task.state = 'planning'; task.updatedAt = timestamp();
+    record(E.AGENT.PROPOSAL_STARTED, task);
+    try {
+      const result = await bounded((signal) => proposeFn.call(provider, Object.freeze({
+        id: task.id, capability: task.capability, objective: task.objective,
+        snapshot: clone(task.snapshot), signal,
+      })));
+      task.result = normalizeResult(result, task);
+      task.updatedAt = timestamp();
+      record(E.AGENT.PROPOSAL_COMPLETED, task);
+      if (task.requiresApproval) {
+        task.state = 'pending-approval'; task.updatedAt = timestamp();
+        record(E.AGENT.APPROVAL_REQUIRED, task);
+        return publicTask(task);
+      }
+      if (task.mode === 'action') return perform(task);
+      task.state = 'completed'; task.updatedAt = timestamp();
+      return publicTask(task);
+    } catch {
+      task.state = 'failed'; task.error = 'Provider 提案失败'; task.updatedAt = timestamp();
+      record(E.AGENT.PROPOSAL_FAILED, task, task.error);
+      return publicTask(task);
+    }
   }
 
   async function request(input) {
@@ -151,10 +187,8 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     if (SECRET_VALUE.test(objective)) throw new TypeError('Agent 任务目标疑似包含密钥或凭据');
     const task = {
       id: `agent-task:${crypto.randomUUID()}`,
-      capability: capability.id,
-      risk: capability.risk,
-      objective,
-      snapshot: safeSnapshot(input.snapshot),
+      capability: capability.id, risk: capability.risk, mode: capability.mode,
+      objective, snapshot: safeSnapshot(input.snapshot),
       provider: typeof input.provider === 'string' && /^[a-z0-9_-]{1,40}$/i.test(input.provider) ? input.provider : 'pi',
       state: 'proposed', result: null, error: null,
       requiresApproval: capability.risk === RISK.CONFIRM || capability.risk === RISK.FORCED_CONFIRM,
@@ -167,12 +201,7 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
       record(E.AGENT.TASK_BLOCKED, task, task.error);
       return publicTask(task);
     }
-    if (task.requiresApproval) {
-      task.state = 'pending-approval'; task.updatedAt = timestamp();
-      record(E.AGENT.APPROVAL_REQUIRED, task);
-      return publicTask(task);
-    }
-    return execute(task);
+    return propose(task);
   }
 
   async function approve(taskId) {
@@ -181,7 +210,7 @@ module.exports = function createAgentGateway({ providers = {}, audit, now = () =
     if (task.state !== 'pending-approval') throw new Error('Agent 任务当前不可审批');
     task.state = 'approved'; task.updatedAt = timestamp();
     record(E.AGENT.APPROVAL_GRANTED, task);
-    return execute(task);
+    return perform(task);
   }
 
   function reject(taskId, reason = 'user-rejected') {

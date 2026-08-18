@@ -64,7 +64,7 @@ module.exports = function createPiExecutionProvider({
     return { enabled: current.enabled, ready: current.ready, provider: current.provider, model: current.model };
   }
 
-  async function execute(task) {
+  async function propose(task) {
     const current = config(readEnv());
     if (!current.enabled) throw new Error('Pi Agent Provider 未启用');
     if (!current.ready) throw new Error('Pi Agent Provider 配置不完整');
@@ -133,7 +133,7 @@ module.exports = function createPiExecutionProvider({
     });
   }
 
-  return { name: 'pi', getStatus, execute };
+  return { name: 'pi', getStatus, propose };
 };
 
 module.exports.config = config;

@@ -39,7 +39,7 @@ test('Pi provider stays disabled without explicit complete configuration', async
   let spawned = 0;
   const provider = createPiExecutionProvider({ readEnv: () => ({}), spawnImpl: () => { spawned += 1; } });
   assert.deepEqual(provider.getStatus(), { enabled: false, ready: false, provider: '', model: '' });
-  await assert.rejects(provider.execute(task), /未启用/);
+  await assert.rejects(provider.propose(task), /未启用/);
   assert.equal(spawned, 0);
 });
 
@@ -60,7 +60,7 @@ test('Pi provider spawns an ephemeral no-builtin RPC worker and returns one prop
       });
     },
   });
-  const result = await provider.execute(task);
+  const result = await provider.propose(task);
   assert.deepEqual(result, { summary: '天气已读取', proposal: { capability: 'context.weather', parameters: { condition: '晴' } } });
   assert.equal(invocation.command, 'pi');
   for (const flag of ['--mode', '--no-session', '--no-extensions', '--no-skills', '--no-context-files', '--no-builtin-tools', '--tools', '--extension', '--no-approve']) {
@@ -97,7 +97,7 @@ test('Pi provider rejects unauthorized tools, multiple proposals, and malformed 
         for (const record of records) child.stdout.write(typeof record === 'string' ? `${record}\n` : `${JSON.stringify(record)}\n`);
       }),
     });
-    await assert.rejects(provider.execute(task), pattern);
+    await assert.rejects(provider.propose(task), pattern);
   }
   await failsWith([{ type: 'tool_execution_start', toolName: 'bash', args: {} }], /未授权工具/);
   await failsWith([
@@ -118,7 +118,7 @@ test('Pi provider abort terminates its worker', async () => {
     readEnv: () => enabledEnv,
     spawnImpl: () => { child = fakeProcess(() => {}); return child; },
   });
-  const pending = provider.execute({ ...task, signal: controller.signal });
+  const pending = provider.propose({ ...task, signal: controller.signal });
   controller.abort();
   await assert.rejects(pending, /取消/);
   assert.ok(child.killedWith.includes('SIGTERM'));
