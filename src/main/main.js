@@ -59,7 +59,7 @@ const eventBus = createEventBus();
 // Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
 const pythonBackend = createPythonBackend();
 const embeddingAdapter = createEmbeddingAdapter();
-const companionMemory = createCompanionMemory({ pythonBackend, getVectorStatus: embeddingAdapter.getStatus });
+const companionMemory = createCompanionMemory({ pythonBackend, embedding: embeddingAdapter });
 const memoryVectorIndexer = createMemoryVectorIndexer({ memory: companionMemory, embedding: embeddingAdapter });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });

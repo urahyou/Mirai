@@ -84,6 +84,66 @@ test('Companion memory retrieves a bounded frame and renders safe context', asyn
   assert.equal((oversized.match(/\[相处片段\]/g) || []).length, 6);
 });
 
+test('Companion memory fuses bounded semantic candidates and deduplicates matching chunks', async () => {
+  const calls = [];
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        calls.push([method, params]);
+        if (method === 'memory.retrieve') return {
+          query: params.query, capacity: params.limit,
+          items: [{ id: 'episode:1', kind: 'episode', content: '主人喜欢甜点', score: 0.7 }],
+          channels: { keyword: 1, graph: 0, vector: 0 },
+        };
+        return {
+          model: params.model, dimensions: 3, capacity: params.limit, scanned: 3,
+          items: [
+            { id: 'vector:1', chunkId: 'episode:1', content: '主人喜欢甜点', score: 0.9, sourceIds: ['episode:1'] },
+            { id: 'vector:2', chunkId: 'episode:2', content: '一起去过蛋糕店', score: 0.8, sourceIds: ['episode:2'] },
+            { id: 'vector:3', chunkId: 'episode:3', content: '不相关', score: 0.1, sourceIds: ['episode:3'] },
+          ],
+        };
+      },
+    },
+    embedding: {
+      getStatus: () => ({ ready: true, model: 'local-embed' }),
+      embed: async (text) => {
+        assert.equal(text, '想吃什么甜点');
+        return { model: 'local-embed', dimensions: 3, vectors: [[1, 0, 0]] };
+      },
+    },
+  });
+  const frame = await memory.retrieve('想吃什么甜点', 3);
+  assert.equal(frame.items.length, 2);
+  assert.equal(frame.items[0].id, 'episode:1');
+  assert.deepEqual(frame.items[0].matches, ['keyword', 'vector']);
+  assert.equal(frame.items[0].vectorScore, 0.9);
+  assert.equal(frame.items[1].id, 'episode:2');
+  assert.deepEqual(frame.items[1].matches, ['vector']);
+  assert.match(memory.formatContext(frame), /\[相处片段\].*蛋糕店/);
+  assert.deepEqual(frame.channels, { keyword: 1, graph: 0, vector: 2 });
+  assert.equal(calls.filter(([method]) => method === 'memory.vector_search').length, 1);
+});
+
+test('Companion memory falls back to keyword and graph retrieval when query embedding fails', async () => {
+  const calls = [];
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        calls.push(method);
+        return { query: params.query, capacity: 2, items: [{ id: 'fact:1', kind: 'fact', content: '仍可召回', score: 0.8 }], channels: { keyword: 1, graph: 0, vector: 0 } };
+      },
+    },
+    embedding: { getStatus: () => ({ ready: true }), embed: async () => { throw new Error('offline'); } },
+  });
+  const frame = await memory.retrieve('测试降级', 2);
+  assert.equal(frame.items[0].id, 'fact:1');
+  assert.deepEqual(frame.channels, { keyword: 1, graph: 0, vector: 0 });
+  assert.deepEqual(calls, ['memory.retrieve']);
+});
+
 test('Companion memory exposes pending vector work, caller-provided upsert, and bounded search', async () => {
   const calls = [];
   const memory = createCompanionMemory({

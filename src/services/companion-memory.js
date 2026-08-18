@@ -1,5 +1,66 @@
 // Python Companion Core 是唯一长期记忆后端；Core 不可用时返回空记忆，绝不回退到旧服务。
-module.exports = function createCompanionMemory({ pythonBackend, getVectorStatus = () => ({ ready: false }) }) {
+const VECTOR_MIN_SCORE = 0.2;
+
+function vectorKind(chunkId) {
+  if (String(chunkId).startsWith('episode:')) return 'episode';
+  if (String(chunkId).startsWith('fact:')) return 'fact';
+  if (String(chunkId).startsWith('edge:')) return 'edge';
+  return 'memory';
+}
+
+function mergeFrames(base, semantic, capacity) {
+  const candidates = new Map();
+  for (const item of Array.isArray(base?.items) ? base.items : []) {
+    if (!item?.id) continue;
+    candidates.set(item.id, { ...item, matches: Array.isArray(item.matches) ? item.matches : [item.match || 'keyword'] });
+  }
+  let vectorCount = 0;
+  for (const item of Array.isArray(semantic?.items) ? semantic.items : []) {
+    const cosine = Number(item?.score);
+    const chunkId = typeof item?.chunkId === 'string' ? item.chunkId : '';
+    if (!chunkId || !Number.isFinite(cosine) || cosine < VECTOR_MIN_SCORE) continue;
+    vectorCount += 1;
+    const semanticScore = 0.35 + 0.45 * Math.min(1, cosine);
+    const existing = candidates.get(chunkId);
+    if (existing) {
+      candidates.set(chunkId, {
+        ...existing,
+        score: Math.min(1, Math.max(Number(existing.score) || 0, semanticScore) + 0.08),
+        vectorScore: cosine,
+        vectorId: item.id,
+        matches: [...new Set([...(existing.matches || []), 'vector'])],
+      });
+      continue;
+    }
+    candidates.set(chunkId, {
+      id: chunkId,
+      kind: vectorKind(chunkId),
+      content: item.content,
+      createdAt: item.createdAt,
+      sourceIds: item.sourceIds,
+      score: semanticScore,
+      vectorScore: cosine,
+      vectorId: item.id,
+      matches: ['vector'],
+    });
+  }
+  const items = [...candidates.values()]
+    .sort((left, right) => (Number(right.score) || 0) - (Number(left.score) || 0) || String(left.id).localeCompare(String(right.id)))
+    .slice(0, capacity)
+    .map((item) => ({ ...item, score: Math.round((Number(item.score) || 0) * 10000) / 10000 }));
+  return {
+    query: base.query,
+    capacity,
+    items,
+    channels: {
+      keyword: Number(base?.channels?.keyword) || 0,
+      graph: Number(base?.channels?.graph) || 0,
+      vector: vectorCount,
+    },
+  };
+}
+
+module.exports = function createCompanionMemory({ pythonBackend, embedding = null, getVectorStatus = () => embedding?.getStatus?.() || ({ ready: false }) }) {
   function emptyFrame(query = '', capacity = 8) {
     return { query: String(query || ''), capacity, items: [], channels: { keyword: 0, graph: 0, vector: 0 } };
   }
@@ -10,10 +71,7 @@ module.exports = function createCompanionMemory({ pythonBackend, getVectorStatus
       return Array.isArray(result?.results) ? result.results : [];
     } catch { return []; }
   }
-  async function retrieve(query, limit = 8) {
-    const normalizedQuery = String(query || '').trim().slice(0, 2000);
-    const capacity = Math.max(1, Math.min(12, Number.parseInt(limit, 10) || 8));
-    if (!normalizedQuery || !pythonBackend.getStatus().ready) return emptyFrame(normalizedQuery, capacity);
+  async function retrieveBase(normalizedQuery, capacity) {
     try {
       const result = await pythonBackend.request('memory.retrieve', {
         query: normalizedQuery,
@@ -27,6 +85,18 @@ module.exports = function createCompanionMemory({ pythonBackend, getVectorStatus
         channels: result?.channels && typeof result.channels === 'object' ? result.channels : { keyword: 0, graph: 0, vector: 0 },
       };
     } catch { return emptyFrame(normalizedQuery, capacity); }
+  }
+  async function retrieve(query, limit = 8) {
+    const normalizedQuery = String(query || '').trim().slice(0, 2000);
+    const capacity = Math.max(1, Math.min(12, Number.parseInt(limit, 10) || 8));
+    if (!normalizedQuery || !pythonBackend.getStatus().ready) return emptyFrame(normalizedQuery, capacity);
+    const basePromise = retrieveBase(normalizedQuery, capacity);
+    if (!embedding || !getVectorStatus()?.ready) return basePromise;
+    const semanticPromise = embedding.embed(normalizedQuery)
+      .then((result) => searchVectors(result.vectors[0], result.model, capacity))
+      .catch(() => null);
+    const [base, semantic] = await Promise.all([basePromise, semanticPromise]);
+    return semantic ? mergeFrames(base, semantic, capacity) : base;
   }
   async function listVectorPending(model, limit = 50) {
     if (!pythonBackend.getStatus().ready || typeof model !== 'string' || !model.trim()) return [];

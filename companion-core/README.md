@@ -29,6 +29,6 @@
 
 `memory.db` 当前 schema 版本为 5。原始聊天统一落在 `conversation_messages`，情景记忆 `episodes` 只保存摘要和来源引用，不复制逐句转录；旧版复制型聊天 Episode 会保留为 `archived/legacy` 供审计。Episode 中明确的主人陈述可以生成 `assertion_candidates`，候选默认是 `pending`，必须审核后才会写入 active assertion；冲突候选必须显式指定 `supersedesId`。语义事实和关系边统一存为带有效期的 assertion，关系图只是实体型 assertion 的投影；一条 assertion 可以由多条情景证据共同支撑。删除一个来源时只移除对应证据，最后一条证据消失后才删除该 assertion。
 
-`memory.retrieve` 会把关键词命中的当前事实、聊天情景和最多一跳的图关系合并评分，最多返回 12 条；Electron 实际注入模型时进一步限制为 6 条、约 4.4k 字符。Core 可以保存调用方生成的向量，并按模型和维数执行有界余弦检索；它自身不选择、下载或运行 embedding 模型。默认聊天检索链路仍不开启向量通道，因此基础安装不增加模型或网络依赖。协议版本由后续共享契约文件统一管理；任何不兼容修改都必须提升版本。
+`memory.retrieve` 会把关键词命中的当前事实、聊天情景和最多一跳的图关系合并评分，最多返回 12 条；Electron 可选地生成查询向量、调用 `memory.vector_search`，再将语义候选统一去重排序，实际注入模型时进一步限制为 6 条、约 4.4k 字符。Core 只保存调用方生成的向量，并按模型和维数执行有界余弦检索；它自身不选择、下载或运行 embedding 模型。默认关闭语义通道，因此基础安装不增加模型或网络依赖。协议版本由后续共享契约文件统一管理；任何不兼容修改都必须提升版本。
 
 `memory.forget_source` 默认只改变召回状态并写入 `memory_lifecycle`，保留原始消息、Episode 和证据用于审计；`toState=erased` 或单独调用 `memory.erase_source` 才会物理清理。
