@@ -932,6 +932,21 @@ class MemoryStore:
             FROM memory_vectors ORDER BY created_at DESC LIMIT ?""", (self._limit(limit),)).fetchall()
         return [self._vector_row(row) for row in rows]
 
+    def list_vector_pending(self, model: Any, limit: Any = 50) -> list[dict[str, Any]]:
+        model_name = self._required_text(model, "向量索引缺少 model", 160)
+        rows = self.db.execute("""SELECT e.*,
+            (SELECT COUNT(*) FROM episode_sources s WHERE s.episode_id=e.id) AS source_count
+            FROM episodes e
+            WHERE e.recall_state='active'
+              AND NOT EXISTS(
+                SELECT 1 FROM memory_vectors v
+                WHERE v.chunk_id=e.id AND v.model=? AND v.state='active'
+              )
+            ORDER BY COALESCE(e.started_at, e.created_at) ASC, e.id ASC LIMIT ?""", (
+                model_name, self._limit(limit),
+            )).fetchall()
+        return [self._episode_row(row) for row in rows]
+
     def upsert_vector(self, item: dict[str, Any]) -> dict[str, Any]:
         """Store a caller-produced embedding without selecting or installing an embedding model."""
         if not isinstance(item, dict):

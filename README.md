@@ -78,7 +78,7 @@ npm run start:voice
 
 Mirai 的长期记忆由 `companion-core/` 管理，数据保存在 Electron `userData/memory.db`。每轮正式对话会写入情景记忆；聊天会用关键词检索相关内容并注入上下文。事实、人物画像、关系边、日记素材和来源级遗忘都在同一个 SQLite 文件中完成。
 
-记忆不需要 Docker、embedding 模型或额外网络服务。Python Core 未就绪时，应用只会跳过长期记忆，不会回退到其他记忆服务。
+默认记忆不需要 Docker、embedding 模型或额外网络服务。需要本地语义索引时，可在 `.env` 显式启用 OpenAI 兼容 `/embeddings` 服务；关闭时应用不会探测或请求该服务。Python Core 未就绪时，应用只会跳过长期记忆，不会回退到其他记忆服务。
 
 ### 语音输入与语音输出（可选）
 

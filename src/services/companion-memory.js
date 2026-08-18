@@ -1,5 +1,5 @@
 // Python Companion Core 是唯一长期记忆后端；Core 不可用时返回空记忆，绝不回退到旧服务。
-module.exports = function createCompanionMemory({ pythonBackend }) {
+module.exports = function createCompanionMemory({ pythonBackend, getVectorStatus = () => ({ ready: false }) }) {
   function emptyFrame(query = '', capacity = 8) {
     return { query: String(query || ''), capacity, items: [], channels: { keyword: 0, graph: 0, vector: 0 } };
   }
@@ -27,6 +27,15 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
         channels: result?.channels && typeof result.channels === 'object' ? result.channels : { keyword: 0, graph: 0, vector: 0 },
       };
     } catch { return emptyFrame(normalizedQuery, capacity); }
+  }
+  async function listVectorPending(model, limit = 50) {
+    if (!pythonBackend.getStatus().ready || typeof model !== 'string' || !model.trim()) return [];
+    try {
+      const result = await pythonBackend.request('memory.vector_pending', {
+        model: model.trim().slice(0, 160), limit: Math.max(1, Math.min(50, Number.parseInt(limit, 10) || 50)),
+      });
+      return Array.isArray(result?.episodes) ? result.episodes : [];
+    } catch { return []; }
   }
   async function upsertVector(item) {
     if (!pythonBackend.getStatus().ready) return null;
@@ -183,11 +192,12 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
   }
   async function getStatus() {
     const bridge = pythonBackend.getStatus();
-    if (!bridge.ready) return { ok: false, state: 'unavailable', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true };
+    const vectorSearch = Boolean(getVectorStatus()?.ready);
+    if (!bridge.ready) return { ok: false, state: 'unavailable', backend: 'python-core', storage: 'SQLite', vectorSearch, graphSearch: true };
     try {
       const result = await pythonBackend.request('memory.stats');
-      return { ok: true, state: 'ready', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true, ...result };
-    } catch { return { ok: false, state: 'error', backend: 'python-core', storage: 'SQLite', vectorSearch: false, graphSearch: true }; }
+      return { ok: true, state: 'ready', backend: 'python-core', storage: 'SQLite', vectorSearch, graphSearch: true, ...result };
+    } catch { return { ok: false, state: 'error', backend: 'python-core', storage: 'SQLite', vectorSearch, graphSearch: true }; }
   }
   async function buildDailyJournal(day, timezoneOffsetMinutes) {
     if (!pythonBackend.getStatus().ready) return null;
@@ -224,5 +234,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       }),
     ].join('\n').slice(0, 4400);
   }
-  return { search, retrieve, upsertVector, searchVectors, createEpisode, importMessages, archivePending, extractCandidates, listCandidates, reviewCandidate, forgetSource, eraseSource, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, retrieve, listVectorPending, upsertVector, searchVectors, createEpisode, importMessages, archivePending, extractCandidates, listCandidates, reviewCandidate, forgetSource, eraseSource, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

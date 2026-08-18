@@ -474,6 +474,17 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory_vector_search([1, 0], "test-embedding-v1")["items"], [])
             self.assertEqual(core.memory_vector_search([1, 0, 0], "other-model")["items"], [])
             self.assertNotIn("vector_json", core.memory_list("vectors")[0].keys())
+            pending = core.memory_vector_pending("new-model", 50)
+            self.assertEqual([item["id"] for item in pending], [source_id])
+            self.assertNotIn("vector_json", pending[0].keys())
+
+            response, should_stop = handle_request(core, {
+                "id": "vector:pending", "method": "memory.vector_pending",
+                "params": {"model": "new-model", "limit": 1},
+            })
+            self.assertTrue(response["ok"])
+            self.assertFalse(should_stop)
+            self.assertEqual(response["result"]["episodes"][0]["id"], source_id)
 
             response, should_stop = handle_request(core, {
                 "id": "vector:search", "method": "memory.vector_search",

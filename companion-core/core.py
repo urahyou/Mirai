@@ -202,6 +202,11 @@ class CompanionCore:
         try: return self.memory.retrieve(query, limit, current_at)
         except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
 
+    def memory_vector_pending(self, model: Any, limit: Any = 50) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(model, str): raise CoreError("向量索引参数不合法")
+        try: return self.memory.list_vector_pending(model, limit)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_vector_upsert(self, item: Any) -> dict[str, Any]:
         if not self.memory or not isinstance(item, dict): raise CoreError("向量记录必须是对象")
         try: return self.memory.upsert_vector(item)

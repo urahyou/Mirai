@@ -35,6 +35,8 @@ const chatHistory = require('../services/chat-history');
 const windowLayout = require('../services/window-layout');
 const contextSettings = require('../services/context-budget');
 const createCompanionMemory = require('../services/companion-memory');
+const createEmbeddingAdapter = require('../services/embedding-adapter');
+const createMemoryVectorIndexer = require('../services/memory-vector-indexer');
 const createPetStateAdapter = require('../services/pet-state-adapter');
 const createCompanionLife = require('../services/companion-life');
 const createCompanionEmotion = require('../services/companion-emotion');
@@ -56,7 +58,9 @@ const state = require('./shared-state');
 const eventBus = createEventBus();
 // Python Companion Core：窗口、IPC 与权限仍留在 Electron 主进程；领域状态逐步迁入此后端。
 const pythonBackend = createPythonBackend();
-const companionMemory = createCompanionMemory({ pythonBackend });
+const embeddingAdapter = createEmbeddingAdapter();
+const companionMemory = createCompanionMemory({ pythonBackend, getVectorStatus: embeddingAdapter.getStatus });
+const memoryVectorIndexer = createMemoryVectorIndexer({ memory: companionMemory, embedding: embeddingAdapter });
 const companionPetState = createPetStateAdapter({ pythonBackend, fallback: petState });
 const companionLife = createCompanionLife({ pythonBackend });
 const companionEmotion = createCompanionEmotion({ pythonBackend });
@@ -116,6 +120,7 @@ const chat = createChat({
   generic,
   chatHistory,
   memory: companionMemory,
+  memoryVectorIndexer,
   contextSettings,
   probeMaxContext,
   voice,
@@ -216,6 +221,8 @@ app.whenReady().then(() => {
     if (importedMessages) console.log('[companion-core] imported %d existing chat messages', importedMessages);
     const archivedEpisodes = await companionMemory.archivePending({ currentAt: new Date().toISOString(), force: true });
     if (archivedEpisodes.length) console.log('[companion-core] archived %d structured episodes', archivedEpisodes.length);
+    const vectorResult = await memoryVectorIndexer.syncPending().catch(() => ({ indexed: 0 }));
+    if (vectorResult.indexed) console.log('[companion-core] indexed %d episode vectors', vectorResult.indexed);
     await companionPetState.seedFromLegacy();
     await companionLife.advance(Date.now());
     await companionEmotion.refresh(Date.now());
@@ -274,6 +281,7 @@ app.on('will-quit', () => {
   sensing.stop(); // 停止感知心跳
   lifeRoutine.stop(); // 停止生活活动编排
   mindRoutine.stop(); // 停止低频内心活动/夜间梦境编排
+  memoryVectorIndexer.stop(); // 停止接收新的可选向量索引任务
   try { systemSense.stop(); } catch {} // 停系统状态轮询
   voiceBridge.stop(); // 退出时回收侧车子进程
   void pythonBackend.stop(); // 回收 Python Core；失败时 bridge 会强制终止子进程

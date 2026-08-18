@@ -84,27 +84,30 @@ test('Companion memory retrieves a bounded frame and renders safe context', asyn
   assert.equal((oversized.match(/\[相处片段\]/g) || []).length, 6);
 });
 
-test('Companion memory exposes caller-provided vector upsert and bounded search', async () => {
+test('Companion memory exposes pending vector work, caller-provided upsert, and bounded search', async () => {
   const calls = [];
   const memory = createCompanionMemory({
     pythonBackend: {
       getStatus: () => ({ ready: true }),
       request: async (method, params) => {
         calls.push([method, params]);
+        if (method === 'memory.vector_pending') return { episodes: [{ id: 'episode:1' }] };
         if (method === 'memory.vector_upsert') return { vector: { id: 'vector:1', dimensions: 3 } };
         return { model: params.model, dimensions: 3, capacity: params.limit, scanned: 2, items: [{ id: 'vector:1', score: 1 }] };
       },
     },
   });
+  assert.equal((await memory.listVectorPending(' local-test ', 99))[0].id, 'episode:1');
   assert.equal((await memory.upsertVector({ chunkId: 'episode:1', vector: [1, 0, 0] })).id, 'vector:1');
   const result = await memory.searchVectors([1, 0, 0], ' local-test ', 50);
   assert.equal(result.capacity, 12);
   assert.equal(result.items[0].id, 'vector:1');
-  assert.equal(calls[0][0], 'memory.vector_upsert');
-  assert.equal(calls[1][0], 'memory.vector_search');
-  assert.equal(calls[1][1].model, 'local-test');
-  assert.equal(calls[1][1].limit, 12);
-  assert.match(calls[1][1].currentAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(calls[0], ['memory.vector_pending', { model: 'local-test', limit: 50 }]);
+  assert.equal(calls[1][0], 'memory.vector_upsert');
+  assert.equal(calls[2][0], 'memory.vector_search');
+  assert.equal(calls[2][1].model, 'local-test');
+  assert.equal(calls[2][1].limit, 12);
+  assert.match(calls[2][1].currentAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test('Companion memory archives pending canonical messages through Python Core', async () => {
