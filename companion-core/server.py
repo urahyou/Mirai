@@ -57,6 +57,12 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
         elif method == "memory.archive_pending":
             archived = core.memory_archive_pending(params.get("currentAt"), params.get("force", False))
             result = {"archived": archived, "count": len(archived)}
+        elif method == "memory.extract_candidates":
+            result = {"candidates": core.memory_extract_candidates(params.get("episodeId"))}
+        elif method == "memory.list_candidates":
+            result = {"candidates": core.memory_list_candidates(params.get("limit", 30), params.get("status"))}
+        elif method == "memory.review_candidate":
+            result = {"candidate": core.memory_review_candidate(params.get("candidateId"), params.get("decision"), params.get("supersedesId"))}
         elif method == "memory.search":
             result = {"results": core.memory_search(params.get("query"))}
         elif method == "memory.retrieve":
@@ -68,7 +74,9 @@ def handle_request(core: CompanionCore, request: Any) -> tuple[dict[str, Any], b
         elif method == "memory.graph":
             result = core.memory_graph(params.get("limit", 50))
         elif method == "memory.forget_source":
-            result = {"deleted": core.memory_forget_source(params.get("sourceId"))}
+            result = {"changed": core.memory_forget_source(params.get("sourceId"), params.get("toState", "faded"), params.get("reason", "user-request"))}
+        elif method == "memory.erase_source":
+            result = {"deleted": core.memory_erase_source(params.get("sourceId"))}
         elif method == "memory.upsert_fact":
             result = core.memory_upsert_fact(params.get("fact"))
         elif method == "memory.find_facts":

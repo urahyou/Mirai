@@ -91,7 +91,8 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory_forget_source(source_id), 3)
             self.assertEqual(core.memory_find_facts("像素风"), [])
             self.assertEqual(core.memory_neighbors("owner:default"), [])
-            self.assertEqual(core.memory_stats()["episodes"], 0)
+            self.assertEqual(core.memory_stats()["episodes"], 1)
+            self.assertEqual(core.memory_list("episodes")[0]["recallState"], "faded")
 
     def test_memory_browser_lists_and_daily_pages_are_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -187,7 +188,7 @@ class CompanionCoreTest(unittest.TestCase):
             legacy.close()
 
             store = MemoryStore(database)
-            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(store.db.execute("PRAGMA user_version").fetchone()[0], 4)
             self.assertEqual(store.list_facts()[0]["id"], "fact:legacy")
             self.assertEqual(store.list_edges()[0]["id"], "edge:legacy")
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
@@ -202,6 +203,36 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertions").fetchone()[0], 2)
             self.assertEqual(reopened.db.execute("SELECT COUNT(*) FROM assertion_evidence").fetchone()[0], 2)
             reopened.close()
+
+    def test_episode_facts_are_pending_until_reviewed_and_conflicts_are_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = CompanionCore(); core.bootstrap(directory)
+            core.memory_import_messages([{"id": "pref-one", "role": "user", "content": "我最近很喜欢红茶", "createdAt": "2026-08-17T08:00:00Z"}])
+            first_episode = core.memory_create_episode({
+                "startedAt": "2026-08-17T08:00:00Z", "endedAt": "2026-08-17T08:00:00Z",
+                "summary": "主人提到喜欢红茶", "messageIds": ["message:history:pref-one"],
+            })
+            candidates = core.memory_extract_candidates(first_episode["id"])
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0]["status"], "pending")
+            self.assertEqual(candidates[0]["predicate"], "likes")
+            self.assertEqual(core.memory_find_facts("红茶"), [])
+            accepted = core.memory_review_candidate(candidates[0]["id"], "accepted")
+            fact_id = accepted["assertion"]["id"]
+            self.assertEqual(core.memory_find_facts("红茶")[0]["id"], fact_id)
+
+            core.memory_import_messages([{"id": "pref-two", "role": "user", "content": "我现在喜欢咖啡", "createdAt": "2026-08-18T08:00:00Z"}])
+            second_episode = core.memory_create_episode({
+                "startedAt": "2026-08-18T08:00:00Z", "endedAt": "2026-08-18T08:00:00Z",
+                "summary": "主人改喜欢咖啡", "messageIds": ["message:history:pref-two"],
+            })
+            second = core.memory_extract_candidates(second_episode["id"])[0]
+            self.assertEqual(second["conflicts"], [fact_id])
+            with self.assertRaisesRegex(CoreError, "supersedesId"):
+                core.memory_review_candidate(second["id"], "accepted")
+            reviewed = core.memory_review_candidate(second["id"], "accepted", fact_id)
+            self.assertEqual(reviewed["status"], "accepted")
+            self.assertEqual(core.memory_find_facts("咖啡")[0]["objectText"], "咖啡")
 
     def test_structured_episode_references_canonical_messages_without_copying_transcript(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -287,7 +318,7 @@ class CompanionCoreTest(unittest.TestCase):
             self.assertEqual(core.memory.db.execute("SELECT COUNT(*) FROM assertion_evidence WHERE assertion_id=?", (first["id"],)).fetchone()[0], 2)
             self.assertEqual(core.memory_forget_source(first_source), 1)
             self.assertEqual(core.memory_find_facts("草莓蛋糕")[0]["id"], first["id"])
-            self.assertEqual(core.memory.db.execute("SELECT COUNT(*) FROM assertion_evidence WHERE assertion_id=?", (first["id"],)).fetchone()[0], 1)
+            self.assertEqual(core.memory.db.execute("SELECT COUNT(*) FROM assertion_evidence WHERE assertion_id=?", (first["id"],)).fetchone()[0], 2)
             self.assertEqual(core.memory_forget_source(second_source), 2)
             self.assertEqual(core.memory_find_facts("草莓蛋糕"), [])
 
@@ -322,9 +353,9 @@ class CompanionCoreTest(unittest.TestCase):
             graph = core.memory_graph()
             self.assertEqual([edge["id"] for edge in graph["edges"]], [new_edge["id"]])
             self.assertNotIn("place:old-school", [node["id"] for node in graph["nodes"]])
-            self.assertEqual(core.memory_forget_source(old_source), 3)
+            self.assertEqual(core.memory_forget_source(old_source), 1)
             self.assertEqual(core.memory_find_facts("红茶")[0]["id"], new_fact["id"])
-            self.assertIsNone(core.memory.db.execute("SELECT supersedes_id FROM assertions WHERE id=?", (new_fact["id"],)).fetchone()[0])
+            self.assertEqual(core.memory.db.execute("SELECT supersedes_id FROM assertions WHERE id=?", (new_fact["id"],)).fetchone()[0], old_fact["id"])
 
             with self.assertRaisesRegex(CoreError, "其他主体"):
                 core.memory_upsert_fact({

@@ -32,6 +32,8 @@ const HISTORY_MAX_TURNS = 256; // 兜底最大轮数，防止 token 估算误差
 const DEFAULT_CONTEXT_MAX_TOKENS = 4096; // 默认上下文 token 预算（与 context-budget 一致）
 // ---- 上下文紧凑摘要压缩（AGENTS 工作偏好：约 80% 时自动压缩，勿等到接近上限） ----
 const COMPRESSION_RATIO = 0.8; // 触发阈值：对话历史估算 token 占用预算达 80%
+const OUTPUT_RESERVE_RATIO = 0.2; // 为模型回复预留约 20%，避免历史挤掉输出空间
+const MIN_OUTPUT_RESERVE = 256;
 let history = [];
 
 // 摘要缓存：当被压缩的早期对话内容不变时复用上次摘要，避免每个请求都多调一次 LLM
@@ -69,6 +71,27 @@ const COMPRESSION_SYSTEM = '你是一个对话记忆压缩器。请把下面这�
 function estimateTokens(text) {
   const s = String(text || '');
   return Math.ceil(s.length * 0.7);
+}
+
+function calculateContextBudget(totalTokens, systemText, userInput) {
+  const total = Math.max(1, Math.round(Number(totalTokens) || DEFAULT_CONTEXT_MAX_TOKENS));
+  const systemTokens = estimateTokens(systemText);
+  const inputTokens = estimateTokens(userInput);
+  const fixedTokens = systemTokens + inputTokens;
+  const remaining = total - fixedTokens;
+  const outputReserveTokens = Math.max(
+    MIN_OUTPUT_RESERVE,
+    Math.min(4096, Math.round(total * OUTPUT_RESERVE_RATIO), Math.max(MIN_OUTPUT_RESERVE, remaining - 256)),
+  );
+  const historyBudget = Math.max(256, remaining - outputReserveTokens);
+  return {
+    totalTokens: total,
+    systemTokens,
+    inputTokens,
+    outputReserveTokens,
+    historyBudget,
+    overflowTokens: Math.max(0, fixedTokens + outputReserveTokens + historyBudget - total),
+  };
 }
 
 /**
@@ -361,21 +384,22 @@ async function generateReply(userInput, options = {}) {
     : DEFAULT_CONTEXT_MAX_TOKENS;
   // 上下文压缩（AGENTS 偏好）：历史占用达预算 80% 时，把早期对话压成紧凑摘要注入，
   // 而不是等到逼近上限才截断丢弃。压缩失败时安全回退到硬截断。
-  const compressThreshold = Math.round(contextMaxTokens * COMPRESSION_RATIO);
+  const budget = calculateContextBudget(contextMaxTokens, sys, userInput);
+  const compressThreshold = Math.round(budget.historyBudget * COMPRESSION_RATIO);
   const estimatedTotal = pendingHistory.reduce((s, m) => s + estimateTokens(String(m.content || '')), 0);
   let trimmedHistory;
   let compressed = false;
   if (pendingHistory.length >= 4 && estimatedTotal > compressThreshold) {
     try {
-      const result = await buildCompressedHistory(pendingHistory, contextMaxTokens, providerConf);
+      const result = await buildCompressedHistory(pendingHistory, budget.historyBudget, providerConf);
       trimmedHistory = result.messages;
       compressed = result.summarizedTurns > 0;
     } catch (error) {
       console.warn(`[LLM] 上下文压缩失败，回退截断: ${error.message}`);
-      trimmedHistory = truncateHistory(pendingHistory, contextMaxTokens).messages;
+      trimmedHistory = truncateHistory(pendingHistory, budget.historyBudget).messages;
     }
   } else {
-    trimmedHistory = truncateHistory(pendingHistory, contextMaxTokens).messages;
+    trimmedHistory = truncateHistory(pendingHistory, budget.historyBudget).messages;
   }
   if (compressed) {
     console.log(`[LLM] ${provider} 上下文压缩: 历史占用 ${Math.round((100 * estimatedTotal) / contextMaxTokens)}%（阈值 ${COMPRESSION_RATIO * 100}%），将早期 ${(trimmedHistory.length - 1) / 2 | 0} 条之前的对话压成摘要，保留最近 ${trimmedHistory.length - 1} 条`);
@@ -401,7 +425,20 @@ async function generateReply(userInput, options = {}) {
   const entry = {
     kind: 'chat', startedAt: new Date(startedAt).toISOString(), provider, providerLabel: providerConf.label,
     endpoint: `${base}/chat/completions`, request: body,
-    context: { maxTokens: contextMaxTokens, estimatedHistoryTokens: estimatedTotal, compressed, memoryContext, state: stateText },
+    context: {
+      maxTokens: contextMaxTokens,
+      systemTokens: budget.systemTokens,
+      inputTokens: budget.inputTokens,
+      historyBudget: budget.historyBudget,
+      outputReserveTokens: budget.outputReserveTokens,
+      estimatedHistoryTokens: estimatedTotal,
+      selectedHistoryTokens: trimmedHistory.reduce((sum, message) => sum + estimateTokens(message.content), 0),
+      estimatedTotalTokens: budget.systemTokens + budget.inputTokens + budget.outputReserveTokens + trimmedHistory.reduce((sum, message) => sum + estimateTokens(message.content), 0),
+      overflowTokens: budget.overflowTokens,
+      compressed,
+      memoryContext,
+      state: stateText,
+    },
   };
   console.log(`[LLM] ${provider} chat request: ${entry.endpoint} model=${providerConf.defaultModel} history=${trimmedHistory.length} contextMax=${contextMaxTokens} stream=${stream}`);
   try {
@@ -626,6 +663,7 @@ module.exports = {
   translate,
   resetConversationHistory,
   estimateTokens,
+  calculateContextBudget,
   truncateHistory,
   buildCompressedHistory,
   getDebugEntries,

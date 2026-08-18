@@ -50,8 +50,14 @@ function addMetaSection(target, entry) {
 function addContextMetaSection(target, context) {
   if (!context || typeof context !== 'object') return;
   const rows = [
-    ['历史预算', context.maxTokens == null ? undefined : `${context.maxTokens} tokens`],
+    ['总预算', context.maxTokens == null ? undefined : `${context.maxTokens} tokens`],
+    ['系统提示', context.systemTokens == null ? undefined : `${context.systemTokens} tokens`],
+    ['当前输入', context.inputTokens == null ? undefined : `${context.inputTokens} tokens`],
+    ['历史预算', context.historyBudget == null ? undefined : `${context.historyBudget} tokens`],
     ['历史估算', context.estimatedHistoryTokens == null ? undefined : `${context.estimatedHistoryTokens} tokens`],
+    ['历史实际注入', context.selectedHistoryTokens == null ? undefined : `${context.selectedHistoryTokens} tokens`],
+    ['回复预留', context.outputReserveTokens == null ? undefined : `${context.outputReserveTokens} tokens`],
+    ['估算总占用', context.estimatedTotalTokens == null ? undefined : `${context.estimatedTotalTokens} tokens`],
     ['触发压缩', context.compressed === undefined ? undefined : (context.compressed ? '是' : '否')],
   ].filter(([, value]) => value !== undefined);
   if (!rows.length) return;

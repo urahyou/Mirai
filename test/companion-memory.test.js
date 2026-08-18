@@ -95,3 +95,27 @@ test('Companion memory archives pending canonical messages through Python Core',
   assert.equal(result[0].id, 'episode:1');
   assert.deepEqual(calls, [['memory.archive_pending', { currentAt: '2026-08-18T12:00:00Z', force: true }]]);
 });
+
+test('Companion memory exposes candidate review and non-destructive forgetting', async () => {
+  const calls = [];
+  const memory = createCompanionMemory({
+    pythonBackend: {
+      getStatus: () => ({ ready: true }),
+      request: async (method, params) => {
+        calls.push([method, params]);
+        if (method === 'memory.list_candidates') return { candidates: [{ id: 'candidate:1', status: 'pending' }] };
+        if (method === 'memory.review_candidate') return { candidate: { id: params.candidateId, status: params.decision } };
+        if (method === 'memory.forget_source') return { changed: 1 };
+        return {};
+      },
+    },
+  });
+  assert.equal((await memory.listCandidates({ status: 'pending' }))[0].status, 'pending');
+  assert.equal((await memory.reviewCandidate('candidate:1', 'rejected')).status, 'rejected');
+  assert.equal(await memory.forgetSource('episode:1'), 1);
+  assert.deepEqual(calls, [
+    ['memory.list_candidates', { limit: 30, status: 'pending' }],
+    ['memory.review_candidate', { candidateId: 'candidate:1', decision: 'rejected', supersedesId: undefined }],
+    ['memory.forget_source', { sourceId: 'episode:1', toState: 'faded', reason: 'user-request' }],
+  ]);
+});

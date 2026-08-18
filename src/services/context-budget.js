@@ -1,11 +1,11 @@
-// 上下文设置：控制“喂给大模型的对话历史 token 预算”。
+// 上下文设置：控制“喂给大模型的总 token 预算”（系统提示、记忆、历史和输出预留）。
 // 持久化到 userData/context-settings.json。
 // 滑条上限 = 探测到的模型最大上下文；滑条值 = 我们实际发送的上下文 token 预算。
 
 const fs = require('fs');
 const path = require('path');
 
-// 默认/范围。maxContextTokens 表示发送给模型的对话历史 token 预算（单位：1000 tokens）。
+// 默认/范围。maxContextTokens 表示发送给模型的总上下文 token 预算（单位：tokens）。
 // 用“千 token”作为滑条粒度，避免过大的数值。
 const DEFAULT_MAX_CONTEXT_TOKENS = 4096; // 默认 4k，保守、省 token。
 const MIN_CONTEXT_TOKENS = 1000; // 至少 1k，保证有可用的短对话。

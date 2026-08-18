@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 class MemoryStore:
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, file: Path) -> None:
         self.db = sqlite3.connect(file)
@@ -50,6 +50,41 @@ class MemoryStore:
             version = 2
         if version < 3:
             self._migrate_v3()
+            version = 3
+        if version < 4:
+            self._migrate_v4()
+
+    def _migrate_v4(self) -> None:
+        with self.db:
+            self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS assertion_candidates(
+                id TEXT PRIMARY KEY,
+                source_episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+                subject_id TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object_kind TEXT NOT NULL CHECK(object_kind IN ('literal', 'entity')),
+                object_text TEXT,
+                object_entity_id TEXT,
+                scope TEXT NOT NULL DEFAULT 'companion',
+                confidence REAL NOT NULL,
+                importance REAL NOT NULL,
+                observed_at TEXT NOT NULL,
+                valid_from TEXT,
+                valid_to TEXT,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected', 'stale')),
+                conflicts_json TEXT NOT NULL DEFAULT '[]',
+                extraction_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS assertion_candidate_status
+                ON assertion_candidates(status, observed_at DESC);
+            CREATE INDEX IF NOT EXISTS assertion_candidate_source
+                ON assertion_candidates(source_episode_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS assertion_candidate_identity
+                ON assertion_candidates(source_episode_id, subject_id, predicate, object_kind, object_text, object_entity_id);
+            """)
+            self.db.execute("PRAGMA user_version=4")
 
     def _migrate_v2(self) -> None:
         self.db.executescript("""
@@ -304,7 +339,7 @@ class MemoryStore:
         for group, closed in groups:
             if len(group) < 6 and not closed and not force:
                 continue
-            archived.append(self.create_episode({
+            episode = self.create_episode({
                 "startedAt": group[0]["created_at"],
                 "endedAt": group[-1]["created_at"],
                 "summary": self._episode_summary(group),
@@ -312,8 +347,136 @@ class MemoryStore:
                 "importance": self._episode_importance(group),
                 "messageIds": [row["id"] for row in group],
                 "source": "conversation-archive",
-            }))
+            })
+            episode["candidateCount"] = len(self.extract_episode_candidates(episode["id"]))
+            archived.append(episode)
         return archived
+
+    def extract_episode_candidates(self, episode_id: str) -> list[dict[str, Any]]:
+        """Extract only explicit owner statements into reviewable, inactive candidates.
+
+        This deliberately uses a small rule set instead of an LLM. A candidate is
+        evidence to review, never an assertion that can enter active retrieval by
+        itself.
+        """
+        ident = self._required_text(episode_id, "Episode id 不合法", 120)
+        episode = self.db.execute("SELECT id, started_at, ended_at FROM episodes WHERE id=?", (ident,)).fetchone()
+        if not episode:
+            raise ValueError("Episode 不存在")
+        rows = self.db.execute("""SELECT m.id, m.content, m.created_at
+            FROM episode_sources s JOIN conversation_messages m ON m.id=s.source_id
+            WHERE s.episode_id=? AND s.source_kind='message' AND m.role='user'
+            ORDER BY s.sequence_no ASC""", (ident,)).fetchall()
+        extracted: list[dict[str, Any]] = []
+        for row in rows:
+            for candidate in self._extract_explicit_candidates(row["content"]):
+                candidate.update({
+                    "sourceEpisodeId": ident,
+                    "sourceMessageId": row["id"],
+                    "observedAt": row["created_at"],
+                })
+                extracted.append(self._save_candidate(candidate))
+        return extracted
+
+    def list_candidates(self, limit: Any = 30, status: str | None = None) -> list[dict[str, Any]]:
+        values: list[Any] = []
+        where = ""
+        if status:
+            normalized = self._required_text(status, "候选状态不合法", 20)
+            if normalized not in ("pending", "accepted", "rejected", "stale"):
+                raise ValueError("候选状态不合法")
+            where = "WHERE status=?"; values.append(normalized)
+        rows = self.db.execute(f"SELECT * FROM assertion_candidates {where} ORDER BY observed_at DESC, id ASC LIMIT ?", (*values, self._limit(limit))).fetchall()
+        return [self._candidate_row(row) for row in rows]
+
+    def review_candidate(self, candidate_id: str, decision: str, supersedes_id: str | None = None) -> dict[str, Any]:
+        ident = self._required_text(candidate_id, "候选 id 不合法", 120)
+        choice = self._required_text(decision, "候选审核决定不合法", 20)
+        if choice not in ("accepted", "rejected"):
+            raise ValueError("候选审核决定不合法")
+        row = self.db.execute("SELECT * FROM assertion_candidates WHERE id=?", (ident,)).fetchone()
+        if not row:
+            raise ValueError("候选不存在")
+        if row["status"] != "pending":
+            raise ValueError("候选已经审核过")
+        conflicts = json.loads(row["conflicts_json"] or "[]")
+        if choice == "accepted":
+            if conflicts and not self._optional_text(supersedes_id, 120):
+                raise ValueError("候选与当前事实冲突，接受时必须指定 supersedesId")
+            assertion = self._upsert_assertion(
+                ident=None, prefix="fact", subject_id=row["subject_id"], predicate=row["predicate"],
+                object_kind=row["object_kind"], object_text=row["object_text"], object_entity_id=row["object_entity_id"],
+                confidence=row["confidence"], importance=row["importance"], valid_from=row["valid_from"] or row["observed_at"],
+                valid_to=row["valid_to"], state="active", scope=row["scope"], source_id=row["source_episode_id"],
+                supersedes_id=self._optional_text(supersedes_id, 120),
+            )
+        else:
+            assertion = None
+        now = datetime.now(timezone.utc).isoformat()
+        self.db.execute("UPDATE assertion_candidates SET status=?, reviewed_at=? WHERE id=?", (choice, now, ident))
+        self.db.commit()
+        result = self._candidate_row(self.db.execute("SELECT * FROM assertion_candidates WHERE id=?", (ident,)).fetchone())
+        if assertion:
+            result["assertion"] = assertion
+        return result
+
+    def _save_candidate(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        source_episode_id = self._required_text(candidate.get("sourceEpisodeId"), "候选缺少来源 Episode", 120)
+        subject_id = self._required_text(candidate.get("subjectId"), "候选缺少主体", 120)
+        predicate = self._required_text(candidate.get("predicate"), "候选缺少关系", 120)
+        object_text = self._required_text(candidate.get("objectText"), "候选缺少内容", 2000)
+        observed_at = self._required_text(candidate.get("observedAt"), "候选缺少观察时间", 64)
+        self._parse_time(observed_at)
+        conflicts = self.db.execute("""SELECT id FROM assertions
+            WHERE subject_id=? AND predicate=? AND object_kind='literal' AND state='active' AND object_text<>?
+            ORDER BY updated_at DESC, id ASC LIMIT 20""", (subject_id, predicate, object_text)).fetchall()
+        conflict_ids = [row["id"] for row in conflicts]
+        extraction = {
+            "method": "explicit-owner-rule-v1", "sourceMessageId": candidate.get("sourceMessageId"),
+            "pattern": candidate.get("pattern"), "text": str(candidate.get("evidenceText", ""))[:500],
+        }
+        now = datetime.now(timezone.utc).isoformat()
+        values = (
+            "candidate:" + uuid.uuid5(uuid.NAMESPACE_URL, "|".join((source_episode_id, subject_id, predicate, object_text))).hex,
+            source_episode_id, subject_id, predicate, "literal", object_text, None, "companion",
+            self._score(candidate.get("confidence"), .72), self._score(candidate.get("importance"), .5), observed_at,
+            self._optional_time(candidate.get("validFrom")), self._optional_time(candidate.get("validTo")),
+            "pending", json.dumps(conflict_ids, ensure_ascii=False), json.dumps(extraction, ensure_ascii=False), now, None,
+        )
+        self.db.execute("""INSERT INTO assertion_candidates(
+            id, source_episode_id, subject_id, predicate, object_kind, object_text, object_entity_id,
+            scope, confidence, importance, observed_at, valid_from, valid_to, status, conflicts_json,
+            extraction_json, created_at, reviewed_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id)
+        DO UPDATE SET confidence=MAX(assertion_candidates.confidence, excluded.confidence),
+            importance=MAX(assertion_candidates.importance, excluded.importance),
+            conflicts_json=excluded.conflicts_json, extraction_json=excluded.extraction_json""", values)
+        self.db.commit()
+        row = self.db.execute("SELECT * FROM assertion_candidates WHERE id=?", (values[0],)).fetchone()
+        return self._candidate_row(row)
+
+    @staticmethod
+    def _extract_explicit_candidates(content: str) -> list[dict[str, Any]]:
+        text = re.sub(r"\s+", "", str(content or ""))
+        patterns = (
+            (r"(?:我|主人)(?:最近|现在|一直|特别|很|最)*(喜欢|爱吃|爱)\s*([^，。！？,.!?；;]{1,40})", "likes", .78),
+            (r"(?:我|主人)(?:最近|现在|一直|特别|很)*(不喜欢|讨厌)\s*([^，。！？,.!?；;]{1,40})", "dislikes", .82),
+            (r"(?:我|主人)(?:的名字)?叫\s*([^，。！？,.!?；;]{1,30})", "name", .9),
+        )
+        result = []
+        for pattern, predicate, confidence in patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                groups = match.groups()
+                value = groups[-1].strip(" \u3000\"'“”‘’")
+                if len(value) < 1 or value in {"什么", "这个", "那个"}:
+                    continue
+                result.append({
+                    "subjectId": "owner:default", "predicate": predicate, "objectText": value,
+                    "confidence": confidence, "importance": .65 if predicate == "name" else .55,
+                    "pattern": pattern, "evidenceText": text[max(0, match.start() - 20):match.end() + 20],
+                })
+        return result
 
     def _episode_summary(self, rows: list[sqlite3.Row]) -> str:
         user_points = [self._compact_excerpt(row["content"]) for row in rows if row["role"] == "user"]
@@ -730,7 +893,40 @@ class MemoryStore:
         rows = self.db.execute("SELECT id, chunk_id, model, dimensions, content, source_ids_json, created_at, state FROM memory_vectors ORDER BY created_at DESC LIMIT ?", (self._limit(limit),)).fetchall()
         return [{"id": row["id"], "chunkId": row["chunk_id"], "model": row["model"], "dimensions": row["dimensions"], "content": row["content"], "sourceIds": json.loads(row["source_ids_json"]), "createdAt": row["created_at"], "state": row["state"]} for row in rows]
 
-    def delete_by_source(self, source_id: str) -> int:
+    def forget_by_source(self, source_id: str, to_state: str = "faded", reason: str = "user-request") -> int:
+        source_id = self._required_text(source_id, "sourceId 不合法", 120)
+        target_state = self._required_text(to_state, "遗忘状态不合法", 20)
+        if target_state not in ("faded", "archived", "erased"):
+            raise ValueError("遗忘状态只能是 faded、archived 或 erased")
+        reason = self._required_text(reason, "遗忘原因不能为空", 200)
+        if target_state == "erased":
+            return self.erase_by_source(source_id)
+        now = datetime.now(timezone.utc).isoformat()
+        changed = 0
+        with self.db:
+            episode = self.db.execute("SELECT id, recall_state FROM episodes WHERE id=?", (source_id,)).fetchone()
+            if episode and episode["recall_state"] != target_state:
+                self.db.execute("UPDATE episodes SET recall_state=?, archived_at=COALESCE(archived_at, ?) WHERE id=?", (target_state, now, source_id))
+                self._record_lifecycle("episode", source_id, episode["recall_state"], target_state, reason, now)
+                changed += 1
+            assertion_ids = [row["assertion_id"] for row in self.db.execute("SELECT assertion_id FROM assertion_evidence WHERE source_kind='episode' AND source_id=?", (source_id,)).fetchall()]
+            for assertion_id in assertion_ids:
+                assertion = self.db.execute("SELECT state FROM assertions WHERE id=?", (assertion_id,)).fetchone()
+                other = self.db.execute("""SELECT 1 FROM assertion_evidence e
+                    JOIN episodes ep ON ep.id=e.source_id
+                    WHERE e.assertion_id=? AND e.source_kind='episode' AND e.source_id<>? AND ep.recall_state='active' LIMIT 1""", (assertion_id, source_id)).fetchone()
+                if assertion and not other and assertion["state"] == "active":
+                    self.db.execute("UPDATE assertions SET state='forgotten', updated_at=? WHERE id=?", (now, assertion_id))
+                    self._record_lifecycle("assertion", assertion_id, "active", "faded", reason, now)
+                    changed += 1
+            self.db.execute("UPDATE assertion_candidates SET status='stale', reviewed_at=COALESCE(reviewed_at, ?) WHERE source_episode_id=? AND status='pending'", (now, source_id))
+        return changed
+
+    def _record_lifecycle(self, target_kind: str, target_id: str, from_state: str | None, to_state: str, reason: str, effective_at: str) -> None:
+        ident = "lifecycle:" + uuid.uuid5(uuid.NAMESPACE_URL, "|".join((target_kind, target_id, to_state, effective_at))).hex
+        self.db.execute("INSERT OR IGNORE INTO memory_lifecycle(id, target_kind, target_id, from_state, to_state, reason, effective_at) VALUES(?,?,?,?,?,?,?)", (ident, target_kind, target_id, from_state, to_state, reason, effective_at))
+
+    def erase_by_source(self, source_id: str) -> int:
         with self.db:
             assertion_ids = [row["assertion_id"] for row in self.db.execute("SELECT assertion_id FROM assertion_evidence WHERE source_kind='episode' AND source_id=?", (source_id,)).fetchall()]
             self.db.execute("DELETE FROM assertion_evidence WHERE source_kind='episode' AND source_id=?", (source_id,))
@@ -1066,6 +1262,18 @@ class MemoryStore:
     @staticmethod
     def _fact_row(row: sqlite3.Row) -> dict[str, Any]:
         return {"id": row["id"], "subjectId": row["subject_id"], "predicate": row["predicate"], "objectText": row["object_text"], "confidence": row["confidence"], "importance": row["importance"], "validFrom": row["valid_from"], "validTo": row["valid_to"], "sourceId": row["source_id"], "state": row["state"]}
+
+    @staticmethod
+    def _candidate_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"], "sourceEpisodeId": row["source_episode_id"], "subjectId": row["subject_id"],
+            "predicate": row["predicate"], "objectKind": row["object_kind"], "objectText": row["object_text"],
+            "objectEntityId": row["object_entity_id"], "scope": row["scope"], "confidence": row["confidence"],
+            "importance": row["importance"], "observedAt": row["observed_at"], "validFrom": row["valid_from"],
+            "validTo": row["valid_to"], "status": row["status"], "conflicts": json.loads(row["conflicts_json"] or "[]"),
+            "extraction": json.loads(row["extraction_json"] or "{}"), "createdAt": row["created_at"],
+            "reviewedAt": row["reviewed_at"],
+        }
 
     @staticmethod
     def _edge_row(row: sqlite3.Row) -> dict[str, Any]:

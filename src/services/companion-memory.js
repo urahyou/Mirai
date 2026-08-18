@@ -53,6 +53,41 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       return Array.isArray(result?.archived) ? result.archived : [];
     } catch { return []; }
   }
+  async function extractCandidates(episodeId) {
+    if (!pythonBackend.getStatus().ready) return [];
+    try {
+      const result = await pythonBackend.request('memory.extract_candidates', { episodeId: String(episodeId || '').slice(0, 120) });
+      return Array.isArray(result?.candidates) ? result.candidates : [];
+    } catch { return []; }
+  }
+  async function listCandidates({ limit = 30, status } = {}) {
+    if (!pythonBackend.getStatus().ready) return [];
+    try {
+      const result = await pythonBackend.request('memory.list_candidates', { limit, status });
+      return Array.isArray(result?.candidates) ? result.candidates : [];
+    } catch { return []; }
+  }
+  async function reviewCandidate(candidateId, decision, supersedesId) {
+    if (!pythonBackend.getStatus().ready) return null;
+    try {
+      const result = await pythonBackend.request('memory.review_candidate', { candidateId, decision, supersedesId });
+      return result?.candidate || null;
+    } catch { return null; }
+  }
+  async function forgetSource(sourceId, { toState = 'faded', reason = 'user-request' } = {}) {
+    if (!pythonBackend.getStatus().ready) return 0;
+    try {
+      const result = await pythonBackend.request('memory.forget_source', { sourceId, toState, reason });
+      return Number.isFinite(result?.changed) ? result.changed : 0;
+    } catch { return 0; }
+  }
+  async function eraseSource(sourceId) {
+    if (!pythonBackend.getStatus().ready) return 0;
+    try {
+      const result = await pythonBackend.request('memory.erase_source', { sourceId });
+      return Number.isFinite(result?.deleted) ? result.deleted : 0;
+    } catch { return 0; }
+  }
   async function list(kind, limit = 30) {
     if (!pythonBackend.getStatus().ready) return [];
     try {
@@ -162,5 +197,5 @@ module.exports = function createCompanionMemory({ pythonBackend }) {
       }),
     ].join('\n').slice(0, 4400);
   }
-  return { search, retrieve, createEpisode, importMessages, archivePending, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
+  return { search, retrieve, createEpisode, importMessages, archivePending, extractCandidates, listCandidates, reviewCandidate, forgetSource, eraseSource, list, getGraph, listMind, recordThought, recordDream, recordReflection, upsertFact, findFacts, saveProfile, getProfile, buildDailyJournal, getDailyJournal, listDailyJournals, saveDailyJournal, getStatus, formatContext };
 };

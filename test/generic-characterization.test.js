@@ -159,6 +159,15 @@ test('Given a chat request When it finishes Then the runtime debug log contains 
   assert.equal(Object.hasOwn(entry, 'headers'), false);
 });
 
+test('Given a total context budget When fixed prompt parts grow Then history and output receive explicit budgets', () => {
+  const budget = generic.calculateContextBudget(4096, '人格与状态'.repeat(100), '当前输入'.repeat(20));
+  assert.ok(budget.systemTokens > 0);
+  assert.ok(budget.inputTokens > 0);
+  assert.ok(budget.outputReserveTokens >= 256);
+  assert.ok(budget.historyBudget >= 256);
+  assert.ok(budget.overflowTokens >= 0);
+});
+
 test('Given a stream whose final SSE record has no trailing newline When generic chat runs Then the final delta is preserved', async (t) => {
   const originalFetch = global.fetch;
   const encoder = new TextEncoder();

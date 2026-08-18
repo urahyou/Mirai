@@ -52,7 +52,7 @@
               对话上下文窗口
               <span class="model-badge" id="modelBadge">探测中…</span>
             </h2>
-            <p class="hint">小未来最多记住最近多少 token 的对话，越大越连贯、但越耗资源</p>
+            <p class="hint">总上下文预算，包含人格、状态、记忆、历史和回复预留</p>
           </div>
           <strong class="value" id="contextValue">4K</strong>
         </div>
@@ -66,8 +66,8 @@
 
       <section class="setting-section">
         <div class="context-note">
-          提示：这里的数值是「发送给模型的对话 token 预算」。建议设为模型最大上下文的一半左右，
-          给回复和系统提示预留空间，避免超限出错。当前值仅影响本次运行期间的新对话。
+          提示：这里的数值是「发送给模型的总 token 预算」。系统会自动预留回复空间，
+          再把剩余容量分给历史对话；记忆和状态越长，历史可用空间会相应减少。
         </div>
       </section>
     </main>

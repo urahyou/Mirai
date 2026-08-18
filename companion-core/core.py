@@ -174,6 +174,22 @@ class CompanionCore:
         try: return self.memory.archive_pending_messages(current_at, force)
         except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
 
+    def memory_extract_candidates(self, episode_id: Any) -> list[dict[str, Any]]:
+        if not self.memory or not isinstance(episode_id, str): raise CoreError("Episode id 不合法")
+        try: return self.memory.extract_episode_candidates(episode_id)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def memory_list_candidates(self, limit: Any = 30, status: Any = None) -> list[dict[str, Any]]:
+        if not self.memory or (status is not None and not isinstance(status, str)): raise CoreError("候选查询参数不合法")
+        try: return self.memory.list_candidates(limit, status)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def memory_review_candidate(self, candidate_id: Any, decision: Any, supersedes_id: Any = None) -> dict[str, Any]:
+        if not self.memory or not isinstance(candidate_id, str) or not isinstance(decision, str): raise CoreError("候选审核参数不合法")
+        if supersedes_id is not None and not isinstance(supersedes_id, str): raise CoreError("supersedesId 不合法")
+        try: return self.memory.review_candidate(candidate_id, decision, supersedes_id)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
     def memory_search(self, query: Any) -> list[dict[str, Any]]:
         if not self.memory: raise CoreError("Core 尚未 bootstrap")
         if not isinstance(query, str): raise CoreError("query 必须是字符串")
@@ -198,6 +214,7 @@ class CompanionCore:
             "messages": self.memory.list_messages,
             "vectors": self.memory.list_vectors,
             "facts": self.memory.list_facts,
+            "candidates": self.memory.list_candidates,
             "profiles": self.memory.list_profiles,
             "edges": self.memory.list_edges,
             "events": self.memory.list_events,
@@ -230,9 +247,15 @@ class CompanionCore:
         try: return self.memory.list_mind(kind, limit)
         except ValueError as error: raise CoreError(str(error)) from error
 
-    def memory_forget_source(self, source_id: Any) -> int:
+    def memory_forget_source(self, source_id: Any, to_state: Any = "faded", reason: Any = "user-request") -> int:
+        if not self.memory or not isinstance(source_id, str) or not source_id or not isinstance(to_state, str) or not isinstance(reason, str): raise CoreError("遗忘参数不合法")
+        try: return self.memory.forget_by_source(source_id, to_state, reason)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
+
+    def memory_erase_source(self, source_id: Any) -> int:
         if not self.memory or not isinstance(source_id, str) or not source_id: raise CoreError("sourceId 不合法")
-        return self.memory.delete_by_source(source_id)
+        try: return self.memory.erase_by_source(source_id)
+        except (TypeError, ValueError) as error: raise CoreError(str(error)) from error
 
     def memory_upsert_fact(self, fact: Any) -> dict[str, Any]:
         if not self.memory or not isinstance(fact, dict): raise CoreError("fact 必须是对象")
